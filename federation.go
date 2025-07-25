@@ -1,7 +1,6 @@
 package oidfed
 
 import (
-	"crypto"
 	"time"
 
 	"github.com/lestrrat-go/jwx/v3/jwa"
@@ -61,7 +60,7 @@ func NewFederationEntity(
 func NewFederationLeaf(
 	entityID string, authorityHints []string, trustAnchors TrustAnchors, metadata *Metadata,
 	signer *EntityStatementSigner, configurationLifetime int64,
-	oidcSigningKey crypto.Signer, oidcSigningAlg jwa.SignatureAlgorithm, extra map[string]any,
+	oidcSigner VersatileSigner, oidcDefaultAlg jwa.SignatureAlgorithm, extra map[string]any,
 ) (*FederationLeaf, error) {
 	fed, err := NewFederationEntity(
 		entityID, authorityHints, metadata, signer, configurationLifetime, extra,
@@ -72,7 +71,7 @@ func NewFederationLeaf(
 	return &FederationLeaf{
 		FederationEntity: *fed,
 		TrustAnchors:     trustAnchors,
-		oidcROProducer:   NewRequestObjectProducer(entityID, oidcSigningKey, oidcSigningAlg, 60),
+		oidcROProducer:   NewRequestObjectProducer(entityID, oidcSigner, oidcDefaultAlg, 60),
 	}, nil
 }
 

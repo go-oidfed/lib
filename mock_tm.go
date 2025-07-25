@@ -11,6 +11,7 @@ import (
 	"github.com/lestrrat-go/jwx/v3/jwa"
 
 	"github.com/go-oidfed/lib/jwks"
+	"github.com/go-oidfed/lib/keystorage"
 	"github.com/go-oidfed/lib/unixtime"
 )
 
@@ -53,7 +54,12 @@ func newMockTrustMarkOwner(entityID string, ownedTrustMarks []OwnedTrustMark) *T
 	if err != nil {
 		panic(err)
 	}
-	return NewTrustMarkOwner(entityID, NewTrustMarkDelegationSigner(sk, jwa.ES512()), ownedTrustMarks)
+	return NewTrustMarkOwner(
+		entityID, NewTrustMarkDelegationSigner(
+			keystorage.NewSingleKeyVersatileSigner(sk, jwa.ES512()),
+			jwa.ES512(),
+		), ownedTrustMarks,
+	)
 }
 
 func newMockTrustMarkIssuer(entityID string, trustMarkSpecs []TrustMarkSpec) *mockTMI {
@@ -61,10 +67,15 @@ func newMockTrustMarkIssuer(entityID string, trustMarkSpecs []TrustMarkSpec) *mo
 	if err != nil {
 		panic(err)
 	}
-	tmi := NewTrustMarkIssuer(entityID, NewTrustMarkSigner(sk, jwa.ES512()), trustMarkSpecs)
+	tmi := NewTrustMarkIssuer(
+		entityID, NewTrustMarkSigner(
+			keystorage.NewSingleKeyVersatileSigner(sk, jwa.ES512()),
+			jwa.ES512(),
+		), trustMarkSpecs,
+	)
 	mock := &mockTMI{
 		TrustMarkIssuer: *tmi,
-		jwks:            jwks.KeyToJWKS(tmi.key.Public(), tmi.alg),
+		jwks:            tmi.JWKS(),
 	}
 	mockEntityConfiguration(mock.EntityID, mock)
 	return mock

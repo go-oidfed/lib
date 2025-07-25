@@ -11,6 +11,7 @@ import (
 	"github.com/lestrrat-go/jwx/v3/jwa"
 
 	"github.com/go-oidfed/lib/jwks"
+	"github.com/go-oidfed/lib/keystorage"
 	"github.com/go-oidfed/lib/unixtime"
 )
 
@@ -28,10 +29,13 @@ func newMockRP(entityID string, metadata *OpenIDRelyingPartyMetadata) *mockRP {
 		panic(err)
 	}
 	r := &mockRP{
-		EntityID:              entityID,
-		metadata:              metadata,
-		EntityStatementSigner: NewEntityStatementSigner(sk, jwa.ES512()),
-		jwks:                  jwks.KeyToJWKS(sk.Public(), jwa.ES512()),
+		EntityID: entityID,
+		metadata: metadata,
+		EntityStatementSigner: NewEntityStatementSigner(
+			keystorage.NewSingleKeyVersatileSigner(sk, jwa.ES512()),
+			jwa.ES512(),
+		),
+		jwks: jwks.KeyToJWKS(sk.Public(), jwa.ES512()),
 	}
 	mockEntityConfiguration(r.EntityID, r)
 	return r

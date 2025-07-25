@@ -1,7 +1,6 @@
 package oidfed
 
 import (
-	"crypto"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -48,26 +47,28 @@ func (res *OIDCTokenResponse) UnmarshalJSON(data []byte) error {
 
 // RequestObjectProducer is a generator for signed request objects
 type RequestObjectProducer struct {
-	EntityID string
-	lifetime int64
-	key      crypto.Signer
-	alg      jwa.SignatureAlgorithm
+	EntityID   string
+	lifetime   int64
+	signer     VersatileSigner
+	defaultAlg jwa.SignatureAlgorithm
 }
 
 // NewRequestObjectProducer creates a new RequestObjectProducer with the passed properties
 func NewRequestObjectProducer(
-	entityID string, privateSigningKey crypto.Signer, signingAlg jwa.SignatureAlgorithm, lifetime int64,
+	entityID string, multiSigner VersatileSigner, defaultAlg jwa.SignatureAlgorithm, lifetime int64,
 ) *RequestObjectProducer {
 	return &RequestObjectProducer{
-		EntityID: entityID,
-		lifetime: lifetime,
-		key:      privateSigningKey,
-		alg:      signingAlg,
+		EntityID:   entityID,
+		lifetime:   lifetime,
+		signer:     multiSigner,
+		defaultAlg: defaultAlg,
 	}
 }
 
 // RequestObject generates a signed request object jwt from the passed requestValues
-func (rop RequestObjectProducer) RequestObject(requestValues map[string]any) ([]byte, error) {
+func (rop RequestObjectProducer) RequestObject(requestValues map[string]any, alg ...jwa.SignatureAlgorithm) (
+	[]byte, error,
+) {
 	if requestValues == nil {
 		return nil, errors.New("request must contain 'aud' claim with OPs issuer identifier url")
 	}
@@ -94,11 +95,19 @@ func (rop RequestObjectProducer) RequestObject(requestValues map[string]any) ([]
 		return nil, errors.Wrap(err, "could not marshal request object into JWT")
 	}
 
-	return jwx.SignPayload(j, rop.alg, rop.key, nil)
+	return rop.signPayload(j, alg...)
+}
+
+func (rop RequestObjectProducer) signPayload(data []byte, algI ...jwa.SignatureAlgorithm) ([]byte, error) {
+	alg := rop.defaultAlg
+	if len(algI) > 0 {
+		alg = algI[0]
+	}
+	return jwx.SignPayload(data, alg, rop.signer.Signer(alg), nil)
 }
 
 // ClientAssertion creates a new signed client assertion jwt for the passed audience
-func (rop RequestObjectProducer) ClientAssertion(aud string) ([]byte, error) {
+func (rop RequestObjectProducer) ClientAssertion(aud string, alg ...jwa.SignatureAlgorithm) ([]byte, error) {
 	now := time.Now().Unix()
 	assertionValues := map[string]any{
 		"iss": rop.EntityID,
@@ -118,7 +127,7 @@ func (rop RequestObjectProducer) ClientAssertion(aud string) ([]byte, error) {
 		return nil, errors.Wrap(err, "could not marshal client assertion into JWT")
 	}
 
-	return jwx.SignPayload(j, rop.alg, rop.key, nil)
+	return rop.signPayload(j, alg...)
 }
 
 // GetAuthorizationURL creates an authorization url

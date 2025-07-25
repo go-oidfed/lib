@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 
 	"github.com/lestrrat-go/jwx/v3/jwa"
-	"github.com/lestrrat-go/jwx/v3/jwk"
 	"github.com/pkg/errors"
 
 	"github.com/go-oidfed/lib/internal/jwx"
@@ -13,43 +12,80 @@ import (
 	"github.com/go-oidfed/lib/oidfedconst"
 )
 
+// VersatileSigner is an interface type for obtaining a crypto.Signer for a specific jwa.
+// SignatureAlgorithm and the corresponding (full) jwks.JWKS
+// The purpose of this interface is to enable:
+// (1) easy usage of signing with potentially multiple algs,
+// e.g. in oidc the public_key_jwt client auth method might use one alg with one OP and another alg with another OP;
+// this requires different crypto.Signer but we still want to easily access a single combined jwks.JWKS
+// (2) key rotation; by using a function to obtain the crypto.Signer it is possible that the used crypto.
+// Signer changes over time
+type VersatileSigner interface {
+	// Signer returns a crypto.Signer usable for the passed jwa.SignatureAlgorithm or nil
+	Signer(alg jwa.SignatureAlgorithm) crypto.Signer
+	// JWKS returns the jwks.JWKS containing all public keys of this VersatileSigner
+	JWKS() jwks.JWKS
+}
+
 // JWTSigner is an interface that can give signed jwts
 type JWTSigner interface {
-	JWT(i any) (jwt []byte, err error)
-	JWKS() jwk.Set
+	JWT(i any, alg ...jwa.SignatureAlgorithm) (jwt []byte, err error)
+	JWKS() jwks.JWKS
 }
 
 // GeneralJWTSigner is a general jwt signer with no specific typ
 type GeneralJWTSigner struct {
-	key crypto.Signer
-	alg jwa.SignatureAlgorithm
+	signer VersatileSigner
+	algs   []jwa.SignatureAlgorithm
 }
 
-// NewGeneralJWTSigner creates a new GeneralJWTSigner
-func NewGeneralJWTSigner(key crypto.Signer, alg jwa.SignatureAlgorithm) *GeneralJWTSigner {
+// NewGeneralJWTSigner creates a new GeneralJWTSigner using the passed VersatileSigner.
+// The passed algorithms define which algorithms can be used; the order also implies a preference,
+// where the first alg is the preferred signing algorithm.
+func NewGeneralJWTSigner(
+	signer VersatileSigner, algs []jwa.SignatureAlgorithm,
+) *GeneralJWTSigner {
 	return &GeneralJWTSigner{
-		key: key,
-		alg: alg,
+		signer: signer,
+		algs:   algs,
 	}
 }
 
 // JWT returns a signed jwt representation of the passed data with the passed header type
-func (s GeneralJWTSigner) JWT(i any, headerType string) (jwt []byte, err error) {
-	if s.key == nil {
-		return nil, errors.New("no signing key set")
+func (s GeneralJWTSigner) JWT(i any, headerType string, algs ...jwa.SignatureAlgorithm) (jwt []byte, err error) {
+	var signer crypto.Signer
+	var alg jwa.SignatureAlgorithm
+	if len(algs) == 0 {
+		signer = s.signer.Signer(s.algs[0])
+	}
+	for _, alg = range s.algs {
+		for _, allowedAlg := range algs {
+			if alg == allowedAlg {
+				signer = s.signer.Signer(alg)
+				if signer != nil {
+					break
+				}
+			}
+		}
+		if signer != nil {
+			break
+		}
+	}
+	if signer == nil {
+		return nil, errors.New("no compatible signing key found")
 	}
 	var j []byte
 	j, err = json.Marshal(i)
 	if err != nil {
 		return
 	}
-	jwt, err = jwx.SignWithType(j, headerType, s.alg, s.key)
+	jwt, err = jwx.SignWithType(j, headerType, alg, signer)
 	return
 }
 
 // JWKS returns the jwks.JWKS used with this signer
 func (s *GeneralJWTSigner) JWKS() jwks.JWKS {
-	return jwks.KeyToJWKS(s.key.Public(), s.alg)
+	return s.signer.JWKS()
 }
 
 // Typed returns a TypedJWTSigner for the passed header type using the same crypto.Signer
@@ -123,30 +159,30 @@ func (s EntityStatementSigner) JWT(i any) (jwt []byte, err error) {
 }
 
 // NewEntityStatementSigner creates a new EntityStatementSigner
-func NewEntityStatementSigner(key crypto.Signer, alg jwa.SignatureAlgorithm) *EntityStatementSigner {
+func NewEntityStatementSigner(signer VersatileSigner, alg jwa.SignatureAlgorithm) *EntityStatementSigner {
 	return &EntityStatementSigner{
-		GeneralJWTSigner: NewGeneralJWTSigner(key, alg),
+		GeneralJWTSigner: NewGeneralJWTSigner(signer, []jwa.SignatureAlgorithm{alg}),
 	}
 }
 
 // NewResolveResponseSigner creates a new ResolveResponseSigner
-func NewResolveResponseSigner(key crypto.Signer, alg jwa.SignatureAlgorithm) *ResolveResponseSigner {
+func NewResolveResponseSigner(signer VersatileSigner, alg jwa.SignatureAlgorithm) *ResolveResponseSigner {
 	return &ResolveResponseSigner{
-		GeneralJWTSigner: NewGeneralJWTSigner(key, alg),
+		GeneralJWTSigner: NewGeneralJWTSigner(signer, []jwa.SignatureAlgorithm{alg}),
 	}
 }
 
 // NewTrustMarkSigner creates a new TrustMarkSigner
-func NewTrustMarkSigner(key crypto.Signer, alg jwa.SignatureAlgorithm) *TrustMarkSigner {
+func NewTrustMarkSigner(signer VersatileSigner, alg jwa.SignatureAlgorithm) *TrustMarkSigner {
 	return &TrustMarkSigner{
-		GeneralJWTSigner: NewGeneralJWTSigner(key, alg),
+		GeneralJWTSigner: NewGeneralJWTSigner(signer, []jwa.SignatureAlgorithm{alg}),
 	}
 }
 
 // NewTrustMarkDelegationSigner creates a new TrustMarkDelegationSigner
-func NewTrustMarkDelegationSigner(key crypto.Signer, alg jwa.SignatureAlgorithm) *TrustMarkDelegationSigner {
+func NewTrustMarkDelegationSigner(signer VersatileSigner, alg jwa.SignatureAlgorithm) *TrustMarkDelegationSigner {
 	return &TrustMarkDelegationSigner{
-		GeneralJWTSigner: NewGeneralJWTSigner(key, alg),
+		GeneralJWTSigner: NewGeneralJWTSigner(signer, []jwa.SignatureAlgorithm{alg}),
 	}
 }
 

@@ -5,8 +5,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/lestrrat-go/jwx/v3/jwa"
-
 	"github.com/go-oidfed/lib/jwks"
 	"github.com/go-oidfed/lib/unixtime"
 )
@@ -90,11 +88,11 @@ var taWithTmo = newMockAuthority(
 		TrustMarkOwners: map[string]TrustMarkOwnerSpec{
 			"https://trustmarks.org/tm-delegated": {
 				ID:   "https://tmo.example.eu",
-				JWKS: jwks.KeyToJWKS(tmo.key.Public(), tmo.alg),
+				JWKS: tmo.JWKS(),
 			},
 			"https://trustmarks.org/test": {
 				ID:   "https://tmo.example.eu",
-				JWKS: jwks.KeyToJWKS(tmo.key.Public(), tmo.alg),
+				JWKS: tmo.JWKS(),
 			},
 			"https://trustmarks.org/other": {
 				ID:   "https://other.owner.org",
@@ -224,7 +222,7 @@ func TestTrustMarkOwner_DelegationJWT(t *testing.T) {
 						return
 					}
 				}
-				if err = delegation.VerifyExternal(jwks.KeyToJWKS(tmo.key.Public(), tmo.alg)); err != nil {
+				if err = delegation.VerifyExternal(tmo.JWKS()); err != nil {
 					t.Errorf("error verifying issued delegation jwt: %v", err)
 					return
 				}
@@ -241,7 +239,7 @@ func TestDelegationJWT_VerifyExternal(t *testing.T) {
 	); err != nil {
 		t.Error(err)
 	}
-	wrongKey := jwks.KeyToJWKS(tmo.key.Public(), jwa.ES512())
+	wrongKey := tmo.JWKS()
 	tests := []struct {
 		name        string
 		jwks        jwks.JWKS

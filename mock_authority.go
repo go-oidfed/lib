@@ -11,6 +11,7 @@ import (
 	"github.com/lestrrat-go/jwx/v3/jwa"
 
 	"github.com/go-oidfed/lib/jwks"
+	"github.com/go-oidfed/lib/keystorage"
 	"github.com/go-oidfed/lib/unixtime"
 )
 
@@ -58,11 +59,14 @@ func newMockAuthority(entityID string, data EntityStatementPayload) *mockAuthori
 	data.Issuer = entityID
 	data.Subject = entityID
 	a := &mockAuthority{
-		EntityID:              entityID,
-		FetchEndpoint:         fmt.Sprintf("%s/fetch", entityID),
-		ListEndpoint:          fmt.Sprintf("%s/list", entityID),
-		data:                  data,
-		EntityStatementSigner: NewEntityStatementSigner(sk, jwa.ES512()),
+		EntityID:      entityID,
+		FetchEndpoint: fmt.Sprintf("%s/fetch", entityID),
+		ListEndpoint:  fmt.Sprintf("%s/list", entityID),
+		data:          data,
+		EntityStatementSigner: NewEntityStatementSigner(
+			keystorage.NewSingleKeyVersatileSigner(sk, jwa.ES512()),
+			jwa.ES512(),
+		),
 	}
 	if a.data.Metadata == nil {
 		a.data.Metadata = &Metadata{}
