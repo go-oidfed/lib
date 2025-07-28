@@ -4,8 +4,8 @@ import (
 	"testing"
 
 	arrops "github.com/adam-hanna/arrayOperations"
+	zutils "github.com/zachmann/go-utils"
 
-	"github.com/go-oidfed/lib/internal/utils"
 	"github.com/go-oidfed/lib/oidfedconst"
 )
 
@@ -126,7 +126,7 @@ var ta2WithRemoveCrit = newMockAuthority(
 var taConstraintsPathLen = newMockAuthority(
 	"https://ta.foundation.example.org/constraints/path-len",
 	EntityStatementPayload{
-		Constraints: &ConstraintSpecification{MaxPathLength: utils.NewInt(1)},
+		Constraints: &ConstraintSpecification{MaxPathLength: zutils.NewInt(1)},
 	},
 )
 var taConstraintsNaming = newMockAuthority(

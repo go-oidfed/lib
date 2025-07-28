@@ -5,16 +5,14 @@ import (
 
 	"github.com/pkg/errors"
 	"github.com/vmihailenco/msgpack/v5"
+	"github.com/zachmann/go-utils/structutils"
 	"gopkg.in/yaml.v3"
 
 	"github.com/go-oidfed/lib/internal"
 	jwxi "github.com/go-oidfed/lib/internal/jwx"
-	"github.com/go-oidfed/lib/internal/utils"
 	"github.com/go-oidfed/lib/jwx"
 	"github.com/go-oidfed/lib/oidfedconst"
 	"github.com/go-oidfed/lib/unixtime"
-
-	"github.com/fatih/structs"
 )
 
 const defaultEntityConfigurationLifetime = 86400 // 1d
@@ -141,8 +139,7 @@ func unmarshalWithExtra(data []byte, target interface{}) (map[string]interface{}
 	if err := json.Unmarshal(data, &extra); err != nil {
 		return nil, errors.WithStack(err)
 	}
-	s := structs.New(target)
-	for _, tag := range utils.FieldTagNames(s.Fields(), "json") {
+	for _, tag := range structutils.FieldTagNames(target, "json") {
 		delete(extra, tag)
 	}
 	if len(extra) == 0 {
@@ -159,8 +156,7 @@ func yamlUnmarshalWithExtra(data *yaml.Node, target interface{}) (map[string]int
 	if err := data.Decode(&extra); err != nil {
 		return nil, errors.WithStack(err)
 	}
-	s := structs.New(target)
-	for _, tag := range utils.FieldTagNames(s.Fields(), "yaml") {
+	for _, tag := range structutils.FieldTagNames(target, "yaml") {
 		delete(extra, tag)
 	}
 	if len(extra) == 0 {

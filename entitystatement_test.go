@@ -13,8 +13,8 @@ import (
 	"github.com/lestrrat-go/jwx/v3/jwa"
 	"github.com/luci/go-render/render"
 	"github.com/vmihailenco/msgpack/v5"
+	zutils "github.com/zachmann/go-utils"
 
-	"github.com/go-oidfed/lib/internal/utils"
 	"github.com/go-oidfed/lib/jwx"
 	"github.com/go-oidfed/lib/unixtime"
 )
@@ -82,7 +82,7 @@ var entitystatementMarshalData = map[string]marshalData{
 				},
 			},
 			Constraints: &ConstraintSpecification{
-				MaxPathLength: utils.NewInt(2),
+				MaxPathLength: zutils.NewInt(2),
 				NamingConstraints: &NamingConstraints{
 					Permitted: []string{"foo"},
 				},

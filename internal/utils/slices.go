@@ -2,24 +2,7 @@ package utils
 
 import (
 	"reflect"
-	"slices"
 )
-
-// SliceContains checks if a slice contains a value
-func SliceContains[C comparable](v C, slice []C) bool {
-	return slices.Contains(slice, v)
-}
-
-// RemoveFromSlice removes an element from the slice
-func RemoveFromSlice[C comparable](slice []C, v C) []C {
-	result := make([]C, 0, len(slice))
-	for _, vv := range slice {
-		if vv != v {
-			result = append(result, vv)
-		}
-	}
-	return result
-}
 
 // ReflectSliceCast casts a slice to another type using reflection
 func ReflectSliceCast(slice, newType any) any {

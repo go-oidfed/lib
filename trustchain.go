@@ -3,12 +3,12 @@ package oidfed
 import (
 	"github.com/pkg/errors"
 	"github.com/vmihailenco/msgpack/v5"
+	"github.com/zachmann/go-utils/maputils"
 	"golang.org/x/crypto/sha3"
 	"tideland.dev/go/slices"
 
 	"github.com/go-oidfed/lib/cache"
 	"github.com/go-oidfed/lib/internal"
-	"github.com/go-oidfed/lib/internal/utils"
 	"github.com/go-oidfed/lib/unixtime"
 )
 
@@ -77,7 +77,7 @@ func (c TrustChain) Metadata() (*Metadata, error) {
 			critPolicies[mpoc] = struct{}{}
 		}
 	}
-	unsupportedCritPolicies := slices.Subtract(utils.MapKeys(critPolicies), OperatorOrder)
+	unsupportedCritPolicies := slices.Subtract(maputils.Keys(critPolicies), OperatorOrder)
 	if len(unsupportedCritPolicies) > 0 {
 		return nil, errors.Errorf(
 			"the following metadata policy operators are critical but not understood: %v",
