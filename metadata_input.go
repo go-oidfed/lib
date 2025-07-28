@@ -1,15 +1,15 @@
 package oidfed
 
 import (
-	"github.com/go-oidfed/lib/jwks"
+	"github.com/go-oidfed/lib/jwx"
 )
 
 //go:generate go run internal/generators/metadata.go
 
 type commonMetadata struct {
-	SignedJWKSURI string     `json:"signed_jwks_uri,omitempty"`
-	JWKSURI       string     `json:"jwks_uri,omitempty"`
-	JWKS          *jwks.JWKS `json:"jwks,omitempty"`
+	SignedJWKSURI string    `json:"signed_jwks_uri,omitempty"`
+	JWKSURI       string    `json:"jwks_uri,omitempty"`
+	JWKS          *jwx.JWKS `json:"jwks,omitempty"`
 
 	DisplayName      string   `json:"display_name,omitempty"`
 	Description      string   `json:"description,omitempty"`

@@ -10,16 +10,15 @@ import (
 
 	"github.com/lestrrat-go/jwx/v3/jwa"
 
-	"github.com/go-oidfed/lib/jwks"
-	"github.com/go-oidfed/lib/keystorage"
+	"github.com/go-oidfed/lib/jwx"
 	"github.com/go-oidfed/lib/unixtime"
 )
 
 type mockProxy struct {
 	EntityID    string
 	authorities []string
-	jwks        jwks.JWKS
-	*EntityStatementSigner
+	jwks        jwx.JWKS
+	*jwx.EntityStatementSigner
 	rpMetadata *OpenIDRelyingPartyMetadata
 	opMetadata *OpenIDProviderMetadata
 }
@@ -33,15 +32,18 @@ func newMockProxy(
 		panic(err)
 	}
 	op.Issuer = entityID
+	jwks, err := jwx.KeyToJWKS(sk.Public(), jwa.ES512())
+	if err != nil {
+		panic(err)
+	}
 	p := &mockProxy{
 		EntityID:   entityID,
 		rpMetadata: rp,
 		opMetadata: op,
-		EntityStatementSigner: NewEntityStatementSigner(
-			keystorage.NewSingleKeyVersatileSigner(sk, jwa.ES512()),
-			jwa.ES512(),
+		EntityStatementSigner: jwx.NewEntityStatementSigner(
+			jwx.NewSingleKeyVersatileSigner(sk, jwa.ES512()),
 		),
-		jwks: jwks.KeyToJWKS(sk.Public(), jwa.ES512()),
+		jwks: jwks,
 	}
 	mockEntityConfiguration(p.EntityID, p)
 	return p

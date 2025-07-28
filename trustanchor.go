@@ -1,13 +1,13 @@
 package oidfed
 
 import (
-	"github.com/go-oidfed/lib/jwks"
+	"github.com/go-oidfed/lib/jwx"
 )
 
 // TrustAnchor is a type for specifying trust anchors
 type TrustAnchor struct {
-	EntityID string    `yaml:"entity_id" json:"entity_id"`
-	JWKS     jwks.JWKS `yaml:"jwks" json:"jwks"`
+	EntityID string   `yaml:"entity_id" json:"entity_id"`
+	JWKS     jwx.JWKS `yaml:"jwks" json:"jwks"`
 }
 
 // TrustAnchors is a slice of TrustAnchor

@@ -8,9 +8,9 @@ import (
 	"gopkg.in/yaml.v3"
 
 	"github.com/go-oidfed/lib/internal"
-	"github.com/go-oidfed/lib/internal/jwx"
+	jwxi "github.com/go-oidfed/lib/internal/jwx"
 	"github.com/go-oidfed/lib/internal/utils"
-	"github.com/go-oidfed/lib/jwks"
+	"github.com/go-oidfed/lib/jwx"
 	"github.com/go-oidfed/lib/oidfedconst"
 	"github.com/go-oidfed/lib/unixtime"
 
@@ -22,12 +22,12 @@ const defaultEntityConfigurationLifetime = 86400 // 1d
 // EntityStatement is a type for holding an entity statement, more precisely an entity statement that was obtained
 // as a jwt and created by us
 type EntityStatement struct {
-	jwtMsg *jwx.ParsedJWT
+	jwtMsg *jwxi.ParsedJWT
 	EntityStatementPayload
 }
 
 // Verify verifies that the EntityStatement jwt is valid
-func (e EntityStatement) Verify(keys jwks.JWKS) bool {
+func (e EntityStatement) Verify(keys jwx.JWKS) bool {
 	_, err := e.jwtMsg.VerifyWithSet(keys)
 	if err != nil {
 		internal.Log(err)
@@ -37,7 +37,7 @@ func (e EntityStatement) Verify(keys jwks.JWKS) bool {
 
 type entityStatementExported struct {
 	Payload EntityStatementPayload
-	JWTMsg  jwx.ParsedJWT
+	JWTMsg  jwxi.ParsedJWT
 }
 
 // MarshalMsgpack implements the msgpack.Marshaler interface for usage with caching
@@ -70,7 +70,7 @@ type EntityStatementPayload struct {
 	Subject            string                   `json:"sub"`
 	IssuedAt           unixtime.Unixtime        `json:"iat"`
 	ExpiresAt          unixtime.Unixtime        `json:"exp"`
-	JWKS               jwks.JWKS                `json:"jwks"`
+	JWKS               jwx.JWKS                 `json:"jwks"`
 	Audience           string                   `json:"aud,omitempty"`
 	AuthorityHints     []string                 `json:"authority_hints,omitempty"`
 	Metadata           *Metadata                `json:"metadata,omitempty"`
@@ -215,8 +215,8 @@ type TrustMarkOwners map[string]TrustMarkOwnerSpec
 
 // TrustMarkOwnerSpec describes the owner of a trust mark
 type TrustMarkOwnerSpec struct {
-	ID   string    `json:"sub" yaml:"entity_id"`
-	JWKS jwks.JWKS `json:"jwks" yaml:"jwks"`
+	ID   string   `json:"sub" yaml:"entity_id"`
+	JWKS jwx.JWKS `json:"jwks" yaml:"jwks"`
 }
 
 // UnmarshalJSON implements the json.Unmarshaler interface.
@@ -243,7 +243,7 @@ func (tmo *TrustMarkOwnerSpec) UnmarshalMsgpack(data []byte) error {
 
 // ParseEntityStatement parses a jwt into an EntityStatement
 func ParseEntityStatement(statementJWT []byte) (*EntityStatement, error) {
-	m, err := jwx.Parse(statementJWT)
+	m, err := jwxi.Parse(statementJWT)
 	if err != nil {
 		return nil, err
 	}

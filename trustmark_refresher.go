@@ -9,6 +9,7 @@ import (
 
 	"github.com/go-oidfed/lib/internal"
 	"github.com/go-oidfed/lib/internal/http"
+	"github.com/go-oidfed/lib/jwx"
 	"github.com/go-oidfed/lib/unixtime"
 )
 
@@ -33,7 +34,7 @@ type EntityConfigurationTrustMarkConfig struct {
 // Verify verifies that the EntityConfigurationTrustMarkConfig is correct and also extracts trust mark id and issuer
 // if a trust mark jwt is given as well as sets default values
 func (c *EntityConfigurationTrustMarkConfig) Verify(
-	sub, ownTrustMarkEndpoint string, ownTrustMarkSigner *TrustMarkSigner,
+	sub, ownTrustMarkEndpoint string, ownTrustMarkSigner *jwx.TrustMarkSigner,
 ) error {
 	c.sub = sub
 	c.ownTrustMarkEndpoint = ownTrustMarkEndpoint

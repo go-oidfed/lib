@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/go-oidfed/lib/jwks"
+	"github.com/go-oidfed/lib/jwx"
 	"github.com/go-oidfed/lib/unixtime"
 )
 
@@ -232,7 +232,7 @@ func TestTrustMarkOwner_DelegationJWT(t *testing.T) {
 }
 
 func TestDelegationJWT_VerifyExternal(t *testing.T) {
-	correctJWKS := jwks.NewJWKS()
+	correctJWKS := jwx.NewJWKS()
 	if err := json.Unmarshal(
 		[]byte(`{"keys":[{"alg":"ES512","crv":"P-521","kid":"bjQ4ZO1kfWr-cxi-_tU9bKTWwG6XoUwnSW6M5food_U","kty":"EC","use":"sig","x":"AKj5_1MgsEFKCSNN4UyDqQP2wanr9ZD1Q1eBUGJ1BJej8MTQnRkDPRY_35Ctae8bxoj2fxZMufXnWAuVxERelwzL","y":"AObqfUE1k0YIlO1qe-5D8CcTWxZn6OIXC3s_cPrug69sM580aCtug7vEdaBcfNY8RGTwUV1hMxqvOTsQsROrrXG2"}]}`),
 		&correctJWKS,
@@ -242,7 +242,7 @@ func TestDelegationJWT_VerifyExternal(t *testing.T) {
 	wrongKey := tmo.JWKS()
 	tests := []struct {
 		name        string
-		jwks        jwks.JWKS
+		jwks        jwx.JWKS
 		data        []byte
 		errExpected bool
 	}{

@@ -1,6 +1,7 @@
 package oidfed
 
 import (
+	"crypto"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -11,7 +12,7 @@ import (
 	"github.com/lestrrat-go/jwx/v3/jwa"
 	"github.com/pkg/errors"
 
-	"github.com/go-oidfed/lib/internal/jwx"
+	"github.com/go-oidfed/lib/jwx"
 )
 
 // OIDCErrorResponse is the error response of an oidc provider
@@ -47,26 +48,24 @@ func (res *OIDCTokenResponse) UnmarshalJSON(data []byte) error {
 
 // RequestObjectProducer is a generator for signed request objects
 type RequestObjectProducer struct {
-	EntityID   string
-	lifetime   int64
-	signer     VersatileSigner
-	defaultAlg jwa.SignatureAlgorithm
+	EntityID string
+	lifetime int64
+	signer   jwx.VersatileSigner
 }
 
 // NewRequestObjectProducer creates a new RequestObjectProducer with the passed properties
 func NewRequestObjectProducer(
-	entityID string, multiSigner VersatileSigner, defaultAlg jwa.SignatureAlgorithm, lifetime int64,
+	entityID string, multiSigner jwx.VersatileSigner, lifetime int64,
 ) *RequestObjectProducer {
 	return &RequestObjectProducer{
-		EntityID:   entityID,
-		lifetime:   lifetime,
-		signer:     multiSigner,
-		defaultAlg: defaultAlg,
+		EntityID: entityID,
+		lifetime: lifetime,
+		signer:   multiSigner,
 	}
 }
 
 // RequestObject generates a signed request object jwt from the passed requestValues
-func (rop RequestObjectProducer) RequestObject(requestValues map[string]any, alg ...jwa.SignatureAlgorithm) (
+func (rop RequestObjectProducer) RequestObject(requestValues map[string]any, alg ...string) (
 	[]byte, error,
 ) {
 	if requestValues == nil {
@@ -98,16 +97,22 @@ func (rop RequestObjectProducer) RequestObject(requestValues map[string]any, alg
 	return rop.signPayload(j, alg...)
 }
 
-func (rop RequestObjectProducer) signPayload(data []byte, algI ...jwa.SignatureAlgorithm) ([]byte, error) {
-	alg := rop.defaultAlg
-	if len(algI) > 0 {
-		alg = algI[0]
+func (rop RequestObjectProducer) signPayload(data []byte, algs ...string) ([]byte, error) {
+	var signer crypto.Signer
+	var alg jwa.SignatureAlgorithm
+	if len(algs) == 0 {
+		signer, alg = rop.signer.DefaultSigner()
+	} else {
+		signer, alg = rop.signer.Signer(algs...)
 	}
-	return jwx.SignPayload(data, alg, rop.signer.Signer(alg), nil)
+	if signer == nil {
+		return nil, errors.New("no compatible signing key")
+	}
+	return jwx.SignPayload(data, alg, signer, nil)
 }
 
 // ClientAssertion creates a new signed client assertion jwt for the passed audience
-func (rop RequestObjectProducer) ClientAssertion(aud string, alg ...jwa.SignatureAlgorithm) ([]byte, error) {
+func (rop RequestObjectProducer) ClientAssertion(aud string, alg ...string) ([]byte, error) {
 	now := time.Now().Unix()
 	assertionValues := map[string]any{
 		"iss": rop.EntityID,
@@ -152,7 +157,7 @@ func (f FederationLeaf) GetAuthorizationURL(
 	requestParams["response_type"] = "code"
 	requestParams["scope"] = scope
 
-	requestObject, err := f.oidcROProducer.RequestObject(requestParams)
+	requestObject, err := f.oidcROProducer.RequestObject(requestParams, opMetadata.TokenEndpointAuthMethodsSupported...)
 	if err != nil {
 		return "", errors.Wrap(err, "could not create request object")
 	}
@@ -188,7 +193,10 @@ func (f FederationLeaf) CodeExchange(
 	params.Set("redirect_uri", redirectURI)
 	params.Set("client_id", f.EntityID)
 
-	clientAssertion, err := f.oidcROProducer.ClientAssertion(opMetadata.TokenEndpoint)
+	clientAssertion, err := f.oidcROProducer.ClientAssertion(
+		opMetadata.TokenEndpoint,
+		opMetadata.TokenEndpointAuthSigningAlgValuesSupported...,
+	)
 	if err != nil {
 		return nil, nil, err
 	}

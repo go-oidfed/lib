@@ -3,13 +3,12 @@ package oidfed
 import (
 	"time"
 
-	"github.com/lestrrat-go/jwx/v3/jwa"
 	"github.com/pkg/errors"
 
 	"github.com/go-oidfed/lib/apimodel"
 	"github.com/go-oidfed/lib/cache"
 	"github.com/go-oidfed/lib/internal"
-	"github.com/go-oidfed/lib/jwks"
+	"github.com/go-oidfed/lib/jwx"
 	"github.com/go-oidfed/lib/unixtime"
 )
 
@@ -19,10 +18,10 @@ import (
 type FederationEntity struct {
 	EntityID              string
 	Metadata              *Metadata
+	MetadataUpdater       func(*Metadata)
 	AuthorityHints        []string
 	ConfigurationLifetime int64
-	*EntityStatementSigner
-	jwks             jwks.JWKS
+	*jwx.EntityStatementSigner
 	TrustMarks       []*EntityConfigurationTrustMarkConfig
 	TrustMarkIssuers AllowedTrustMarkIssuers
 	TrustMarkOwners  TrustMarkOwners
@@ -40,7 +39,7 @@ type FederationLeaf struct {
 // NewFederationEntity creates a new FederationEntity with the passed properties
 func NewFederationEntity(
 	entityID string, authorityHints []string, metadata *Metadata,
-	signer *EntityStatementSigner, configurationLifetime int64, extra map[string]any,
+	signer *jwx.EntityStatementSigner, configurationLifetime int64, extra map[string]any,
 ) (*FederationEntity, error) {
 	if configurationLifetime <= 0 {
 		configurationLifetime = defaultEntityConfigurationLifetime
@@ -51,7 +50,6 @@ func NewFederationEntity(
 		AuthorityHints:        authorityHints,
 		EntityStatementSigner: signer,
 		ConfigurationLifetime: configurationLifetime,
-		jwks:                  signer.JWKS(),
 		Extra:                 extra,
 	}, nil
 }
@@ -59,8 +57,8 @@ func NewFederationEntity(
 // NewFederationLeaf creates a new FederationLeaf with the passed properties
 func NewFederationLeaf(
 	entityID string, authorityHints []string, trustAnchors TrustAnchors, metadata *Metadata,
-	signer *EntityStatementSigner, configurationLifetime int64,
-	oidcSigner VersatileSigner, oidcDefaultAlg jwa.SignatureAlgorithm, extra map[string]any,
+	signer *jwx.EntityStatementSigner, configurationLifetime int64,
+	oidcSigner jwx.VersatileSigner, extra map[string]any,
 ) (*FederationLeaf, error) {
 	fed, err := NewFederationEntity(
 		entityID, authorityHints, metadata, signer, configurationLifetime, extra,
@@ -71,7 +69,7 @@ func NewFederationLeaf(
 	return &FederationLeaf{
 		FederationEntity: *fed,
 		TrustAnchors:     trustAnchors,
-		oidcROProducer:   NewRequestObjectProducer(entityID, oidcSigner, oidcDefaultAlg, 60),
+		oidcROProducer:   NewRequestObjectProducer(entityID, oidcSigner, 60),
 	}, nil
 }
 
@@ -92,12 +90,15 @@ func (f FederationEntity) EntityConfigurationPayload() *EntityStatementPayload {
 			},
 		)
 	}
+	if f.MetadataUpdater != nil {
+		f.MetadataUpdater(f.Metadata)
+	}
 	return &EntityStatementPayload{
 		Issuer:           f.EntityID,
 		Subject:          f.EntityID,
 		IssuedAt:         unixtime.Unixtime{Time: now},
 		ExpiresAt:        unixtime.Unixtime{Time: now.Add(time.Second * time.Duration(f.ConfigurationLifetime))},
-		JWKS:             f.jwks,
+		JWKS:             f.EntityStatementSigner.JWKS(),
 		AuthorityHints:   f.AuthorityHints,
 		Metadata:         f.Metadata,
 		TrustMarks:       tms,

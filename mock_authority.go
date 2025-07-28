@@ -10,8 +10,7 @@ import (
 
 	"github.com/lestrrat-go/jwx/v3/jwa"
 
-	"github.com/go-oidfed/lib/jwks"
-	"github.com/go-oidfed/lib/keystorage"
+	"github.com/go-oidfed/lib/jwx"
 	"github.com/go-oidfed/lib/unixtime"
 )
 
@@ -20,7 +19,7 @@ type mockAuthority struct {
 	FetchEndpoint string
 	ListEndpoint  string
 	data          EntityStatementPayload
-	*EntityStatementSigner
+	*jwx.EntityStatementSigner
 	subordinates []mockSubordinateInfo
 }
 
@@ -42,7 +41,7 @@ func (a mockAuthority) Subordinates(_ string) (subordinates []string, err error)
 
 type mockSubordinateInfo struct {
 	entityID string
-	jwks     jwks.JWKS
+	jwks     jwx.JWKS
 }
 
 type mockSubordinate interface {
@@ -55,7 +54,10 @@ func newMockAuthority(entityID string, data EntityStatementPayload) *mockAuthori
 	if err != nil {
 		panic(err)
 	}
-	data.JWKS = jwks.KeyToJWKS(sk.Public(), jwa.ES512())
+	data.JWKS, err = jwx.KeyToJWKS(sk.Public(), jwa.ES512())
+	if err != nil {
+		panic(err)
+	}
 	data.Issuer = entityID
 	data.Subject = entityID
 	a := &mockAuthority{
@@ -63,9 +65,8 @@ func newMockAuthority(entityID string, data EntityStatementPayload) *mockAuthori
 		FetchEndpoint: fmt.Sprintf("%s/fetch", entityID),
 		ListEndpoint:  fmt.Sprintf("%s/list", entityID),
 		data:          data,
-		EntityStatementSigner: NewEntityStatementSigner(
-			keystorage.NewSingleKeyVersatileSigner(sk, jwa.ES512()),
-			jwa.ES512(),
+		EntityStatementSigner: jwx.NewEntityStatementSigner(
+			jwx.NewSingleKeyVersatileSigner(sk, jwa.ES512()),
 		),
 	}
 	if a.data.Metadata == nil {
@@ -95,7 +96,7 @@ func (a mockAuthority) EntityStatementPayload() *EntityStatementPayload {
 
 func (a mockAuthority) SubordinateEntityStatementPayload(subID string) EntityStatementPayload {
 	now := time.Now()
-	var jwks jwks.JWKS
+	var jwks jwx.JWKS
 	for _, s := range a.subordinates {
 		if s.entityID == subID {
 			jwks = s.jwks
