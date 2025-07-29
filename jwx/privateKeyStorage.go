@@ -7,9 +7,9 @@ import (
 )
 
 type privateKeyStorage interface {
-	Load(pks *jwksSlice, pksOnChange func() error) error
+	Load(pks *pkCollection, pksOnChange func() error) error
 	GetForAlgs(algs ...string) (crypto.Signer, jwa.SignatureAlgorithm)
 	GetDefault() (crypto.Signer, jwa.SignatureAlgorithm)
-	GenerateNewKeys(pks *jwksSlice, pksOnChange func() error) error
-	initKeyRotation(pks *jwksSlice, pksOnChange func() error)
+	GenerateNewKeys(pks *pkCollection, pksOnChange func() error) error
+	initKeyRotation(pks *pkCollection, pksOnChange func() error)
 }

@@ -82,6 +82,7 @@ func NewKeyStorage(keyDir string, conf map[string]KeyStorageConfig) (*KeyStorage
 			sks = sksma
 		}
 		ks.private[t] = sks
+		ks.public[t] = &pkCollection{NumberOfOldKeysKeptInJWKS: cfg.RolloverConf.NumberOfOldKeysKeptInJWKS}
 	}
 	return ks, nil
 }
@@ -116,11 +117,11 @@ type RolloverConf struct {
 // JWKS returns the jwks.JWKS containing all public keys for the passed storageType
 func (ks KeyStorage) JWKS(storageType string) JWKS {
 	sets, ok := ks.public[storageType]
-	if !ok || sets == nil || len(*sets) == 0 {
+	if !ok || sets == nil || len(sets.jwks) == 0 {
 		return JWKS{}
 	}
 	final := NewJWKS()
-	for _, set := range *sets {
+	for _, set := range sets.jwks {
 		for i := range set.Len() {
 			k, _ := set.Key(i)
 			if err := final.AddKey(k); err != nil {
@@ -182,7 +183,7 @@ func (ks *KeyStorage) Load() error {
 	for typeID, sks := range ks.private {
 		pks, found := ks.public[typeID]
 		if !found {
-			pks = &jwksSlice{}
+			pks = &pkCollection{}
 			ks.public[typeID] = pks
 		}
 		if err := sks.Load(

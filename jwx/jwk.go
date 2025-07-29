@@ -94,12 +94,14 @@ func exportEDDSAPrivateKeyAsPem(privkey ed25519.PrivateKey) []byte {
 	return privkeyPem
 }
 
-func signerToPublicJWK(
-	sk crypto.Signer, alg jwa.SignatureAlgorithm,
-	nowIssued bool, expires bool, interval time.Duration,
-) (
-	jwk.Key, error,
-) {
+type keyLifetimeConf struct {
+	NowIssued bool
+	Expires   bool
+	Lifetime  time.Duration
+	Nbf       *unixtime.Unixtime
+}
+
+func signerToPublicJWK(sk crypto.Signer, alg jwa.SignatureAlgorithm, lifetimeConf keyLifetimeConf) (jwk.Key, error) {
 	pk, err := jwk.PublicKeyOf(sk.Public())
 	if err != nil {
 		return nil, err
@@ -114,15 +116,21 @@ func signerToPublicJWK(
 		return nil, errors.WithStack(err)
 	}
 	now := unixtime.Now()
-	if nowIssued {
+	if lifetimeConf.NowIssued {
 		if err = pk.Set("iat", now); err != nil {
 			return nil, errors.WithStack(err)
 		}
 	}
-	if expires {
-		exp := unixtime.Unixtime{Time: now.Add(interval)}
-		if err = pk.Set("exp", exp); err != nil {
-			return nil, errors.WithStack(err)
+	if lifetimeConf.Expires {
+		exp := unixtime.Unixtime{Time: now.Add(lifetimeConf.Lifetime)}
+		if lifetimeConf.Nbf != nil && lifetimeConf.Nbf.After(now.Time) {
+			if err = errors.WithStack(pk.Set("nbf", lifetimeConf.Nbf)); err != nil {
+				return nil, err
+			}
+			exp = unixtime.Unixtime{Time: lifetimeConf.Nbf.Add(lifetimeConf.Lifetime)}
+		}
+		if err = errors.WithStack(pk.Set("exp", exp)); err != nil {
+			return nil, err
 		}
 	}
 	return pk, nil
@@ -130,13 +138,14 @@ func signerToPublicJWK(
 
 // generatePrivateKey generates a cryptographic private key with the passed
 // properties and returns the corresponding public key as a jwk.Key
-func generateKeyPair(alg jwa.SignatureAlgorithm, rsaKeyLen int, expires bool, interval time.Duration) (
+func generateKeyPair(alg jwa.SignatureAlgorithm, rsaKeyLen int, lifetimeConf keyLifetimeConf) (
 	sk crypto.Signer, pk jwk.Key, err error,
 ) {
 	sk, err = generatePrivateKey(alg, rsaKeyLen)
 	if err != nil {
 		return
 	}
-	pk, err = signerToPublicJWK(sk, alg, true, expires, interval)
+	lifetimeConf.NowIssued = true
+	pk, err = signerToPublicJWK(sk, alg, lifetimeConf)
 	return
 }

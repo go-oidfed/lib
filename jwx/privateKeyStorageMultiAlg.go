@@ -3,12 +3,15 @@ package jwx
 import (
 	"crypto"
 	"fmt"
+	"os"
 	"slices"
 	"time"
 
 	"github.com/lestrrat-go/jwx/v3/jwa"
 	"github.com/pkg/errors"
 	log "github.com/sirupsen/logrus"
+
+	"github.com/go-oidfed/lib/unixtime"
 )
 
 type privateKeyStorageMultiAlg struct {
@@ -21,8 +24,12 @@ type privateKeyStorageMultiAlg struct {
 	rollover   RolloverConf
 }
 
-func (sks privateKeyStorageMultiAlg) keyFilePath(alg jwa.SignatureAlgorithm) string {
-	return fmt.Sprintf("%s/%s_%s.pem", sks.keyDir, sks.typeID, alg.String())
+func (sks privateKeyStorageMultiAlg) keyFilePath(alg jwa.SignatureAlgorithm, future bool) string {
+	var f string
+	if future {
+		f = "f"
+	}
+	return fmt.Sprintf("%s/%s_%s%s.pem", sks.keyDir, sks.typeID, alg.String(), f)
 }
 
 // GetDefault returns a crypto.Signer and the corresponding jwa.SignatureAlgorithm
@@ -49,64 +56,70 @@ func (sks privateKeyStorageMultiAlg) GetForAlgs(algs ...string) (crypto.Signer, 
 	return nil, jwa.SignatureAlgorithm{}
 }
 
-func (sks *privateKeyStorageMultiAlg) initKeyRotation(pks *jwksSlice, pksOnChange func() error) {
+func (sks *privateKeyStorageMultiAlg) initKeyRotation(pks *pkCollection, pksOnChange func() error) {
 	if !sks.rollover.Enabled {
 		return
 	}
-	go time.AfterFunc(
-		time.Until((*pks)[0].MinimalExpirationTime().Time), func() {
+	go func() {
+		for {
+			sleepDuration := time.Until(pks.jwks[0].MinimalExpirationTime().Time.Add(-5 * time.Second))
+			if sleepDuration > 0 {
+				time.Sleep(sleepDuration)
+			}
 			if err := sks.GenerateNewKeys(pks, pksOnChange); err != nil {
 				log.Error(err)
 			}
-			ticker := time.NewTicker(time.Duration(sks.rollover.Interval) * time.Second)
-			for range ticker.C {
-				if err := sks.GenerateNewKeys(pks, pksOnChange); err != nil {
-					log.Error(err)
-				}
-			}
-		},
-	)
+		}
+	}()
 }
 
 // Load loads the private keys from disk and if necessary generates missing keys
-func (sks *privateKeyStorageMultiAlg) Load(pks *jwksSlice, pksOnChange func() error) error {
+func (sks *privateKeyStorageMultiAlg) Load(pks *pkCollection, pksOnChange func() error) error {
 	populatePKFromSK := false
 	if sks.signers == nil {
 		sks.signers = make(map[jwa.SignatureAlgorithm]crypto.Signer)
 	}
-	if len(*pks) == 0 {
-		*pks = []JWKS{NewJWKS()}
+	if len(pks.jwks) == 0 {
+		pks.jwks = []JWKS{NewJWKS()}
 		populatePKFromSK = true
 	}
 	pksChanged := false
 	// load oidc keys
 	for _, alg := range sks.algs {
-		filePath := sks.keyFilePath(alg)
+		filePath := sks.keyFilePath(alg, false)
 		signer, err := readSignerFromFile(filePath, alg)
 		if err != nil {
 			// could not load key, generating a new one for this alg
 			sk, pk, err := generateKeyPair(
-				alg, sks.rsaKeyLen, sks.rollover.Enabled, time.Duration(sks.rollover.Interval)*time.Second,
+				alg, sks.rsaKeyLen, keyLifetimeConf{
+					NowIssued: true,
+					Expires:   sks.rollover.Enabled,
+					Lifetime:  time.Duration(sks.rollover.Interval) * time.Second,
+				},
 			)
 			if err != nil {
 				return err
 			}
-			if err = writeSignerToFile(sk, sks.keyFilePath(alg)); err != nil {
+			if err = writeSignerToFile(sk, sks.keyFilePath(alg, false)); err != nil {
 				return err
 			}
-			if err = (*pks)[0].AddKey(pk); err != nil {
+			if err = pks.jwks[0].AddKey(pk); err != nil {
 				return errors.WithStack(err)
 			}
 			pksChanged = true
 			signer = sk
 		} else if populatePKFromSK {
 			pk, err := signerToPublicJWK(
-				signer, alg, false, sks.rollover.Enabled, time.Duration(sks.rollover.Interval)*time.Second,
+				signer, alg, keyLifetimeConf{
+					NowIssued: false,
+					Expires:   sks.rollover.Enabled,
+					Lifetime:  time.Duration(sks.rollover.Interval) * time.Second,
+				},
 			)
 			if err != nil {
 				return err
 			}
-			if err = (*pks)[0].AddKey(pk); err != nil {
+			if err = pks.jwks[0].AddKey(pk); err != nil {
 				return errors.WithStack(err)
 			}
 		}
@@ -122,30 +135,49 @@ func (sks *privateKeyStorageMultiAlg) Load(pks *jwksSlice, pksOnChange func() er
 }
 
 // GenerateNewKeys generates a new set of keys
-func (sks *privateKeyStorageMultiAlg) GenerateNewKeys(pks *jwksSlice, pksOnChange func() error) error {
-	newKeys := NewJWKS()
+func (sks *privateKeyStorageMultiAlg) GenerateNewKeys(pks *pkCollection, pksOnChange func() error) error {
+	futureKeys := NewJWKS()
 	for _, alg := range sks.algs {
+		skNext, err := readSignerFromFile(sks.keyFilePath(alg, true), alg)
+		if err != nil {
+			// if the next sk file does not yet exist, generate it
+			skFuture, pkFuture, err := generateKeyPair(
+				alg, sks.rsaKeyLen, keyLifetimeConf{
+					Expires:  sks.rollover.Enabled,
+					Lifetime: time.Duration(sks.rollover.Interval) * time.Second,
+				},
+			)
+			if err != nil {
+				return err
+			}
+			if err = writeSignerToFile(skFuture, sks.keyFilePath(alg, true)); err != nil {
+				return err
+			}
+			pks.addNextJWK(pkFuture)
+			skNext = skFuture
+		}
+		sks.signers[alg] = skNext
+		if err = errors.WithStack(os.Rename(sks.keyFilePath(alg, true), sks.keyFilePath(alg, false))); err != nil {
+			return err
+		}
+
 		sk, pk, err := generateKeyPair(
-			alg, sks.rsaKeyLen, sks.rollover.Enabled, time.Duration(sks.rollover.Interval)*time.Second,
+			alg, sks.rsaKeyLen, keyLifetimeConf{
+				Expires:  sks.rollover.Enabled,
+				Lifetime: time.Duration(sks.rollover.Interval) * time.Second,
+				Nbf:      &unixtime.Unixtime{Time: pks.jwks[1].MinimalExpirationTime().Add(-10 * time.Second)},
+			},
 		)
 		if err != nil {
 			return err
 		}
-		if err = writeSignerToFile(sk, sks.keyFilePath(alg)); err != nil {
+		if err = writeSignerToFile(sk, sks.keyFilePath(alg, false)); err != nil {
 			return err
 		}
-		if err = newKeys.AddKey(pk); err != nil {
+		if err = futureKeys.AddKey(pk); err != nil {
 			return errors.WithStack(err)
 		}
-		sks.signers[alg] = sk
 	}
-	if len(*pks) <= sks.rollover.NumberOfOldKeysKeptInJWKS {
-		*pks = append([]JWKS{newKeys}, *pks...)
-	} else {
-		for i := len(*pks) - 1; i > 0; i-- {
-			(*pks)[i] = (*pks)[i-1]
-		}
-		(*pks)[0] = newKeys
-	}
+	pks.rotate(futureKeys)
 	return pksOnChange()
 }
