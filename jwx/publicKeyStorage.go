@@ -87,7 +87,7 @@ func (pks *pkCollection) pushOldJWKS(old JWKS) JWKS {
 	if l == 2 {
 		pks.jwks = append(pks.jwks, old)
 	} else {
-		slices.Insert(pks.jwks, 2, old)
+		pks.jwks = slices.Insert(pks.jwks, 2, old)
 	}
 	if l-2 >= pks.NumberOfOldKeysKeptInJWKS {
 		poped := pks.jwks[len(pks.jwks)-1]
