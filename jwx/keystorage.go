@@ -2,7 +2,6 @@ package jwx
 
 import (
 	"crypto"
-	"path/filepath"
 	"sync"
 
 	"github.com/lestrrat-go/jwx/v3/jwa"
@@ -83,7 +82,10 @@ func NewKeyStorage(keyDir string, conf map[string]KeyStorageConfig) (*KeyStorage
 			sks = sksma
 		}
 		ks.private[t] = sks
-		ks.public[t] = &pkCollection{NumberOfOldKeysKeptInJWKS: cfg.RolloverConf.NumberOfOldKeysKeptInJWKS}
+		ks.public[t] = &pkCollection{
+			NumberOfOldKeysKeptInJWKS: cfg.RolloverConf.NumberOfOldKeysKeptInJWKS,
+			KeepHistory:               cfg.RolloverConf.KeepHistory,
+		}
 	}
 	return ks, nil
 }
@@ -113,6 +115,7 @@ type RolloverConf struct {
 	Enabled                   bool                    `yaml:"enabled"`
 	Interval                  duration.DurationOption `yaml:"interval"`
 	NumberOfOldKeysKeptInJWKS int                     `yaml:"old_keys_kept_in_jwks"`
+	KeepHistory               bool                    `yaml:"keep_history"`
 }
 
 // JWKS returns the jwks.JWKS containing all public keys for the passed storageType
@@ -131,6 +134,15 @@ func (ks KeyStorage) JWKS(storageType string) JWKS {
 		}
 	}
 	return final
+}
+
+// History returns the jwks history for the passed storageType
+func (ks KeyStorage) History(storageType string) JWKS {
+	pks, ok := ks.public[storageType]
+	if !ok {
+		return zeroJWKS
+	}
+	return pks.history
 }
 
 // Signer takes a list of acceptable signature algorithms and returns a
@@ -169,13 +181,9 @@ func (ks KeyStorage) FederationSigner() (crypto.Signer, jwa.SignatureAlgorithm) 
 	return ks.DefaultSigner(KeyStorageTypeFederation)
 }
 
-func (ks KeyStorage) jwksFilePath() string {
-	return filepath.Join(ks.keyDir, "keys.jwks")
-}
-
 // Load loads the KeyStorage from disk and if enabled schedules key rotation.
 func (ks *KeyStorage) Load() error {
-	if err := ks.public.Load(ks.jwksFilePath()); err != nil {
+	if err := ks.public.Load(ks.keyDir); err != nil {
 		return err
 	}
 
@@ -202,7 +210,7 @@ func (ks *KeyStorage) Load() error {
 
 // Save saves the KeyStorage to disk
 func (ks KeyStorage) Save() error {
-	return ks.public.Save(ks.jwksFilePath())
+	return ks.public.Save(ks.keyDir)
 }
 
 // SubStorage returns a VersatileSigner for the passed storageTypeID

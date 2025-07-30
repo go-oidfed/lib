@@ -2,7 +2,9 @@ package jwx
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
+	"path/filepath"
 	"slices"
 
 	"github.com/lestrrat-go/jwx/v3/jwk"
@@ -20,6 +22,8 @@ type pkCollection struct {
 	// [2...n] previous JWKS, where n is the oldest
 	jwks                      jwksSlice
 	NumberOfOldKeysKeptInJWKS int
+	KeepHistory               bool
+	history                   JWKS
 }
 
 // MarshalJSON implements the json.Marshaler interface
@@ -92,6 +96,16 @@ func (pks *pkCollection) pushOldJWKS(old JWKS) JWKS {
 	if l-2 >= pks.NumberOfOldKeysKeptInJWKS {
 		poped := pks.jwks[len(pks.jwks)-1]
 		pks.jwks = pks.jwks[:len(pks.jwks)-1]
+		if pks.KeepHistory {
+			if pks.history.Set == nil {
+				pks.history = poped
+			} else {
+				for i := range poped.Len() {
+					k, _ := poped.Key(i)
+					_ = pks.history.AddKey(k)
+				}
+			}
+		}
 		return poped
 	}
 	return zeroJWKS
@@ -117,8 +131,8 @@ func (pks *pkCollection) rotate(next JWKS) JWKS {
 type aggregatedPublicKeyStorage map[string]*pkCollection
 
 // Load loads the public keys from disk
-func (pks *aggregatedPublicKeyStorage) Load(filepath string) error {
-	data, err := fileutils.ReadFile(filepath)
+func (pks *aggregatedPublicKeyStorage) Load(dir string) error {
+	data, err := fileutils.ReadFile(jwksFilePath(dir))
 	if err != nil {
 		log.Warn(err.Error())
 		return nil
@@ -126,17 +140,48 @@ func (pks *aggregatedPublicKeyStorage) Load(filepath string) error {
 	if len(data) == 0 {
 		return nil
 	}
-	return errors.WithStack(json.Unmarshal(data, pks))
+	if err = errors.WithStack(json.Unmarshal(data, pks)); err != nil {
+		return err
+	}
+	for typeID, collection := range *pks {
+		data, err = fileutils.ReadFile(jwksHistoryFilePath(dir, typeID))
+		if err != nil {
+			continue
+		}
+		if err = errors.WithStack(json.Unmarshal(data, &collection.history)); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // Save saves the public keys to disk
-func (pks aggregatedPublicKeyStorage) Save(filepath string) error {
+func (pks aggregatedPublicKeyStorage) Save(dir string) error {
 	data, err := json.Marshal(pks)
 	if err != nil {
 		return errors.WithStack(err)
 	}
-	if err = os.WriteFile(filepath, data, 0600); err != nil {
+	if err = os.WriteFile(jwksFilePath(dir), data, 0600); err != nil {
 		return errors.WithStack(err)
 	}
+	for typeID, collection := range pks {
+		if collection.history.Set == nil || collection.history.Len() == 0 {
+			continue
+		}
+		data, err = json.Marshal(collection.history)
+		if err != nil {
+			return errors.WithStack(err)
+		}
+		if err = os.WriteFile(jwksHistoryFilePath(dir, typeID), data, 0600); err != nil {
+			return errors.WithStack(err)
+		}
+	}
 	return nil
+}
+
+func jwksFilePath(dir string) string {
+	return filepath.Join(dir, "keys.jwks")
+}
+func jwksHistoryFilePath(dir, typeID string) string {
+	return filepath.Join(dir, fmt.Sprintf("%s_history.jwks", typeID))
 }
