@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/pkg/errors"
+	"github.com/zachmann/go-utils/duration"
 	"gopkg.in/yaml.v3"
 
 	"github.com/go-oidfed/lib/apimodel"
@@ -379,13 +380,13 @@ type TrustMarkIssuer struct {
 
 // TrustMarkSpec describes a TrustMark for a TrustMarkIssuer
 type TrustMarkSpec struct {
-	TrustMarkType            string                     `json:"trust_mark_type" yaml:"trust_mark_type"`
-	Lifetime                 unixtime.DurationInSeconds `json:"lifetime" yaml:"lifetime"`
-	Ref                      string                     `json:"ref" yaml:"ref"`
-	LogoURI                  string                     `json:"logo_uri" yaml:"logo_uri"`
-	Extra                    map[string]any             `json:"-" yaml:"-"`
-	IncludeExtraClaimsInInfo bool                       `json:"include_extra_claims_in_info" yaml:"include_extra_claims_in_info"`
-	DelegationJWT            string                     `json:"delegation_jwt" yaml:"delegation_jwt"`
+	TrustMarkType            string                  `json:"trust_mark_type" yaml:"trust_mark_type"`
+	Lifetime                 duration.DurationOption `json:"lifetime" yaml:"lifetime"`
+	Ref                      string                  `json:"ref" yaml:"ref"`
+	LogoURI                  string                  `json:"logo_uri" yaml:"logo_uri"`
+	Extra                    map[string]any          `json:"-" yaml:"-"`
+	IncludeExtraClaimsInInfo bool                    `json:"include_extra_claims_in_info" yaml:"include_extra_claims_in_info"`
+	DelegationJWT            string                  `json:"delegation_jwt" yaml:"delegation_jwt"`
 }
 
 // MarshalJSON implements the json.Marshaler interface
@@ -485,7 +486,7 @@ func (tmi TrustMarkIssuer) IssueTrustMark(trustMarkType, sub string, lifetime ..
 		DelegationJWT: spec.DelegationJWT,
 		Extra:         spec.Extra,
 	}
-	lf := spec.Lifetime.Duration
+	lf := spec.Lifetime.Duration()
 	if len(lifetime) > 0 {
 		lf = lifetime[0]
 	}
