@@ -2,6 +2,7 @@ package oidfed
 
 import (
 	"encoding/json"
+	"time"
 
 	"github.com/pkg/errors"
 	"github.com/vmihailenco/msgpack/v5"
@@ -15,7 +16,7 @@ import (
 	"github.com/go-oidfed/lib/unixtime"
 )
 
-const defaultEntityConfigurationLifetime = 86400 // 1d
+const defaultEntityConfigurationLifetime = time.Hour * 24 // 1d
 
 // EntityStatement is a type for holding an entity statement, more precisely an entity statement that was obtained
 // as a jwt and created by us

@@ -20,7 +20,7 @@ type FederationEntity struct {
 	Metadata              *Metadata
 	MetadataUpdater       func(*Metadata)
 	AuthorityHints        []string
-	ConfigurationLifetime int64
+	ConfigurationLifetime time.Duration
 	*jwx.EntityStatementSigner
 	TrustMarks       []*EntityConfigurationTrustMarkConfig
 	TrustMarkIssuers AllowedTrustMarkIssuers
@@ -39,7 +39,7 @@ type FederationLeaf struct {
 // NewFederationEntity creates a new FederationEntity with the passed properties
 func NewFederationEntity(
 	entityID string, authorityHints []string, metadata *Metadata,
-	signer *jwx.EntityStatementSigner, configurationLifetime int64, extra map[string]any,
+	signer *jwx.EntityStatementSigner, configurationLifetime time.Duration, extra map[string]any,
 ) (*FederationEntity, error) {
 	if configurationLifetime <= 0 {
 		configurationLifetime = defaultEntityConfigurationLifetime
@@ -57,7 +57,7 @@ func NewFederationEntity(
 // NewFederationLeaf creates a new FederationLeaf with the passed properties
 func NewFederationLeaf(
 	entityID string, authorityHints []string, trustAnchors TrustAnchors, metadata *Metadata,
-	signer *jwx.EntityStatementSigner, configurationLifetime int64,
+	signer *jwx.EntityStatementSigner, configurationLifetime time.Duration,
 	oidcSigner jwx.VersatileSigner, extra map[string]any,
 ) (*FederationLeaf, error) {
 	fed, err := NewFederationEntity(
@@ -97,7 +97,7 @@ func (f FederationEntity) EntityConfigurationPayload() *EntityStatementPayload {
 		Issuer:           f.EntityID,
 		Subject:          f.EntityID,
 		IssuedAt:         unixtime.Unixtime{Time: now},
-		ExpiresAt:        unixtime.Unixtime{Time: now.Add(time.Second * time.Duration(f.ConfigurationLifetime))},
+		ExpiresAt:        unixtime.Unixtime{Time: now.Add(f.ConfigurationLifetime)},
 		JWKS:             f.EntityStatementSigner.JWKS(),
 		AuthorityHints:   f.AuthorityHints,
 		Metadata:         f.Metadata,
