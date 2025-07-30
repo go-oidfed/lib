@@ -8,6 +8,7 @@ import (
 	"github.com/lestrrat-go/jwx/v3/jwa"
 	"github.com/pkg/errors"
 	log "github.com/sirupsen/logrus"
+	"github.com/zachmann/go-utils/duration"
 )
 
 // Constants for TypeIDs used in a KeyStorage
@@ -109,9 +110,9 @@ type KeyStorageConfig struct {
 
 // RolloverConf is a type holding configuration for key rollover / key rotation
 type RolloverConf struct {
-	Enabled                   bool  `yaml:"enabled"`
-	Interval                  int64 `yaml:"interval"`
-	NumberOfOldKeysKeptInJWKS int   `yaml:"old_keys_kept_in_jwks"`
+	Enabled                   bool                    `yaml:"enabled"`
+	Interval                  duration.DurationOption `yaml:"interval"`
+	NumberOfOldKeysKeptInJWKS int                     `yaml:"old_keys_kept_in_jwks"`
 }
 
 // JWKS returns the jwks.JWKS containing all public keys for the passed storageType

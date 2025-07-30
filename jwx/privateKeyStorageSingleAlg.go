@@ -85,7 +85,7 @@ func (sks *privateKeyStorageSingleAlg) Load(pks *pkCollection, pksOnChange func(
 			signer, sks.alg, keyLifetimeConf{
 				NowIssued: false,
 				Expires:   sks.rollover.Enabled,
-				Lifetime:  time.Duration(sks.rollover.Interval) * time.Second,
+				Lifetime:  sks.rollover.Interval.Duration(),
 			},
 		)
 		if err != nil {
@@ -111,7 +111,7 @@ func (sks *privateKeyStorageSingleAlg) GenerateNewKeys(pks *pkCollection, pksOnC
 		skFuture, pkFuture, err := generateKeyPair(
 			sks.alg, sks.rsaKeyLen, keyLifetimeConf{
 				Expires:  sks.rollover.Enabled,
-				Lifetime: time.Duration(sks.rollover.Interval) * time.Second,
+				Lifetime: sks.rollover.Interval.Duration(),
 			},
 		)
 		if err != nil {
@@ -135,7 +135,7 @@ func (sks *privateKeyStorageSingleAlg) GenerateNewKeys(pks *pkCollection, pksOnC
 	sk, pk, err := generateKeyPair(
 		sks.alg, sks.rsaKeyLen, keyLifetimeConf{
 			Expires:  sks.rollover.Enabled,
-			Lifetime: time.Duration(sks.rollover.Interval) * time.Second,
+			Lifetime: sks.rollover.Interval.Duration(),
 			Nbf:      &unixtime.Unixtime{Time: pks.jwks[1].MinimalExpirationTime().Add(-10 * time.Second)},
 		},
 	)
