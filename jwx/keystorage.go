@@ -16,19 +16,6 @@ const (
 	KeyStorageTypeOIDC       = "oidc"
 )
 
-var supportedAlgs = []jwa.SignatureAlgorithm{
-	jwa.ES512(),
-	jwa.ES256(),
-	jwa.ES384(),
-	jwa.EdDSA(),
-	jwa.PS512(),
-	jwa.PS256(),
-	jwa.PS384(),
-	jwa.RS512(),
-	jwa.RS384(),
-	jwa.RS256(),
-}
-
 // NewKeyStorage creates a new KeyStorage for the passed KeyStorageConfigs at the passed directory
 func NewKeyStorage(keyDir string, conf map[string]KeyStorageConfig) (*KeyStorage, error) {
 	ks := &KeyStorage{
