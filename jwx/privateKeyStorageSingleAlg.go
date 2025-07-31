@@ -10,6 +10,7 @@ import (
 	"github.com/lestrrat-go/jwx/v3/jwa"
 	"github.com/pkg/errors"
 	log "github.com/sirupsen/logrus"
+	"github.com/zachmann/go-utils/fileutils"
 
 	"github.com/go-oidfed/lib/unixtime"
 )
@@ -99,6 +100,23 @@ func (sks *privateKeyStorageSingleAlg) Load(pks *pkCollection, pksOnChange func(
 			return err
 		}
 	}
+
+	if !fileutils.FileExists(sks.keyFilePath(true)) {
+		_, err = generateStoreAndSetNextPrivateKey(
+			pks, sks.alg, sks.rsaKeyLen, keyLifetimeConf{
+				Expires:  sks.rollover.Enabled,
+				Lifetime: sks.rollover.Interval.Duration(),
+				Nbf:      &unixtime.Unixtime{Time: pks.jwks[1].MinimalExpirationTime().Add(-10 * time.Second)},
+			}, sks.keyFilePath(true), true,
+		)
+		if err != nil {
+			return err
+		}
+		if err = pksOnChange(); err != nil {
+			return err
+		}
+	}
+
 	sks.initKeyRotation(pks, pksOnChange)
 	return nil
 }
@@ -107,23 +125,15 @@ func (sks *privateKeyStorageSingleAlg) Load(pks *pkCollection, pksOnChange func(
 func (sks *privateKeyStorageSingleAlg) GenerateNewKeys(pks *pkCollection, pksOnChange func() error) error {
 	skNext, err := readSignerFromFile(sks.keyFilePath(true), sks.alg)
 	if err != nil {
-		// if the next sk file does not yet exist, generate it
-		skFuture, pkFuture, err := generateKeyPair(
-			sks.alg, sks.rsaKeyLen, keyLifetimeConf{
+		skNext, err = generateStoreAndSetNextPrivateKey(
+			pks, sks.alg, sks.rsaKeyLen, keyLifetimeConf{
 				Expires:  sks.rollover.Enabled,
 				Lifetime: sks.rollover.Interval.Duration(),
-			},
+			}, sks.keyFilePath(true), true,
 		)
 		if err != nil {
 			return err
 		}
-		if err = writeSignerToFile(skFuture, sks.keyFilePath(true)); err != nil {
-			return err
-		}
-		pkSet := NewJWKS()
-		_ = pkSet.AddKey(pkFuture)
-		skNext = skFuture
-		pks.setNextJWKS(pkSet)
 	}
 
 	sks.signer = skNext
