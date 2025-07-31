@@ -13,9 +13,9 @@ import (
 	"github.com/lestrrat-go/jwx/v3/jwa"
 	"github.com/luci/go-render/render"
 	"github.com/vmihailenco/msgpack/v5"
+	zutils "github.com/zachmann/go-utils"
 
-	"github.com/go-oidfed/lib/internal/utils"
-	"github.com/go-oidfed/lib/jwks"
+	"github.com/go-oidfed/lib/jwx"
 	"github.com/go-oidfed/lib/unixtime"
 )
 
@@ -82,7 +82,7 @@ var entitystatementMarshalData = map[string]marshalData{
 				},
 			},
 			Constraints: &ConstraintSpecification{
-				MaxPathLength: utils.NewInt(2),
+				MaxPathLength: zutils.NewInt(2),
 				NamingConstraints: &NamingConstraints{
 					Permitted: []string{"foo"},
 				},
@@ -232,6 +232,10 @@ func TestEntityStatementMarshalAndUnmarshalMsgpack(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	pkJWKS, err := jwx.KeyToJWKS(sk.Public(), jwa.ES512())
+	if err != nil {
+		t.Fatal(err)
+	}
 	tests := []struct {
 		name string
 		data EntityStatementPayload
@@ -247,7 +251,7 @@ func TestEntityStatementMarshalAndUnmarshalMsgpack(t *testing.T) {
 		{
 			name: "jwks",
 			data: EntityStatementPayload{
-				JWKS: jwks.KeyToJWKS(sk.Public(), jwa.ES512()),
+				JWKS: pkJWKS,
 			},
 		}, // this is hard to compare
 	}

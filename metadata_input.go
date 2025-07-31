@@ -1,15 +1,15 @@
 package oidfed
 
 import (
-	"github.com/go-oidfed/lib/jwks"
+	"github.com/go-oidfed/lib/jwx"
 )
 
 //go:generate go run internal/generators/metadata.go
 
 type commonMetadata struct {
-	SignedJWKSURI string     `json:"signed_jwks_uri,omitempty"`
-	JWKSURI       string     `json:"jwks_uri,omitempty"`
-	JWKS          *jwks.JWKS `json:"jwks,omitempty"`
+	SignedJWKSURI string    `json:"signed_jwks_uri,omitempty"`
+	JWKSURI       string    `json:"jwks_uri,omitempty"`
+	JWKS          *jwx.JWKS `json:"jwks,omitempty"`
 
 	DisplayName      string   `json:"display_name,omitempty"`
 	Description      string   `json:"description,omitempty"`
@@ -104,9 +104,9 @@ type openIDProviderMetadata struct {
 	UserinfoSignedResponseAlgValuesSupported                  []string          `json:"userinfo_signed_response_alg_values_supported,omitempty"`
 	UserinfoEncryptedResponseAlgValuesSupported               []string          `json:"userinfo_encrypted_response_alg_values_supported,omitempty"`
 	UserinfoEncryptedResponseEncValuesSupported               []string          `json:"userinfo_encrypted_response_enc_values_supported,omitempty"`
-	RequestSignedResponseAlgValuesSupported                   []string          `json:"request_signed_response_alg_values_supported,omitempty"`
-	RequestEncryptedResponseAlgValuesSupported                []string          `json:"request_encrypted_response_alg_values_supported,omitempty"`
-	RequestEncryptedResponseEncValuesSupported                []string          `json:"request_encrypted_response_enc_values_supported,omitempty"`
+	RequestObjectSignedResponseAlgValuesSupported             []string          `json:"request_object_signed_response_alg_values_supported,omitempty"`
+	RequestObjectEncryptedResponseAlgValuesSupported          []string          `json:"request_object_encrypted_response_alg_values_supported,omitempty"`
+	RequestObjectEncryptedResponseEncValuesSupported          []string          `json:"request_object_encrypted_response_enc_values_supported,omitempty"`
 	TokenEndpointAuthMethodsSupported                         []string          `json:"token_endpoint_auth_methods_supported,omitempty"`
 	TokenEndpointAuthSigningAlgValuesSupported                []string          `json:"token_endpoint_auth_signing_alg_values_supported,omitempty"`
 	DisplayValuesSupported                                    []string          `json:"display_values_supported,omitempty"`

@@ -15,6 +15,7 @@ import (
 	"github.com/lithammer/fuzzysearch/fuzzy"
 	"github.com/pkg/errors"
 	"github.com/scylladb/go-set/strset"
+	"github.com/zachmann/go-utils/sliceutils"
 
 	"github.com/go-oidfed/lib/apimodel"
 	"github.com/go-oidfed/lib/cache"
@@ -790,7 +791,7 @@ type SmartRemoteEntityCollector struct {
 func (c SmartRemoteEntityCollector) CollectEntities(req apimodel.EntityCollectionRequest) []*CollectedEntity {
 	// construct a list of trust anchors to query; always start with the
 	// trust anchor from the request
-	trustAnchors := append([]string{req.TrustAnchor}, utils.RemoveFromSlice(c.TrustAnchors, req.TrustAnchor)...)
+	trustAnchors := append([]string{req.TrustAnchor}, sliceutils.RemoveFromSlice(c.TrustAnchors, req.TrustAnchor)...)
 
 	for _, tr := range trustAnchors {
 		entityConfig, err := GetEntityConfiguration(tr)

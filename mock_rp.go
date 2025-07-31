@@ -10,16 +10,17 @@ import (
 
 	"github.com/lestrrat-go/jwx/v3/jwa"
 
-	"github.com/go-oidfed/lib/jwks"
+	"github.com/go-oidfed/lib/jwx"
 	"github.com/go-oidfed/lib/unixtime"
 )
 
 type mockRP struct {
 	EntityID    string
 	authorities []string
-	jwks        jwks.JWKS
-	*EntityStatementSigner
-	metadata *OpenIDRelyingPartyMetadata
+	jwks        jwx.JWKS
+	*jwx.EntityStatementSigner
+	versatileSigner jwx.VersatileSigner
+	metadata        *OpenIDRelyingPartyMetadata
 }
 
 func newMockRP(entityID string, metadata *OpenIDRelyingPartyMetadata) *mockRP {
@@ -27,11 +28,17 @@ func newMockRP(entityID string, metadata *OpenIDRelyingPartyMetadata) *mockRP {
 	if err != nil {
 		panic(err)
 	}
+	jwks, err := jwx.KeyToJWKS(sk.Public(), jwa.ES512())
+	if err != nil {
+		panic(err)
+	}
+	signer := jwx.NewSingleKeyVersatileSigner(sk, jwa.ES512())
 	r := &mockRP{
 		EntityID:              entityID,
 		metadata:              metadata,
-		EntityStatementSigner: NewEntityStatementSigner(sk, jwa.ES512()),
-		jwks:                  jwks.KeyToJWKS(sk.Public(), jwa.ES512()),
+		versatileSigner:       signer,
+		EntityStatementSigner: jwx.NewEntityStatementSigner(signer),
+		jwks:                  jwks,
 	}
 	mockEntityConfiguration(r.EntityID, r)
 	return r

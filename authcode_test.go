@@ -8,8 +8,7 @@ import (
 )
 
 func TestRequestObjectProducer_RequestObject(t *testing.T) {
-	signer := rp1.GeneralJWTSigner
-	rop := NewRequestObjectProducer(rp1.EntityID, signer.key, signer.alg, 60)
+	rop := NewRequestObjectProducer(rp1.EntityID, rp1.versatileSigner, 60)
 	emptyKeys := []string{
 		"sub",
 		"client_secret",
@@ -83,8 +82,7 @@ func TestRequestObjectProducer_RequestObject(t *testing.T) {
 }
 
 func TestRequestObjectProducer_ClientAssertion(t *testing.T) {
-	signer := rp1.GeneralJWTSigner
-	rop := NewRequestObjectProducer(rp1.EntityID, signer.key, signer.alg, 60)
+	rop := NewRequestObjectProducer(rp1.EntityID, rp1.versatileSigner, 60)
 	emptyKeys := []string{"client_id"}
 	tests := []struct {
 		name           string

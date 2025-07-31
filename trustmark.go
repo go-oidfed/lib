@@ -6,11 +6,12 @@ import (
 	"time"
 
 	"github.com/pkg/errors"
+	"github.com/zachmann/go-utils/duration"
 	"gopkg.in/yaml.v3"
 
 	"github.com/go-oidfed/lib/apimodel"
-	"github.com/go-oidfed/lib/internal/jwx"
-	"github.com/go-oidfed/lib/jwks"
+	jwxi "github.com/go-oidfed/lib/internal/jwx"
+	"github.com/go-oidfed/lib/jwx"
 	"github.com/go-oidfed/lib/oidfedconst"
 	"github.com/go-oidfed/lib/unixtime"
 )
@@ -31,7 +32,7 @@ func (tms TrustMarkInfos) VerifiedFederation(ta *EntityStatementPayload) (verifi
 // VerifiedExternal verifies all TrustMarkInfos by using the passed trust mark issuer jwks and optionally the passed
 // trust mark owner jwks and returns only the valid TrustMarkInfos
 func (tms TrustMarkInfos) VerifiedExternal(
-	jwks jwks.JWKS,
+	jwks jwx.JWKS,
 	tmo ...TrustMarkOwnerSpec,
 ) (verified TrustMarkInfos) {
 	for _, tm := range tms {
@@ -78,7 +79,7 @@ func (tm TrustMarkInfo) MarshalJSON() ([]byte, error) {
 
 // ParseTrustMark parses a trust mark jwt into a TrustMark
 func ParseTrustMark(data []byte) (*TrustMark, error) {
-	m, err := jwx.Parse(data)
+	m, err := jwxi.Parse(data)
 	if err != nil {
 		return nil, err
 	}
@@ -133,7 +134,7 @@ func (tm *TrustMarkInfo) VerifyFederation(ta *EntityStatementPayload) error {
 // VerifyExternal verifies the TrustMarkInfo by using the passed trust mark issuer jwks and optionally the passed
 // trust mark owner jwks
 func (tm *TrustMarkInfo) VerifyExternal(
-	jwks jwks.JWKS,
+	jwks jwx.JWKS,
 	tmo ...TrustMarkOwnerSpec,
 ) error {
 	mark, err := tm.TrustMark()
@@ -157,7 +158,7 @@ type TrustMark struct {
 	Ref           string                 `json:"ref,omitempty"`
 	DelegationJWT string                 `json:"delegation,omitempty"`
 	Extra         map[string]interface{} `json:"-"`
-	jwtMsg        *jwx.ParsedJWT
+	jwtMsg        *jwxi.ParsedJWT
 	delegation    *DelegationJWT
 }
 
@@ -187,7 +188,7 @@ func (tm *TrustMark) UnmarshalJSON(data []byte) error {
 }
 
 func parseDelegationJWT(delegationJWT []byte) (*DelegationJWT, error) {
-	m, err := jwx.Parse(delegationJWT)
+	m, err := jwxi.Parse(delegationJWT)
 	if err != nil {
 		return nil, err
 	}
@@ -218,7 +219,7 @@ func (tm *TrustMark) Delegation() (*DelegationJWT, error) {
 func getTrustMarkIssuerJWKS(
 	trustMarkIssuer string,
 	ta *EntityStatementPayload,
-) (jwks jwks.JWKS, err error) {
+) (jwks jwx.JWKS, err error) {
 	if trustMarkIssuer == ta.Subject {
 		jwks = ta.JWKS
 		return
@@ -280,7 +281,7 @@ func (tm *TrustMark) VerifyFederation(ta *EntityStatementPayload) error {
 
 // VerifyExternal verifies the TrustMark by using the passed trust mark issuer jwks and optionally the passed
 // trust mark owner jwks
-func (tm *TrustMark) VerifyExternal(jwks jwks.JWKS, tmo ...TrustMarkOwnerSpec) error {
+func (tm *TrustMark) VerifyExternal(jwks jwx.JWKS, tmo ...TrustMarkOwnerSpec) error {
 	if err := unixtime.VerifyTime(&tm.IssuedAt, tm.ExpiresAt); err != nil {
 		return err
 	}
@@ -320,7 +321,7 @@ type DelegationJWT struct {
 	ExpiresAt     *unixtime.Unixtime     `json:"exp,omitempty"`
 	Ref           string                 `json:"ref,omitempty"`
 	Extra         map[string]interface{} `json:"-"`
-	jwtMsg        *jwx.ParsedJWT
+	jwtMsg        *jwxi.ParsedJWT
 }
 
 // MarshalJSON implements the json.Marshaler interface.
@@ -362,7 +363,7 @@ func (djwt DelegationJWT) VerifyFederation(ta *EntityStatementPayload) error {
 }
 
 // VerifyExternal verifies the DelegationJWT by using the passed trust mark owner jwks
-func (djwt DelegationJWT) VerifyExternal(jwks jwks.JWKS) error {
+func (djwt DelegationJWT) VerifyExternal(jwks jwx.JWKS) error {
 	if err := unixtime.VerifyTime(&djwt.IssuedAt, djwt.ExpiresAt); err != nil {
 		return errors.Wrap(err, "verify delegation jwt")
 	}
@@ -373,19 +374,19 @@ func (djwt DelegationJWT) VerifyExternal(jwks jwks.JWKS) error {
 // TrustMarkIssuer is an entity that can issue TrustMarkInfo
 type TrustMarkIssuer struct {
 	EntityID string
-	*TrustMarkSigner
+	*jwx.TrustMarkSigner
 	trustMarks map[string]TrustMarkSpec
 }
 
 // TrustMarkSpec describes a TrustMark for a TrustMarkIssuer
 type TrustMarkSpec struct {
-	TrustMarkType            string                     `json:"trust_mark_type" yaml:"trust_mark_type"`
-	Lifetime                 unixtime.DurationInSeconds `json:"lifetime" yaml:"lifetime"`
-	Ref                      string                     `json:"ref" yaml:"ref"`
-	LogoURI                  string                     `json:"logo_uri" yaml:"logo_uri"`
-	Extra                    map[string]any             `json:"-" yaml:"-"`
-	IncludeExtraClaimsInInfo bool                       `json:"include_extra_claims_in_info" yaml:"include_extra_claims_in_info"`
-	DelegationJWT            string                     `json:"delegation_jwt" yaml:"delegation_jwt"`
+	TrustMarkType            string                  `json:"trust_mark_type" yaml:"trust_mark_type"`
+	Lifetime                 duration.DurationOption `json:"lifetime" yaml:"lifetime"`
+	Ref                      string                  `json:"ref" yaml:"ref"`
+	LogoURI                  string                  `json:"logo_uri" yaml:"logo_uri"`
+	Extra                    map[string]any          `json:"-" yaml:"-"`
+	IncludeExtraClaimsInInfo bool                    `json:"include_extra_claims_in_info" yaml:"include_extra_claims_in_info"`
+	DelegationJWT            string                  `json:"delegation_jwt" yaml:"delegation_jwt"`
 }
 
 // MarshalJSON implements the json.Marshaler interface
@@ -438,7 +439,7 @@ func (tms *TrustMarkSpec) UnmarshalYAML(data *yaml.Node) error {
 
 // NewTrustMarkIssuer creates a new TrustMarkIssuer
 func NewTrustMarkIssuer(
-	entityID string, signer *TrustMarkSigner, trustMarkSpecs []TrustMarkSpec,
+	entityID string, signer *jwx.TrustMarkSigner, trustMarkSpecs []TrustMarkSpec,
 ) *TrustMarkIssuer {
 	trustMarks := make(map[string]TrustMarkSpec, len(trustMarkSpecs))
 	for _, tms := range trustMarkSpecs {
@@ -485,7 +486,7 @@ func (tmi TrustMarkIssuer) IssueTrustMark(trustMarkType, sub string, lifetime ..
 		DelegationJWT: spec.DelegationJWT,
 		Extra:         spec.Extra,
 	}
-	lf := spec.Lifetime.Duration
+	lf := spec.Lifetime.Duration()
 	if len(lifetime) > 0 {
 		lf = lifetime[0]
 	}
@@ -511,7 +512,7 @@ func (tmi TrustMarkIssuer) IssueTrustMark(trustMarkType, sub string, lifetime ..
 // TrustMarkOwner is a type describing the owning entity of a trust mark; it can be used to issue DelegationJWT
 type TrustMarkOwner struct {
 	EntityID string
-	*TrustMarkDelegationSigner
+	*jwx.TrustMarkDelegationSigner
 	ownedTrustMarks map[string]OwnedTrustMark
 }
 
@@ -525,7 +526,7 @@ type OwnedTrustMark struct {
 
 // NewTrustMarkOwner creates a new TrustMarkOwner
 func NewTrustMarkOwner(
-	entityID string, signer *TrustMarkDelegationSigner, ownedTrustMarks []OwnedTrustMark,
+	entityID string, signer *jwx.TrustMarkDelegationSigner, ownedTrustMarks []OwnedTrustMark,
 ) *TrustMarkOwner {
 	trustMarks := make(map[string]OwnedTrustMark, len(ownedTrustMarks))
 	for _, tms := range ownedTrustMarks {
