@@ -106,7 +106,7 @@ func (sks *privateKeyStorageSingleAlg) Load(pks *pkCollection, pksOnChange func(
 			pks, sks.alg, sks.rsaKeyLen, keyLifetimeConf{
 				Expires:  sks.rollover.Enabled,
 				Lifetime: sks.rollover.Interval.Duration(),
-				Nbf:      &unixtime.Unixtime{Time: pks.jwks[1].MinimalExpirationTime().Add(-10 * time.Second)},
+				Nbf:      &unixtime.Unixtime{Time: pks.jwks[0].MinimalExpirationTime().Add(-10 * time.Second)},
 			}, sks.keyFilePath(true), true,
 		)
 		if err != nil {
