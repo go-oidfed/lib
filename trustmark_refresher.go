@@ -6,6 +6,7 @@ import (
 
 	"github.com/lestrrat-go/jwx/v3/jwt"
 	"github.com/pkg/errors"
+	"github.com/zachmann/go-utils/duration"
 
 	"github.com/go-oidfed/lib/internal"
 	"github.com/go-oidfed/lib/internal/http"
@@ -16,14 +17,14 @@ import (
 // EntityConfigurationTrustMarkConfig is a type for specifying the configuration of a TrustMark that should be
 // included in an EntityConfiguration
 type EntityConfigurationTrustMarkConfig struct {
-	TrustMarkType        string                     `yaml:"trust_mark_type"`
-	TrustMarkIssuer      string                     `yaml:"trust_mark_issuer"`
-	SelfIssued           bool                       `yaml:"self_issued"`
-	SelfIssuanceSpec     TrustMarkSpec              `yaml:"self_issuance_spec"`
-	JWT                  string                     `yaml:"trust_mark_jwt"`
-	Refresh              bool                       `yaml:"refresh"`
-	MinLifetime          unixtime.DurationInSeconds `yaml:"min_lifetime"`
-	RefreshGracePeriod   unixtime.DurationInSeconds `yaml:"refresh_grace_period"`
+	TrustMarkType        string                  `yaml:"trust_mark_type"`
+	TrustMarkIssuer      string                  `yaml:"trust_mark_issuer"`
+	SelfIssued           bool                    `yaml:"self_issued"`
+	SelfIssuanceSpec     TrustMarkSpec           `yaml:"self_issuance_spec"`
+	JWT                  string                  `yaml:"trust_mark_jwt"`
+	Refresh              bool                    `yaml:"refresh"`
+	MinLifetime          duration.DurationOption `yaml:"min_lifetime"`
+	RefreshGracePeriod   duration.DurationOption `yaml:"refresh_grace_period"`
 	expiration           unixtime.Unixtime
 	lastTried            unixtime.Unixtime
 	sub                  string
@@ -38,11 +39,11 @@ func (c *EntityConfigurationTrustMarkConfig) Verify(
 ) error {
 	c.sub = sub
 	c.ownTrustMarkEndpoint = ownTrustMarkEndpoint
-	if c.MinLifetime.Duration == 0 {
-		c.MinLifetime = unixtime.NewDurationInSeconds(10)
+	if c.MinLifetime == 0 {
+		c.MinLifetime = duration.DurationOption(10 * time.Second)
 	}
-	if c.RefreshGracePeriod.Duration == 0 {
-		c.RefreshGracePeriod.Duration = time.Hour
+	if c.RefreshGracePeriod == 0 {
+		c.RefreshGracePeriod = duration.DurationOption(time.Hour)
 	}
 
 	if c.JWT != "" {
@@ -85,8 +86,8 @@ func (c *EntityConfigurationTrustMarkConfig) TrustMarkJWT() (string, error) {
 	if !c.Refresh {
 		return c.JWT, nil
 	}
-	if c.JWT != "" && unixtime.Until(c.expiration) > c.MinLifetime.Duration {
-		if unixtime.Until(c.expiration) < c.RefreshGracePeriod.Duration {
+	if c.JWT != "" && unixtime.Until(c.expiration) > c.MinLifetime.Duration() {
+		if unixtime.Until(c.expiration) < c.RefreshGracePeriod.Duration() {
 			go c.refresh()
 		}
 		return c.JWT, nil
