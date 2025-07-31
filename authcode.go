@@ -49,13 +49,13 @@ func (res *OIDCTokenResponse) UnmarshalJSON(data []byte) error {
 // RequestObjectProducer is a generator for signed request objects
 type RequestObjectProducer struct {
 	EntityID string
-	lifetime int64
+	lifetime time.Duration
 	signer   jwx.VersatileSigner
 }
 
 // NewRequestObjectProducer creates a new RequestObjectProducer with the passed properties
 func NewRequestObjectProducer(
-	entityID string, multiSigner jwx.VersatileSigner, lifetime int64,
+	entityID string, multiSigner jwx.VersatileSigner, lifetime time.Duration,
 ) *RequestObjectProducer {
 	return &RequestObjectProducer{
 		EntityID: entityID,
@@ -85,9 +85,9 @@ func (rop RequestObjectProducer) RequestObject(requestValues map[string]any, alg
 		}
 		requestValues["jti"] = jti.String()
 	}
-	now := time.Now().Unix()
-	requestValues["iat"] = now
-	requestValues["exp"] = now + rop.lifetime
+	now := time.Now()
+	requestValues["iat"] = now.Unix()
+	requestValues["exp"] = now.Add(rop.lifetime).Unix()
 
 	j, err := json.Marshal(requestValues)
 	if err != nil {
@@ -113,12 +113,12 @@ func (rop RequestObjectProducer) signPayload(data []byte, algs ...string) ([]byt
 
 // ClientAssertion creates a new signed client assertion jwt for the passed audience
 func (rop RequestObjectProducer) ClientAssertion(aud string, alg ...string) ([]byte, error) {
-	now := time.Now().Unix()
+	now := time.Now()
 	assertionValues := map[string]any{
 		"iss": rop.EntityID,
 		"sub": rop.EntityID,
-		"iat": now,
-		"exp": now + rop.lifetime,
+		"iat": now.Unix(),
+		"exp": now.Add(rop.lifetime).Unix(),
 		"aud": aud,
 	}
 	jti, err := uuid.NewRandom()

@@ -69,7 +69,7 @@ func NewFederationLeaf(
 	return &FederationLeaf{
 		FederationEntity: *fed,
 		TrustAnchors:     trustAnchors,
-		oidcROProducer:   NewRequestObjectProducer(entityID, oidcSigner, 60),
+		oidcROProducer:   NewRequestObjectProducer(entityID, oidcSigner, time.Minute),
 	}, nil
 }
 
