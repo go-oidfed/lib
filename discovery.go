@@ -41,7 +41,6 @@ type EntityCollectionResponse struct {
 type CollectedEntity struct {
 	EntityID    string         `json:"entity_id"`
 	TrustMarks  TrustMarkInfos `json:"trust_marks,omitempty"`
-	TrustChain  JWSMessages    `json:"trust_chain,omitempty"`
 	metadata    *Metadata
 	EntityTypes []string          `json:"entity_types,omitempty"`
 	UIInfos     map[string]UIInfo `json:"ui_infos,omitempty"`
@@ -337,7 +336,7 @@ func (d *SimpleEntityCollector) collect(
 							if req.EntityTypes != nil && len(arrays.Intersect(et, req.EntityTypes)) == 0 {
 								includeEntity = false
 							}
-							if req.NameQuery != "" && !matchDisplayName(req.NameQuery, displayNames, MatchModeFuzzy) {
+							if req.Query != "" && !matchDisplayName(req.Query, displayNames, MatchModeFuzzy) {
 								includeEntity = false
 							}
 
@@ -363,7 +362,7 @@ func (d *SimpleEntityCollector) collect(
 									EntityID: subordinateID,
 								}
 
-								if req.Claims == nil || slices.Contains(req.Claims, "entity_types") {
+								if len(req.EntityClaims) == 0 || slices.Contains(req.EntityClaims, "entity_types") {
 									collectedEntity.EntityTypes = et
 								}
 
@@ -374,11 +373,11 @@ func (d *SimpleEntityCollector) collect(
 									"information_uri",
 								}
 								for _, c := range uiInfoClaims {
-									if req.Claims == nil || slices.Contains(req.Claims, c) {
+									if len(req.UIClaims) == 0 || slices.Contains(req.UIClaims, c) {
 										entityConfig.Metadata.
 											IterateStringClaim(
 												c, func(entityType, value string) {
-													collectedEntity.setUIInfoField(
+													_ = collectedEntity.setUIInfoField(
 														entityType, c, value,
 													)
 												},
@@ -386,7 +385,7 @@ func (d *SimpleEntityCollector) collect(
 									}
 								}
 								keywordsTag := "keywords"
-								if req.Claims == nil || slices.Contains(req.Claims, keywordsTag) {
+								if len(req.UIClaims) == 0 || slices.Contains(req.UIClaims, keywordsTag) {
 									entityConfig.Metadata.
 										IterateStringSliceClaim(
 											keywordsTag,
@@ -398,7 +397,7 @@ func (d *SimpleEntityCollector) collect(
 										)
 								}
 
-								if req.Claims == nil || slices.Contains(req.Claims, "display_name") {
+								if len(req.UIClaims) == 0 || slices.Contains(req.UIClaims, "display_name") {
 									for entityType, displayName := range displayNames {
 										if displayName != "" {
 											if err = collectedEntity.setUIInfoField(
@@ -411,8 +410,8 @@ func (d *SimpleEntityCollector) collect(
 								}
 
 								if slices.ContainsFunc(
-									req.Claims, func(c string) bool {
-										return c == "metadata" || c == "trust_chain"
+									req.EntityClaims, func(c string) bool {
+										return c == "metadata"
 									},
 								) {
 									resolveRequest := apimodel.ResolveRequest{
@@ -427,14 +426,11 @@ func (d *SimpleEntityCollector) collect(
 										res, err = DefaultMetadataResolver.ResolveResponsePayload(resolveRequest)
 									}
 									if err == nil {
-										if res.TrustMarks != nil && slices.Contains(req.Claims, "trust_marks") {
+										if res.TrustMarks != nil && slices.Contains(req.EntityClaims, "trust_marks") {
 											collectedEntity.TrustMarks = res.TrustMarks
 										}
-										if slices.Contains(req.Claims, "metadata") {
+										if slices.Contains(req.EntityClaims, "metadata") {
 											collectedEntity.metadata = res.Metadata
-										}
-										if slices.Contains(req.Claims, "trust_chain") {
-											collectedEntity.TrustChain = res.TrustChain
 										}
 									} else {
 										internal.Logf(
@@ -443,7 +439,9 @@ func (d *SimpleEntityCollector) collect(
 									}
 								}
 
-								if collectedEntity.TrustMarks == nil && slices.Contains(req.Claims, "trust_marks") {
+								if collectedEntity.TrustMarks == nil && slices.Contains(
+									req.EntityClaims, "trust_marks",
+								) {
 									taOnce.Do(
 										func() {
 											ta, taErr = GetEntityConfiguration(req.TrustAnchor)
