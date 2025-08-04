@@ -5,9 +5,8 @@ import (
 	"fmt"
 
 	"github.com/pkg/errors"
+	"github.com/zachmann/go-utils/maputils"
 	"tideland.dev/go/slices"
-
-	"github.com/go-oidfed/lib/internal/utils"
 )
 
 // MetadataPolicies is a type for holding the different MetadataPolicy
@@ -232,7 +231,7 @@ func mergeMetadataPolicyEntries(a, b MetadataPolicyEntry, pathInfo string) (Meta
 
 // Verify verifies that the MetadataPolicyEntry is valid
 func (p MetadataPolicyEntry) Verify(pathInfo string) error {
-	activeOperators := utils.MapKeys(p)
+	activeOperators := maputils.Keys(p)
 	for _, opN := range activeOperators {
 		op, ok := operators[opN]
 		if !ok {

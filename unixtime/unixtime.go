@@ -30,7 +30,7 @@ func (u Unixtime) MarshalJSON() ([]byte, error) {
 	if u.IsZero() {
 		return json.Marshal(0)
 	}
-	return json.Marshal(float64(u.UnixNano()) / 1e9)
+	return json.Marshal(u.Unix())
 }
 
 // Until returns the time.Duration from now until an Unixtime

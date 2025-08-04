@@ -3,8 +3,9 @@ package oidfed
 import (
 	"testing"
 
+	"github.com/zachmann/go-utils/sliceutils"
+
 	"github.com/go-oidfed/lib/apimodel"
-	"github.com/go-oidfed/lib/internal/utils"
 )
 
 func TestSimpleOPCollector_CollectEntities(t *testing.T) {
@@ -72,7 +73,7 @@ func TestSimpleOPCollector_CollectEntities(t *testing.T) {
 					t.FailNow()
 				}
 				for _, op := range ops {
-					if !utils.SliceContains(op.EntityID, test.expectedOPs) {
+					if !sliceutils.SliceContains(op.EntityID, test.expectedOPs) {
 						t.Errorf("discovered OPs does not match expected OPs")
 						t.Errorf("discovered: %+v", op.EntityID)
 						t.Errorf("expected: %+v", test.expectedOPs)
@@ -183,7 +184,7 @@ func TestFilterableVerifiedChainsEntityCollector_CollectEntities(t *testing.T) {
 					t.FailNow()
 				}
 				for _, op := range ops {
-					if !utils.SliceContains(op.EntityID, test.expectedOPs) {
+					if !sliceutils.SliceContains(op.EntityID, test.expectedOPs) {
 						t.Errorf("discovered OPs does not match expected OPs")
 						t.Errorf("discovered: %+v", op.EntityID)
 						t.Errorf("expected: %+v", test.expectedOPs)

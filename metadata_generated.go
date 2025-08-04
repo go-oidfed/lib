@@ -5,11 +5,443 @@ import (
 	"encoding/json"
 	"reflect"
 
-	"github.com/go-oidfed/lib/jwks"
+	"github.com/go-oidfed/lib/jwx"
 
 	"github.com/pkg/errors"
 	"github.com/vmihailenco/msgpack/v5"
 )
+
+type OpenIDProviderMetadata struct {
+	wasSet                                                    map[string]bool
+	Issuer                                                    string              `json:"issuer"`
+	AuthorizationEndpoint                                     string              `json:"authorization_endpoint"`
+	TokenEndpoint                                             string              `json:"token_endpoint"`
+	UserinfoEndpoint                                          string              `json:"userinfo_endpoint,omitempty"`
+	RegistrationEndpoint                                      string              `json:"registration_endpoint,omitempty"`
+	ScopesSupported                                           []string            `json:"scopes_supported,omitempty"`
+	ResponseTypesSupported                                    []string            `json:"response_types_supported"`
+	ResponseModesSupported                                    []string            `json:"response_modes_supported,omitempty"`
+	GrantTypesSupported                                       []string            `json:"grant_types_supported,omitempty"`
+	ACRValuesSupported                                        []string            `json:"acr_values_supported,omitempty"`
+	SubjectTypesSupported                                     []string            `json:"subject_types_supported"`
+	IDTokenSignedResponseAlgValuesSupported                   []string            `json:"id_token_signed_response_alg_values_supported,omitempty"`
+	IDTokenEncryptedResponseAlgValuesSupported                []string            `json:"id_token_encrypted_response_alg_values_supported,omitempty"`
+	IDTokenEncryptedResponseEncValuesSupported                []string            `json:"id_token_encrypted_response_enc_values_supported,omitempty"`
+	UserinfoSignedResponseAlgValuesSupported                  []string            `json:"userinfo_signed_response_alg_values_supported,omitempty"`
+	UserinfoEncryptedResponseAlgValuesSupported               []string            `json:"userinfo_encrypted_response_alg_values_supported,omitempty"`
+	UserinfoEncryptedResponseEncValuesSupported               []string            `json:"userinfo_encrypted_response_enc_values_supported,omitempty"`
+	RequestObjectSignedResponseAlgValuesSupported             []string            `json:"request_object_signed_response_alg_values_supported,omitempty"`
+	RequestObjectEncryptedResponseAlgValuesSupported          []string            `json:"request_object_encrypted_response_alg_values_supported,omitempty"`
+	RequestObjectEncryptedResponseEncValuesSupported          []string            `json:"request_object_encrypted_response_enc_values_supported,omitempty"`
+	TokenEndpointAuthMethodsSupported                         []string            `json:"token_endpoint_auth_methods_supported,omitempty"`
+	TokenEndpointAuthSigningAlgValuesSupported                []string            `json:"token_endpoint_auth_signing_alg_values_supported,omitempty"`
+	DisplayValuesSupported                                    []string            `json:"display_values_supported,omitempty"`
+	ClaimsSupported                                           []string            `json:"claims_supported,omitempty"`
+	ServiceDocumentation                                      string              `json:"service_documentation,omitempty"`
+	ClaimsLocalesSupported                                    []string            `json:"claims_locales_supported,omitempty"`
+	UILocalesSupported                                        []string            `json:"ui_locales_supported,omitempty"`
+	ClaimsParameterSupported                                  bool                `json:"claims_parameter_supported,omitempty"`
+	RequestParameterSupported                                 bool                `json:"request_parameter_supported,omitempty"`
+	RequestURIParameterSupported                              bool                `json:"request_uri_parameter_supported,omitempty"`
+	RequireRequestURIRegistration                             bool                `json:"require_request_uri_registration,omitempty"`
+	OPPolicyURI                                               string              `json:"op_policy_uri,omitempty"`
+	OPTOSURI                                                  string              `json:"op_tos_uri,omitempty"`
+	RevocationEndpoint                                        string              `json:"revocation_endpoint,omitempty"`
+	RevocationEndpointAuthMethodsSupported                    []string            `json:"revocation_endpoint_auth_methods_supported,omitempty"`
+	RevocationEndpointAuthSigningAlgValuesSupported           []string            `json:"revocation_endpoint_auth_signing_alg_values_supported,omitempty"`
+	IntrospectionEndpoint                                     string              `json:"introspection_endpoint,omitempty"`
+	IntrospectionEndpointAuthMethodsSupported                 []string            `json:"introspection_endpoint_auth_methods_supported,omitempty"`
+	IntrospectionEndpointAuthSigningAlgValuesSupported        []string            `json:"introspection_endpoint_auth_signing_alg_values_supported,omitempty"`
+	IntrospectionSigningAlgValuesSupported                    []string            `json:"introspection_signing_alg_values_supported,omitempty"`
+	IntrospectionEncryptionAlgValuesSupported                 []string            `json:"introspection_encryption_alg_values_supported,omitempty"`
+	IntrospectionEncryptionEncValuesSupported                 []string            `json:"introspection_encryption_enc_values_supported,omitempty"`
+	CodeChallengeMethodsSupported                             []string            `json:"code_challenge_methods_supported,omitempty"`
+	SignedMetadata                                            string              `json:"signed_metadata,omitempty"`
+	DeviceAuthorizationEndpoint                               string              `json:"device_authorization_endpoint,omitempty"`
+	TLSClientCertificateBoundAccessTokens                     bool                `json:"tls_client_certificate_bound_access_tokens,omitempty"`
+	MTLSEndpointAliases                                       map[string]string   `json:"mtls_endpoint_aliases,omitempty"`
+	NFVTokenSigningAlgValuesSupported                         []string            `json:"nfv_token_signing_alg_values_supported,omitempty"`
+	NFVTokenEncryptionAlgValuesSupported                      []string            `json:"nfv_token_encryption_alg_values_supported,omitempty"`
+	NFVTokenEncryptionEncValuesSupported                      []string            `json:"nfv_token_encryption_enc_values_supported,omitempty"`
+	RequireSignedRequestObject                                bool                `json:"require_signed_request_object,omitempty"`
+	PushedAuthorizationRequestEndpoint                        string              `json:"pushed_authorization_request_endpoint,omitempty"`
+	RequirePushedAuthorizationRequests                        bool                `json:"require_pushed_authorization_requests,omitempty"`
+	AuthorizationResponseIssParameterSupported                bool                `json:"authorization_response_iss_parameter_supported,omitempty"`
+	CheckSessionIFrame                                        string              `json:"check_session_iframe,omitempty"`
+	FrontchannelLogoutSupported                               bool                `json:"frontchannel_logout_supported,omitempty"`
+	BackchannelLogoutSupported                                bool                `json:"backchannel_logout_supported,omitempty"`
+	BackchannelLogoutSessionSupported                         bool                `json:"backchannel_logout_session_supported,omitempty"`
+	EndSessionEndpoint                                        string              `json:"end_session_endpoint,omitempty"`
+	BackchannelTokenDeliveryModesSupported                    []string            `json:"backchannel_token_delivery_modes_supported,omitempty"`
+	BackchannelAuthenticationEndpoint                         string              `json:"backchannel_authentication_endpoint,omitempty"`
+	BackchannelAuthenticationRequestSigningAlgValuesSupported []string            `json:"backchannel_authentication_request_signing_alg_values_supported,omitempty"`
+	BackchannelUserCodeParameterSupported                     bool                `json:"backchannel_user_code_parameter_supported,omitempty"`
+	AuthorizationDetailsTypesSupported                        []string            `json:"authorization_details_types_supported,omitempty"`
+	ClientRegistrationTypesSupported                          []string            `json:"client_registration_types_supported"`
+	FederationRegistrationEndpoint                            string              `json:"federation_registration_endpoint,omitempty"`
+	RequestAuthenticationMethodsSupported                     map[string][]string `json:"request_authentication_methods_supported,omitempty"`
+	RequestAuthenticationSigningAlgValuesSupported            []string            `json:"request_authentication_signing_alg_values_supported,omitempty"`
+	Extra                                                     map[string]any      `json:"-"`
+	SignedJWKSURI                                             string              `json:"signed_jwks_uri,omitempty"`
+	JWKSURI                                                   string              `json:"jwks_uri,omitempty"`
+	JWKS                                                      *jwx.JWKS           `json:"jwks,omitempty"`
+	DisplayName                                               string              `json:"display_name,omitempty"`
+	Description                                               string              `json:"description,omitempty"`
+	Keywords                                                  []string            `json:"keywords,omitempty"`
+	Contacts                                                  []string            `json:"contacts,omitempty"`
+	LogoURI                                                   string              `json:"logo_uri,omitempty"`
+	PolicyURI                                                 string              `json:"policy_uri,omitempty"`
+	InformationURI                                            string              `json:"information_uri,omitempty"`
+	OrganizationName                                          string              `json:"organization_name,omitempty"`
+	OrganizationURI                                           string              `json:"organization_uri,omitempty"`
+}
+
+type openIDProviderMetadataWithPtrs struct {
+	Issuer                                                    *string             `json:"issuer"`
+	AuthorizationEndpoint                                     *string             `json:"authorization_endpoint"`
+	TokenEndpoint                                             *string             `json:"token_endpoint"`
+	UserinfoEndpoint                                          *string             `json:"userinfo_endpoint,omitempty"`
+	RegistrationEndpoint                                      *string             `json:"registration_endpoint,omitempty"`
+	ScopesSupported                                           []string            `json:"scopes_supported,omitempty"`
+	ResponseTypesSupported                                    []string            `json:"response_types_supported"`
+	ResponseModesSupported                                    []string            `json:"response_modes_supported,omitempty"`
+	GrantTypesSupported                                       []string            `json:"grant_types_supported,omitempty"`
+	ACRValuesSupported                                        []string            `json:"acr_values_supported,omitempty"`
+	SubjectTypesSupported                                     []string            `json:"subject_types_supported"`
+	IDTokenSignedResponseAlgValuesSupported                   []string            `json:"id_token_signed_response_alg_values_supported,omitempty"`
+	IDTokenEncryptedResponseAlgValuesSupported                []string            `json:"id_token_encrypted_response_alg_values_supported,omitempty"`
+	IDTokenEncryptedResponseEncValuesSupported                []string            `json:"id_token_encrypted_response_enc_values_supported,omitempty"`
+	UserinfoSignedResponseAlgValuesSupported                  []string            `json:"userinfo_signed_response_alg_values_supported,omitempty"`
+	UserinfoEncryptedResponseAlgValuesSupported               []string            `json:"userinfo_encrypted_response_alg_values_supported,omitempty"`
+	UserinfoEncryptedResponseEncValuesSupported               []string            `json:"userinfo_encrypted_response_enc_values_supported,omitempty"`
+	RequestObjectSignedResponseAlgValuesSupported             []string            `json:"request_object_signed_response_alg_values_supported,omitempty"`
+	RequestObjectEncryptedResponseAlgValuesSupported          []string            `json:"request_object_encrypted_response_alg_values_supported,omitempty"`
+	RequestObjectEncryptedResponseEncValuesSupported          []string            `json:"request_object_encrypted_response_enc_values_supported,omitempty"`
+	TokenEndpointAuthMethodsSupported                         []string            `json:"token_endpoint_auth_methods_supported,omitempty"`
+	TokenEndpointAuthSigningAlgValuesSupported                []string            `json:"token_endpoint_auth_signing_alg_values_supported,omitempty"`
+	DisplayValuesSupported                                    []string            `json:"display_values_supported,omitempty"`
+	ClaimsSupported                                           []string            `json:"claims_supported,omitempty"`
+	ServiceDocumentation                                      *string             `json:"service_documentation,omitempty"`
+	ClaimsLocalesSupported                                    []string            `json:"claims_locales_supported,omitempty"`
+	UILocalesSupported                                        []string            `json:"ui_locales_supported,omitempty"`
+	ClaimsParameterSupported                                  *bool               `json:"claims_parameter_supported,omitempty"`
+	RequestParameterSupported                                 *bool               `json:"request_parameter_supported,omitempty"`
+	RequestURIParameterSupported                              *bool               `json:"request_uri_parameter_supported,omitempty"`
+	RequireRequestURIRegistration                             *bool               `json:"require_request_uri_registration,omitempty"`
+	OPPolicyURI                                               *string             `json:"op_policy_uri,omitempty"`
+	OPTOSURI                                                  *string             `json:"op_tos_uri,omitempty"`
+	RevocationEndpoint                                        *string             `json:"revocation_endpoint,omitempty"`
+	RevocationEndpointAuthMethodsSupported                    []string            `json:"revocation_endpoint_auth_methods_supported,omitempty"`
+	RevocationEndpointAuthSigningAlgValuesSupported           []string            `json:"revocation_endpoint_auth_signing_alg_values_supported,omitempty"`
+	IntrospectionEndpoint                                     *string             `json:"introspection_endpoint,omitempty"`
+	IntrospectionEndpointAuthMethodsSupported                 []string            `json:"introspection_endpoint_auth_methods_supported,omitempty"`
+	IntrospectionEndpointAuthSigningAlgValuesSupported        []string            `json:"introspection_endpoint_auth_signing_alg_values_supported,omitempty"`
+	IntrospectionSigningAlgValuesSupported                    []string            `json:"introspection_signing_alg_values_supported,omitempty"`
+	IntrospectionEncryptionAlgValuesSupported                 []string            `json:"introspection_encryption_alg_values_supported,omitempty"`
+	IntrospectionEncryptionEncValuesSupported                 []string            `json:"introspection_encryption_enc_values_supported,omitempty"`
+	CodeChallengeMethodsSupported                             []string            `json:"code_challenge_methods_supported,omitempty"`
+	SignedMetadata                                            *string             `json:"signed_metadata,omitempty"`
+	DeviceAuthorizationEndpoint                               *string             `json:"device_authorization_endpoint,omitempty"`
+	TLSClientCertificateBoundAccessTokens                     *bool               `json:"tls_client_certificate_bound_access_tokens,omitempty"`
+	MTLSEndpointAliases                                       map[string]string   `json:"mtls_endpoint_aliases,omitempty"`
+	NFVTokenSigningAlgValuesSupported                         []string            `json:"nfv_token_signing_alg_values_supported,omitempty"`
+	NFVTokenEncryptionAlgValuesSupported                      []string            `json:"nfv_token_encryption_alg_values_supported,omitempty"`
+	NFVTokenEncryptionEncValuesSupported                      []string            `json:"nfv_token_encryption_enc_values_supported,omitempty"`
+	RequireSignedRequestObject                                *bool               `json:"require_signed_request_object,omitempty"`
+	PushedAuthorizationRequestEndpoint                        *string             `json:"pushed_authorization_request_endpoint,omitempty"`
+	RequirePushedAuthorizationRequests                        *bool               `json:"require_pushed_authorization_requests,omitempty"`
+	AuthorizationResponseIssParameterSupported                *bool               `json:"authorization_response_iss_parameter_supported,omitempty"`
+	CheckSessionIFrame                                        *string             `json:"check_session_iframe,omitempty"`
+	FrontchannelLogoutSupported                               *bool               `json:"frontchannel_logout_supported,omitempty"`
+	BackchannelLogoutSupported                                *bool               `json:"backchannel_logout_supported,omitempty"`
+	BackchannelLogoutSessionSupported                         *bool               `json:"backchannel_logout_session_supported,omitempty"`
+	EndSessionEndpoint                                        *string             `json:"end_session_endpoint,omitempty"`
+	BackchannelTokenDeliveryModesSupported                    []string            `json:"backchannel_token_delivery_modes_supported,omitempty"`
+	BackchannelAuthenticationEndpoint                         *string             `json:"backchannel_authentication_endpoint,omitempty"`
+	BackchannelAuthenticationRequestSigningAlgValuesSupported []string            `json:"backchannel_authentication_request_signing_alg_values_supported,omitempty"`
+	BackchannelUserCodeParameterSupported                     *bool               `json:"backchannel_user_code_parameter_supported,omitempty"`
+	AuthorizationDetailsTypesSupported                        []string            `json:"authorization_details_types_supported,omitempty"`
+	ClientRegistrationTypesSupported                          []string            `json:"client_registration_types_supported"`
+	FederationRegistrationEndpoint                            *string             `json:"federation_registration_endpoint,omitempty"`
+	RequestAuthenticationMethodsSupported                     map[string][]string `json:"request_authentication_methods_supported,omitempty"`
+	RequestAuthenticationSigningAlgValuesSupported            []string            `json:"request_authentication_signing_alg_values_supported,omitempty"`
+	Extra                                                     map[string]any      `json:"-"`
+	SignedJWKSURI                                             *string             `json:"signed_jwks_uri,omitempty"`
+	JWKSURI                                                   *string             `json:"jwks_uri,omitempty"`
+	JWKS                                                      *jwx.JWKS           `json:"jwks,omitempty"`
+	DisplayName                                               *string             `json:"display_name,omitempty"`
+	Description                                               *string             `json:"description,omitempty"`
+	Keywords                                                  []string            `json:"keywords,omitempty"`
+	Contacts                                                  []string            `json:"contacts,omitempty"`
+	LogoURI                                                   *string             `json:"logo_uri,omitempty"`
+	PolicyURI                                                 *string             `json:"policy_uri,omitempty"`
+	InformationURI                                            *string             `json:"information_uri,omitempty"`
+	OrganizationName                                          *string             `json:"organization_name,omitempty"`
+	OrganizationURI                                           *string             `json:"organization_uri,omitempty"`
+}
+
+// MarshalJSON implements the json.Marshaler interface
+func (m OpenIDProviderMetadata) MarshalJSON() ([]byte, error) {
+	type Alias OpenIDProviderMetadata
+	explicitFields, err := json.Marshal(Alias(m))
+	if err != nil {
+		return nil, errors.WithStack(err)
+	}
+	return extraMarshalHelper(explicitFields, m.Extra)
+}
+
+// MarshalJSON implements the json.Marshaler interface
+func (m openIDProviderMetadataWithPtrs) MarshalJSON() ([]byte, error) {
+	type Alias openIDProviderMetadataWithPtrs
+	explicitFields, err := json.Marshal(Alias(m))
+	if err != nil {
+		return nil, errors.WithStack(err)
+	}
+	return extraMarshalHelper(explicitFields, m.Extra)
+}
+
+func (m *OpenIDProviderMetadata) fromPointers(withPtrs openIDProviderMetadataWithPtrs) {
+
+	m.wasSet = make(map[string]bool)
+
+	valOrig := reflect.ValueOf(m).Elem()
+	valWithPtrs := reflect.ValueOf(withPtrs)
+	typeWithPtrs := valWithPtrs.Type()
+
+	for i := 0; i < typeWithPtrs.NumField(); i++ {
+		ptrField := valWithPtrs.Field(i)
+		fieldName := typeWithPtrs.Field(i).Name
+
+		origField := valOrig.FieldByName(fieldName)
+		if !origField.IsValid() || !origField.CanSet() {
+			continue
+		}
+
+		if !ptrField.IsNil() {
+			m.wasSet[fieldName] = true
+		}
+		if ptrField.Kind() == reflect.Ptr && origField.Kind() != reflect.Ptr {
+			if !ptrField.IsNil() {
+				origField.Set(ptrField.Elem())
+			}
+		} else {
+			origField.Set(ptrField)
+		}
+	}
+	for k, _ := range m.Extra {
+		m.wasSet[k] = true
+	}
+}
+
+// UnmarshalJSON implements the json.Unmarshaler interface
+func (m *OpenIDProviderMetadata) UnmarshalJSON(data []byte) error {
+	var withPtrs openIDProviderMetadataWithPtrs
+	if err := json.Unmarshal(data, &withPtrs); err != nil {
+		return err
+	}
+	m.fromPointers(withPtrs)
+	return nil
+}
+
+// UnmarshalJSON implements the json.Unmarshaler interface
+func (m *openIDProviderMetadataWithPtrs) UnmarshalJSON(data []byte) error {
+	type Alias openIDProviderMetadataWithPtrs
+	mm := Alias(*m)
+
+	extra, err := unmarshalWithExtra(data, &mm)
+	if err != nil {
+		return errors.WithStack(err)
+	}
+	mm.Extra = extra
+	*m = openIDProviderMetadataWithPtrs(mm)
+	return nil
+}
+
+// UnmarshalMsgpack implements the msgpack.Unmarshaler interface
+func (m *openIDProviderMetadataWithPtrs) UnmarshalMsgpack(data []byte) error {
+	type Alias openIDProviderMetadataWithPtrs
+	mm := Alias(*m)
+	err := msgpack.Unmarshal(data, &mm)
+	if err != nil {
+		return errors.WithStack(err)
+	}
+	*m = openIDProviderMetadataWithPtrs(mm)
+	return nil
+}
+
+// UnmarshalMsgpack implements the msgpack.Unmarshaler interface
+func (m *OpenIDProviderMetadata) UnmarshalMsgpack(data []byte) error {
+	var withPtrs openIDProviderMetadataWithPtrs
+	if err := msgpack.Unmarshal(data, &withPtrs); err != nil {
+		return err
+	}
+	m.fromPointers(withPtrs)
+	return nil
+}
+
+// ApplyPolicy applies a MetadataPolicy to the OpenIDProviderMetadata
+func (m OpenIDProviderMetadata) ApplyPolicy(policy MetadataPolicy) (any, error) {
+	return applyPolicy(&m, policy, "openid_provider")
+}
+
+type OAuthProtectedResourceMetadata struct {
+	wasSet                               map[string]bool
+	Resource                             string         `json:"resource,omitempty"`
+	AuthorizationServers                 []string       `json:"authorization_servers,omitempty"`
+	ScopesSupported                      []string       `json:"scopes_supported,omitempty"`
+	BearerMethodsSupported               []string       `json:"bearer_methods_supported,omitempty"`
+	ResourceSigningAlgValuesSupported    []string       `json:"resource_signing_alg_values_supported,omitempty"`
+	ResourceEncryptionAlgValuesSupported []string       `json:"resource_encryption_alg_values_supported"`
+	ResourceEncryptionEncValuesSupported []string       `json:"resource_encryption_enc_values_supported"`
+	ResourceName                         string         `json:"resource_name,omitempty"`
+	ResourceDocumentation                string         `json:"resource_documentation,omitempty"`
+	ResourcePolicyURI                    string         `json:"resource_policy_uri,omitempty"`
+	ResourceTOSURI                       string         `json:"resource_tos_uri,omitempty"`
+	Extra                                map[string]any `json:"-"`
+	SignedJWKSURI                        string         `json:"signed_jwks_uri,omitempty"`
+	JWKSURI                              string         `json:"jwks_uri,omitempty"`
+	JWKS                                 *jwx.JWKS      `json:"jwks,omitempty"`
+	DisplayName                          string         `json:"display_name,omitempty"`
+	Description                          string         `json:"description,omitempty"`
+	Keywords                             []string       `json:"keywords,omitempty"`
+	Contacts                             []string       `json:"contacts,omitempty"`
+	LogoURI                              string         `json:"logo_uri,omitempty"`
+	PolicyURI                            string         `json:"policy_uri,omitempty"`
+	InformationURI                       string         `json:"information_uri,omitempty"`
+	OrganizationName                     string         `json:"organization_name,omitempty"`
+	OrganizationURI                      string         `json:"organization_uri,omitempty"`
+}
+
+type oAuthProtectedResourceMetadataWithPtrs struct {
+	Resource                             *string        `json:"resource,omitempty"`
+	AuthorizationServers                 []string       `json:"authorization_servers,omitempty"`
+	ScopesSupported                      []string       `json:"scopes_supported,omitempty"`
+	BearerMethodsSupported               []string       `json:"bearer_methods_supported,omitempty"`
+	ResourceSigningAlgValuesSupported    []string       `json:"resource_signing_alg_values_supported,omitempty"`
+	ResourceEncryptionAlgValuesSupported []string       `json:"resource_encryption_alg_values_supported"`
+	ResourceEncryptionEncValuesSupported []string       `json:"resource_encryption_enc_values_supported"`
+	ResourceName                         *string        `json:"resource_name,omitempty"`
+	ResourceDocumentation                *string        `json:"resource_documentation,omitempty"`
+	ResourcePolicyURI                    *string        `json:"resource_policy_uri,omitempty"`
+	ResourceTOSURI                       *string        `json:"resource_tos_uri,omitempty"`
+	Extra                                map[string]any `json:"-"`
+	SignedJWKSURI                        *string        `json:"signed_jwks_uri,omitempty"`
+	JWKSURI                              *string        `json:"jwks_uri,omitempty"`
+	JWKS                                 *jwx.JWKS      `json:"jwks,omitempty"`
+	DisplayName                          *string        `json:"display_name,omitempty"`
+	Description                          *string        `json:"description,omitempty"`
+	Keywords                             []string       `json:"keywords,omitempty"`
+	Contacts                             []string       `json:"contacts,omitempty"`
+	LogoURI                              *string        `json:"logo_uri,omitempty"`
+	PolicyURI                            *string        `json:"policy_uri,omitempty"`
+	InformationURI                       *string        `json:"information_uri,omitempty"`
+	OrganizationName                     *string        `json:"organization_name,omitempty"`
+	OrganizationURI                      *string        `json:"organization_uri,omitempty"`
+}
+
+// MarshalJSON implements the json.Marshaler interface
+func (m OAuthProtectedResourceMetadata) MarshalJSON() ([]byte, error) {
+	type Alias OAuthProtectedResourceMetadata
+	explicitFields, err := json.Marshal(Alias(m))
+	if err != nil {
+		return nil, errors.WithStack(err)
+	}
+	return extraMarshalHelper(explicitFields, m.Extra)
+}
+
+// MarshalJSON implements the json.Marshaler interface
+func (m oAuthProtectedResourceMetadataWithPtrs) MarshalJSON() ([]byte, error) {
+	type Alias oAuthProtectedResourceMetadataWithPtrs
+	explicitFields, err := json.Marshal(Alias(m))
+	if err != nil {
+		return nil, errors.WithStack(err)
+	}
+	return extraMarshalHelper(explicitFields, m.Extra)
+}
+
+func (m *OAuthProtectedResourceMetadata) fromPointers(withPtrs oAuthProtectedResourceMetadataWithPtrs) {
+
+	m.wasSet = make(map[string]bool)
+
+	valOrig := reflect.ValueOf(m).Elem()
+	valWithPtrs := reflect.ValueOf(withPtrs)
+	typeWithPtrs := valWithPtrs.Type()
+
+	for i := 0; i < typeWithPtrs.NumField(); i++ {
+		ptrField := valWithPtrs.Field(i)
+		fieldName := typeWithPtrs.Field(i).Name
+
+		origField := valOrig.FieldByName(fieldName)
+		if !origField.IsValid() || !origField.CanSet() {
+			continue
+		}
+
+		if !ptrField.IsNil() {
+			m.wasSet[fieldName] = true
+		}
+		if ptrField.Kind() == reflect.Ptr && origField.Kind() != reflect.Ptr {
+			if !ptrField.IsNil() {
+				origField.Set(ptrField.Elem())
+			}
+		} else {
+			origField.Set(ptrField)
+		}
+	}
+	for k, _ := range m.Extra {
+		m.wasSet[k] = true
+	}
+}
+
+// UnmarshalJSON implements the json.Unmarshaler interface
+func (m *OAuthProtectedResourceMetadata) UnmarshalJSON(data []byte) error {
+	var withPtrs oAuthProtectedResourceMetadataWithPtrs
+	if err := json.Unmarshal(data, &withPtrs); err != nil {
+		return err
+	}
+	m.fromPointers(withPtrs)
+	return nil
+}
+
+// UnmarshalJSON implements the json.Unmarshaler interface
+func (m *oAuthProtectedResourceMetadataWithPtrs) UnmarshalJSON(data []byte) error {
+	type Alias oAuthProtectedResourceMetadataWithPtrs
+	mm := Alias(*m)
+
+	extra, err := unmarshalWithExtra(data, &mm)
+	if err != nil {
+		return errors.WithStack(err)
+	}
+	mm.Extra = extra
+	*m = oAuthProtectedResourceMetadataWithPtrs(mm)
+	return nil
+}
+
+// UnmarshalMsgpack implements the msgpack.Unmarshaler interface
+func (m *oAuthProtectedResourceMetadataWithPtrs) UnmarshalMsgpack(data []byte) error {
+	type Alias oAuthProtectedResourceMetadataWithPtrs
+	mm := Alias(*m)
+	err := msgpack.Unmarshal(data, &mm)
+	if err != nil {
+		return errors.WithStack(err)
+	}
+	*m = oAuthProtectedResourceMetadataWithPtrs(mm)
+	return nil
+}
+
+// UnmarshalMsgpack implements the msgpack.Unmarshaler interface
+func (m *OAuthProtectedResourceMetadata) UnmarshalMsgpack(data []byte) error {
+	var withPtrs oAuthProtectedResourceMetadataWithPtrs
+	if err := msgpack.Unmarshal(data, &withPtrs); err != nil {
+		return err
+	}
+	m.fromPointers(withPtrs)
+	return nil
+}
+
+// ApplyPolicy applies a MetadataPolicy to the OAuthProtectedResourceMetadata
+func (m OAuthProtectedResourceMetadata) ApplyPolicy(policy MetadataPolicy) (any, error) {
+	return applyPolicy(&m, policy, "oauth_resource")
+}
 
 type FederationEntityMetadata struct {
 	wasSet                            map[string]bool
@@ -220,7 +652,7 @@ type OpenIDRelyingPartyMetadata struct {
 	Extra                                 map[string]any `json:"-"`
 	SignedJWKSURI                         string         `json:"signed_jwks_uri,omitempty"`
 	JWKSURI                               string         `json:"jwks_uri,omitempty"`
-	JWKS                                  *jwks.JWKS     `json:"jwks,omitempty"`
+	JWKS                                  *jwx.JWKS      `json:"jwks,omitempty"`
 	DisplayName                           string         `json:"display_name,omitempty"`
 	Description                           string         `json:"description,omitempty"`
 	Keywords                              []string       `json:"keywords,omitempty"`
@@ -292,7 +724,7 @@ type openIDRelyingPartyMetadataWithPtrs struct {
 	Extra                                 map[string]any `json:"-"`
 	SignedJWKSURI                         *string        `json:"signed_jwks_uri,omitempty"`
 	JWKSURI                               *string        `json:"jwks_uri,omitempty"`
-	JWKS                                  *jwks.JWKS     `json:"jwks,omitempty"`
+	JWKS                                  *jwx.JWKS      `json:"jwks,omitempty"`
 	DisplayName                           *string        `json:"display_name,omitempty"`
 	Description                           *string        `json:"description,omitempty"`
 	Keywords                              []string       `json:"keywords,omitempty"`
@@ -403,436 +835,4 @@ func (m *OpenIDRelyingPartyMetadata) UnmarshalMsgpack(data []byte) error {
 // ApplyPolicy applies a MetadataPolicy to the OpenIDRelyingPartyMetadata
 func (m OpenIDRelyingPartyMetadata) ApplyPolicy(policy MetadataPolicy) (any, error) {
 	return applyPolicy(&m, policy, "openid_relying_party")
-}
-
-type OpenIDProviderMetadata struct {
-	wasSet                                                    map[string]bool
-	Issuer                                                    string              `json:"issuer"`
-	AuthorizationEndpoint                                     string              `json:"authorization_endpoint"`
-	TokenEndpoint                                             string              `json:"token_endpoint"`
-	UserinfoEndpoint                                          string              `json:"userinfo_endpoint,omitempty"`
-	RegistrationEndpoint                                      string              `json:"registration_endpoint,omitempty"`
-	ScopesSupported                                           []string            `json:"scopes_supported,omitempty"`
-	ResponseTypesSupported                                    []string            `json:"response_types_supported"`
-	ResponseModesSupported                                    []string            `json:"response_modes_supported,omitempty"`
-	GrantTypesSupported                                       []string            `json:"grant_types_supported,omitempty"`
-	ACRValuesSupported                                        []string            `json:"acr_values_supported,omitempty"`
-	SubjectTypesSupported                                     []string            `json:"subject_types_supported"`
-	IDTokenSignedResponseAlgValuesSupported                   []string            `json:"id_token_signed_response_alg_values_supported,omitempty"`
-	IDTokenEncryptedResponseAlgValuesSupported                []string            `json:"id_token_encrypted_response_alg_values_supported,omitempty"`
-	IDTokenEncryptedResponseEncValuesSupported                []string            `json:"id_token_encrypted_response_enc_values_supported,omitempty"`
-	UserinfoSignedResponseAlgValuesSupported                  []string            `json:"userinfo_signed_response_alg_values_supported,omitempty"`
-	UserinfoEncryptedResponseAlgValuesSupported               []string            `json:"userinfo_encrypted_response_alg_values_supported,omitempty"`
-	UserinfoEncryptedResponseEncValuesSupported               []string            `json:"userinfo_encrypted_response_enc_values_supported,omitempty"`
-	RequestSignedResponseAlgValuesSupported                   []string            `json:"request_signed_response_alg_values_supported,omitempty"`
-	RequestEncryptedResponseAlgValuesSupported                []string            `json:"request_encrypted_response_alg_values_supported,omitempty"`
-	RequestEncryptedResponseEncValuesSupported                []string            `json:"request_encrypted_response_enc_values_supported,omitempty"`
-	TokenEndpointAuthMethodsSupported                         []string            `json:"token_endpoint_auth_methods_supported,omitempty"`
-	TokenEndpointAuthSigningAlgValuesSupported                []string            `json:"token_endpoint_auth_signing_alg_values_supported,omitempty"`
-	DisplayValuesSupported                                    []string            `json:"display_values_supported,omitempty"`
-	ClaimsSupported                                           []string            `json:"claims_supported,omitempty"`
-	ServiceDocumentation                                      string              `json:"service_documentation,omitempty"`
-	ClaimsLocalesSupported                                    []string            `json:"claims_locales_supported,omitempty"`
-	UILocalesSupported                                        []string            `json:"ui_locales_supported,omitempty"`
-	ClaimsParameterSupported                                  bool                `json:"claims_parameter_supported,omitempty"`
-	RequestParameterSupported                                 bool                `json:"request_parameter_supported,omitempty"`
-	RequestURIParameterSupported                              bool                `json:"request_uri_parameter_supported,omitempty"`
-	RequireRequestURIRegistration                             bool                `json:"require_request_uri_registration,omitempty"`
-	OPPolicyURI                                               string              `json:"op_policy_uri,omitempty"`
-	OPTOSURI                                                  string              `json:"op_tos_uri,omitempty"`
-	RevocationEndpoint                                        string              `json:"revocation_endpoint,omitempty"`
-	RevocationEndpointAuthMethodsSupported                    []string            `json:"revocation_endpoint_auth_methods_supported,omitempty"`
-	RevocationEndpointAuthSigningAlgValuesSupported           []string            `json:"revocation_endpoint_auth_signing_alg_values_supported,omitempty"`
-	IntrospectionEndpoint                                     string              `json:"introspection_endpoint,omitempty"`
-	IntrospectionEndpointAuthMethodsSupported                 []string            `json:"introspection_endpoint_auth_methods_supported,omitempty"`
-	IntrospectionEndpointAuthSigningAlgValuesSupported        []string            `json:"introspection_endpoint_auth_signing_alg_values_supported,omitempty"`
-	IntrospectionSigningAlgValuesSupported                    []string            `json:"introspection_signing_alg_values_supported,omitempty"`
-	IntrospectionEncryptionAlgValuesSupported                 []string            `json:"introspection_encryption_alg_values_supported,omitempty"`
-	IntrospectionEncryptionEncValuesSupported                 []string            `json:"introspection_encryption_enc_values_supported,omitempty"`
-	CodeChallengeMethodsSupported                             []string            `json:"code_challenge_methods_supported,omitempty"`
-	SignedMetadata                                            string              `json:"signed_metadata,omitempty"`
-	DeviceAuthorizationEndpoint                               string              `json:"device_authorization_endpoint,omitempty"`
-	TLSClientCertificateBoundAccessTokens                     bool                `json:"tls_client_certificate_bound_access_tokens,omitempty"`
-	MTLSEndpointAliases                                       map[string]string   `json:"mtls_endpoint_aliases,omitempty"`
-	NFVTokenSigningAlgValuesSupported                         []string            `json:"nfv_token_signing_alg_values_supported,omitempty"`
-	NFVTokenEncryptionAlgValuesSupported                      []string            `json:"nfv_token_encryption_alg_values_supported,omitempty"`
-	NFVTokenEncryptionEncValuesSupported                      []string            `json:"nfv_token_encryption_enc_values_supported,omitempty"`
-	RequireSignedRequestObject                                bool                `json:"require_signed_request_object,omitempty"`
-	PushedAuthorizationRequestEndpoint                        string              `json:"pushed_authorization_request_endpoint,omitempty"`
-	RequirePushedAuthorizationRequests                        bool                `json:"require_pushed_authorization_requests,omitempty"`
-	AuthorizationResponseIssParameterSupported                bool                `json:"authorization_response_iss_parameter_supported,omitempty"`
-	CheckSessionIFrame                                        string              `json:"check_session_iframe,omitempty"`
-	FrontchannelLogoutSupported                               bool                `json:"frontchannel_logout_supported,omitempty"`
-	BackchannelLogoutSupported                                bool                `json:"backchannel_logout_supported,omitempty"`
-	BackchannelLogoutSessionSupported                         bool                `json:"backchannel_logout_session_supported,omitempty"`
-	EndSessionEndpoint                                        string              `json:"end_session_endpoint,omitempty"`
-	BackchannelTokenDeliveryModesSupported                    []string            `json:"backchannel_token_delivery_modes_supported,omitempty"`
-	BackchannelAuthenticationEndpoint                         string              `json:"backchannel_authentication_endpoint,omitempty"`
-	BackchannelAuthenticationRequestSigningAlgValuesSupported []string            `json:"backchannel_authentication_request_signing_alg_values_supported,omitempty"`
-	BackchannelUserCodeParameterSupported                     bool                `json:"backchannel_user_code_parameter_supported,omitempty"`
-	AuthorizationDetailsTypesSupported                        []string            `json:"authorization_details_types_supported,omitempty"`
-	ClientRegistrationTypesSupported                          []string            `json:"client_registration_types_supported"`
-	FederationRegistrationEndpoint                            string              `json:"federation_registration_endpoint,omitempty"`
-	RequestAuthenticationMethodsSupported                     map[string][]string `json:"request_authentication_methods_supported,omitempty"`
-	RequestAuthenticationSigningAlgValuesSupported            []string            `json:"request_authentication_signing_alg_values_supported,omitempty"`
-	Extra                                                     map[string]any      `json:"-"`
-	SignedJWKSURI                                             string              `json:"signed_jwks_uri,omitempty"`
-	JWKSURI                                                   string              `json:"jwks_uri,omitempty"`
-	JWKS                                                      *jwks.JWKS          `json:"jwks,omitempty"`
-	DisplayName                                               string              `json:"display_name,omitempty"`
-	Description                                               string              `json:"description,omitempty"`
-	Keywords                                                  []string            `json:"keywords,omitempty"`
-	Contacts                                                  []string            `json:"contacts,omitempty"`
-	LogoURI                                                   string              `json:"logo_uri,omitempty"`
-	PolicyURI                                                 string              `json:"policy_uri,omitempty"`
-	InformationURI                                            string              `json:"information_uri,omitempty"`
-	OrganizationName                                          string              `json:"organization_name,omitempty"`
-	OrganizationURI                                           string              `json:"organization_uri,omitempty"`
-}
-
-type openIDProviderMetadataWithPtrs struct {
-	Issuer                                                    *string             `json:"issuer"`
-	AuthorizationEndpoint                                     *string             `json:"authorization_endpoint"`
-	TokenEndpoint                                             *string             `json:"token_endpoint"`
-	UserinfoEndpoint                                          *string             `json:"userinfo_endpoint,omitempty"`
-	RegistrationEndpoint                                      *string             `json:"registration_endpoint,omitempty"`
-	ScopesSupported                                           []string            `json:"scopes_supported,omitempty"`
-	ResponseTypesSupported                                    []string            `json:"response_types_supported"`
-	ResponseModesSupported                                    []string            `json:"response_modes_supported,omitempty"`
-	GrantTypesSupported                                       []string            `json:"grant_types_supported,omitempty"`
-	ACRValuesSupported                                        []string            `json:"acr_values_supported,omitempty"`
-	SubjectTypesSupported                                     []string            `json:"subject_types_supported"`
-	IDTokenSignedResponseAlgValuesSupported                   []string            `json:"id_token_signed_response_alg_values_supported,omitempty"`
-	IDTokenEncryptedResponseAlgValuesSupported                []string            `json:"id_token_encrypted_response_alg_values_supported,omitempty"`
-	IDTokenEncryptedResponseEncValuesSupported                []string            `json:"id_token_encrypted_response_enc_values_supported,omitempty"`
-	UserinfoSignedResponseAlgValuesSupported                  []string            `json:"userinfo_signed_response_alg_values_supported,omitempty"`
-	UserinfoEncryptedResponseAlgValuesSupported               []string            `json:"userinfo_encrypted_response_alg_values_supported,omitempty"`
-	UserinfoEncryptedResponseEncValuesSupported               []string            `json:"userinfo_encrypted_response_enc_values_supported,omitempty"`
-	RequestSignedResponseAlgValuesSupported                   []string            `json:"request_signed_response_alg_values_supported,omitempty"`
-	RequestEncryptedResponseAlgValuesSupported                []string            `json:"request_encrypted_response_alg_values_supported,omitempty"`
-	RequestEncryptedResponseEncValuesSupported                []string            `json:"request_encrypted_response_enc_values_supported,omitempty"`
-	TokenEndpointAuthMethodsSupported                         []string            `json:"token_endpoint_auth_methods_supported,omitempty"`
-	TokenEndpointAuthSigningAlgValuesSupported                []string            `json:"token_endpoint_auth_signing_alg_values_supported,omitempty"`
-	DisplayValuesSupported                                    []string            `json:"display_values_supported,omitempty"`
-	ClaimsSupported                                           []string            `json:"claims_supported,omitempty"`
-	ServiceDocumentation                                      *string             `json:"service_documentation,omitempty"`
-	ClaimsLocalesSupported                                    []string            `json:"claims_locales_supported,omitempty"`
-	UILocalesSupported                                        []string            `json:"ui_locales_supported,omitempty"`
-	ClaimsParameterSupported                                  *bool               `json:"claims_parameter_supported,omitempty"`
-	RequestParameterSupported                                 *bool               `json:"request_parameter_supported,omitempty"`
-	RequestURIParameterSupported                              *bool               `json:"request_uri_parameter_supported,omitempty"`
-	RequireRequestURIRegistration                             *bool               `json:"require_request_uri_registration,omitempty"`
-	OPPolicyURI                                               *string             `json:"op_policy_uri,omitempty"`
-	OPTOSURI                                                  *string             `json:"op_tos_uri,omitempty"`
-	RevocationEndpoint                                        *string             `json:"revocation_endpoint,omitempty"`
-	RevocationEndpointAuthMethodsSupported                    []string            `json:"revocation_endpoint_auth_methods_supported,omitempty"`
-	RevocationEndpointAuthSigningAlgValuesSupported           []string            `json:"revocation_endpoint_auth_signing_alg_values_supported,omitempty"`
-	IntrospectionEndpoint                                     *string             `json:"introspection_endpoint,omitempty"`
-	IntrospectionEndpointAuthMethodsSupported                 []string            `json:"introspection_endpoint_auth_methods_supported,omitempty"`
-	IntrospectionEndpointAuthSigningAlgValuesSupported        []string            `json:"introspection_endpoint_auth_signing_alg_values_supported,omitempty"`
-	IntrospectionSigningAlgValuesSupported                    []string            `json:"introspection_signing_alg_values_supported,omitempty"`
-	IntrospectionEncryptionAlgValuesSupported                 []string            `json:"introspection_encryption_alg_values_supported,omitempty"`
-	IntrospectionEncryptionEncValuesSupported                 []string            `json:"introspection_encryption_enc_values_supported,omitempty"`
-	CodeChallengeMethodsSupported                             []string            `json:"code_challenge_methods_supported,omitempty"`
-	SignedMetadata                                            *string             `json:"signed_metadata,omitempty"`
-	DeviceAuthorizationEndpoint                               *string             `json:"device_authorization_endpoint,omitempty"`
-	TLSClientCertificateBoundAccessTokens                     *bool               `json:"tls_client_certificate_bound_access_tokens,omitempty"`
-	MTLSEndpointAliases                                       map[string]string   `json:"mtls_endpoint_aliases,omitempty"`
-	NFVTokenSigningAlgValuesSupported                         []string            `json:"nfv_token_signing_alg_values_supported,omitempty"`
-	NFVTokenEncryptionAlgValuesSupported                      []string            `json:"nfv_token_encryption_alg_values_supported,omitempty"`
-	NFVTokenEncryptionEncValuesSupported                      []string            `json:"nfv_token_encryption_enc_values_supported,omitempty"`
-	RequireSignedRequestObject                                *bool               `json:"require_signed_request_object,omitempty"`
-	PushedAuthorizationRequestEndpoint                        *string             `json:"pushed_authorization_request_endpoint,omitempty"`
-	RequirePushedAuthorizationRequests                        *bool               `json:"require_pushed_authorization_requests,omitempty"`
-	AuthorizationResponseIssParameterSupported                *bool               `json:"authorization_response_iss_parameter_supported,omitempty"`
-	CheckSessionIFrame                                        *string             `json:"check_session_iframe,omitempty"`
-	FrontchannelLogoutSupported                               *bool               `json:"frontchannel_logout_supported,omitempty"`
-	BackchannelLogoutSupported                                *bool               `json:"backchannel_logout_supported,omitempty"`
-	BackchannelLogoutSessionSupported                         *bool               `json:"backchannel_logout_session_supported,omitempty"`
-	EndSessionEndpoint                                        *string             `json:"end_session_endpoint,omitempty"`
-	BackchannelTokenDeliveryModesSupported                    []string            `json:"backchannel_token_delivery_modes_supported,omitempty"`
-	BackchannelAuthenticationEndpoint                         *string             `json:"backchannel_authentication_endpoint,omitempty"`
-	BackchannelAuthenticationRequestSigningAlgValuesSupported []string            `json:"backchannel_authentication_request_signing_alg_values_supported,omitempty"`
-	BackchannelUserCodeParameterSupported                     *bool               `json:"backchannel_user_code_parameter_supported,omitempty"`
-	AuthorizationDetailsTypesSupported                        []string            `json:"authorization_details_types_supported,omitempty"`
-	ClientRegistrationTypesSupported                          []string            `json:"client_registration_types_supported"`
-	FederationRegistrationEndpoint                            *string             `json:"federation_registration_endpoint,omitempty"`
-	RequestAuthenticationMethodsSupported                     map[string][]string `json:"request_authentication_methods_supported,omitempty"`
-	RequestAuthenticationSigningAlgValuesSupported            []string            `json:"request_authentication_signing_alg_values_supported,omitempty"`
-	Extra                                                     map[string]any      `json:"-"`
-	SignedJWKSURI                                             *string             `json:"signed_jwks_uri,omitempty"`
-	JWKSURI                                                   *string             `json:"jwks_uri,omitempty"`
-	JWKS                                                      *jwks.JWKS          `json:"jwks,omitempty"`
-	DisplayName                                               *string             `json:"display_name,omitempty"`
-	Description                                               *string             `json:"description,omitempty"`
-	Keywords                                                  []string            `json:"keywords,omitempty"`
-	Contacts                                                  []string            `json:"contacts,omitempty"`
-	LogoURI                                                   *string             `json:"logo_uri,omitempty"`
-	PolicyURI                                                 *string             `json:"policy_uri,omitempty"`
-	InformationURI                                            *string             `json:"information_uri,omitempty"`
-	OrganizationName                                          *string             `json:"organization_name,omitempty"`
-	OrganizationURI                                           *string             `json:"organization_uri,omitempty"`
-}
-
-// MarshalJSON implements the json.Marshaler interface
-func (m OpenIDProviderMetadata) MarshalJSON() ([]byte, error) {
-	type Alias OpenIDProviderMetadata
-	explicitFields, err := json.Marshal(Alias(m))
-	if err != nil {
-		return nil, errors.WithStack(err)
-	}
-	return extraMarshalHelper(explicitFields, m.Extra)
-}
-
-// MarshalJSON implements the json.Marshaler interface
-func (m openIDProviderMetadataWithPtrs) MarshalJSON() ([]byte, error) {
-	type Alias openIDProviderMetadataWithPtrs
-	explicitFields, err := json.Marshal(Alias(m))
-	if err != nil {
-		return nil, errors.WithStack(err)
-	}
-	return extraMarshalHelper(explicitFields, m.Extra)
-}
-
-func (m *OpenIDProviderMetadata) fromPointers(withPtrs openIDProviderMetadataWithPtrs) {
-
-	m.wasSet = make(map[string]bool)
-
-	valOrig := reflect.ValueOf(m).Elem()
-	valWithPtrs := reflect.ValueOf(withPtrs)
-	typeWithPtrs := valWithPtrs.Type()
-
-	for i := 0; i < typeWithPtrs.NumField(); i++ {
-		ptrField := valWithPtrs.Field(i)
-		fieldName := typeWithPtrs.Field(i).Name
-
-		origField := valOrig.FieldByName(fieldName)
-		if !origField.IsValid() || !origField.CanSet() {
-			continue
-		}
-
-		if !ptrField.IsNil() {
-			m.wasSet[fieldName] = true
-		}
-		if ptrField.Kind() == reflect.Ptr && origField.Kind() != reflect.Ptr {
-			if !ptrField.IsNil() {
-				origField.Set(ptrField.Elem())
-			}
-		} else {
-			origField.Set(ptrField)
-		}
-	}
-	for k, _ := range m.Extra {
-		m.wasSet[k] = true
-	}
-}
-
-// UnmarshalJSON implements the json.Unmarshaler interface
-func (m *OpenIDProviderMetadata) UnmarshalJSON(data []byte) error {
-	var withPtrs openIDProviderMetadataWithPtrs
-	if err := json.Unmarshal(data, &withPtrs); err != nil {
-		return err
-	}
-	m.fromPointers(withPtrs)
-	return nil
-}
-
-// UnmarshalJSON implements the json.Unmarshaler interface
-func (m *openIDProviderMetadataWithPtrs) UnmarshalJSON(data []byte) error {
-	type Alias openIDProviderMetadataWithPtrs
-	mm := Alias(*m)
-
-	extra, err := unmarshalWithExtra(data, &mm)
-	if err != nil {
-		return errors.WithStack(err)
-	}
-	mm.Extra = extra
-	*m = openIDProviderMetadataWithPtrs(mm)
-	return nil
-}
-
-// UnmarshalMsgpack implements the msgpack.Unmarshaler interface
-func (m *openIDProviderMetadataWithPtrs) UnmarshalMsgpack(data []byte) error {
-	type Alias openIDProviderMetadataWithPtrs
-	mm := Alias(*m)
-	err := msgpack.Unmarshal(data, &mm)
-	if err != nil {
-		return errors.WithStack(err)
-	}
-	*m = openIDProviderMetadataWithPtrs(mm)
-	return nil
-}
-
-// UnmarshalMsgpack implements the msgpack.Unmarshaler interface
-func (m *OpenIDProviderMetadata) UnmarshalMsgpack(data []byte) error {
-	var withPtrs openIDProviderMetadataWithPtrs
-	if err := msgpack.Unmarshal(data, &withPtrs); err != nil {
-		return err
-	}
-	m.fromPointers(withPtrs)
-	return nil
-}
-
-// ApplyPolicy applies a MetadataPolicy to the OpenIDProviderMetadata
-func (m OpenIDProviderMetadata) ApplyPolicy(policy MetadataPolicy) (any, error) {
-	return applyPolicy(&m, policy, "openid_provider")
-}
-
-type OAuthProtectedResourceMetadata struct {
-	wasSet                               map[string]bool
-	Resource                             string         `json:"resource,omitempty"`
-	AuthorizationServers                 []string       `json:"authorization_servers,omitempty"`
-	ScopesSupported                      []string       `json:"scopes_supported,omitempty"`
-	BearerMethodsSupported               []string       `json:"bearer_methods_supported,omitempty"`
-	ResourceSigningAlgValuesSupported    []string       `json:"resource_signing_alg_values_supported,omitempty"`
-	ResourceEncryptionAlgValuesSupported []string       `json:"resource_encryption_alg_values_supported"`
-	ResourceEncryptionEncValuesSupported []string       `json:"resource_encryption_enc_values_supported"`
-	ResourceName                         string         `json:"resource_name,omitempty"`
-	ResourceDocumentation                string         `json:"resource_documentation,omitempty"`
-	ResourcePolicyURI                    string         `json:"resource_policy_uri,omitempty"`
-	ResourceTOSURI                       string         `json:"resource_tos_uri,omitempty"`
-	Extra                                map[string]any `json:"-"`
-	SignedJWKSURI                        string         `json:"signed_jwks_uri,omitempty"`
-	JWKSURI                              string         `json:"jwks_uri,omitempty"`
-	JWKS                                 *jwks.JWKS     `json:"jwks,omitempty"`
-	DisplayName                          string         `json:"display_name,omitempty"`
-	Description                          string         `json:"description,omitempty"`
-	Keywords                             []string       `json:"keywords,omitempty"`
-	Contacts                             []string       `json:"contacts,omitempty"`
-	LogoURI                              string         `json:"logo_uri,omitempty"`
-	PolicyURI                            string         `json:"policy_uri,omitempty"`
-	InformationURI                       string         `json:"information_uri,omitempty"`
-	OrganizationName                     string         `json:"organization_name,omitempty"`
-	OrganizationURI                      string         `json:"organization_uri,omitempty"`
-}
-
-type oAuthProtectedResourceMetadataWithPtrs struct {
-	Resource                             *string        `json:"resource,omitempty"`
-	AuthorizationServers                 []string       `json:"authorization_servers,omitempty"`
-	ScopesSupported                      []string       `json:"scopes_supported,omitempty"`
-	BearerMethodsSupported               []string       `json:"bearer_methods_supported,omitempty"`
-	ResourceSigningAlgValuesSupported    []string       `json:"resource_signing_alg_values_supported,omitempty"`
-	ResourceEncryptionAlgValuesSupported []string       `json:"resource_encryption_alg_values_supported"`
-	ResourceEncryptionEncValuesSupported []string       `json:"resource_encryption_enc_values_supported"`
-	ResourceName                         *string        `json:"resource_name,omitempty"`
-	ResourceDocumentation                *string        `json:"resource_documentation,omitempty"`
-	ResourcePolicyURI                    *string        `json:"resource_policy_uri,omitempty"`
-	ResourceTOSURI                       *string        `json:"resource_tos_uri,omitempty"`
-	Extra                                map[string]any `json:"-"`
-	SignedJWKSURI                        *string        `json:"signed_jwks_uri,omitempty"`
-	JWKSURI                              *string        `json:"jwks_uri,omitempty"`
-	JWKS                                 *jwks.JWKS     `json:"jwks,omitempty"`
-	DisplayName                          *string        `json:"display_name,omitempty"`
-	Description                          *string        `json:"description,omitempty"`
-	Keywords                             []string       `json:"keywords,omitempty"`
-	Contacts                             []string       `json:"contacts,omitempty"`
-	LogoURI                              *string        `json:"logo_uri,omitempty"`
-	PolicyURI                            *string        `json:"policy_uri,omitempty"`
-	InformationURI                       *string        `json:"information_uri,omitempty"`
-	OrganizationName                     *string        `json:"organization_name,omitempty"`
-	OrganizationURI                      *string        `json:"organization_uri,omitempty"`
-}
-
-// MarshalJSON implements the json.Marshaler interface
-func (m OAuthProtectedResourceMetadata) MarshalJSON() ([]byte, error) {
-	type Alias OAuthProtectedResourceMetadata
-	explicitFields, err := json.Marshal(Alias(m))
-	if err != nil {
-		return nil, errors.WithStack(err)
-	}
-	return extraMarshalHelper(explicitFields, m.Extra)
-}
-
-// MarshalJSON implements the json.Marshaler interface
-func (m oAuthProtectedResourceMetadataWithPtrs) MarshalJSON() ([]byte, error) {
-	type Alias oAuthProtectedResourceMetadataWithPtrs
-	explicitFields, err := json.Marshal(Alias(m))
-	if err != nil {
-		return nil, errors.WithStack(err)
-	}
-	return extraMarshalHelper(explicitFields, m.Extra)
-}
-
-func (m *OAuthProtectedResourceMetadata) fromPointers(withPtrs oAuthProtectedResourceMetadataWithPtrs) {
-
-	m.wasSet = make(map[string]bool)
-
-	valOrig := reflect.ValueOf(m).Elem()
-	valWithPtrs := reflect.ValueOf(withPtrs)
-	typeWithPtrs := valWithPtrs.Type()
-
-	for i := 0; i < typeWithPtrs.NumField(); i++ {
-		ptrField := valWithPtrs.Field(i)
-		fieldName := typeWithPtrs.Field(i).Name
-
-		origField := valOrig.FieldByName(fieldName)
-		if !origField.IsValid() || !origField.CanSet() {
-			continue
-		}
-
-		if !ptrField.IsNil() {
-			m.wasSet[fieldName] = true
-		}
-		if ptrField.Kind() == reflect.Ptr && origField.Kind() != reflect.Ptr {
-			if !ptrField.IsNil() {
-				origField.Set(ptrField.Elem())
-			}
-		} else {
-			origField.Set(ptrField)
-		}
-	}
-	for k, _ := range m.Extra {
-		m.wasSet[k] = true
-	}
-}
-
-// UnmarshalJSON implements the json.Unmarshaler interface
-func (m *OAuthProtectedResourceMetadata) UnmarshalJSON(data []byte) error {
-	var withPtrs oAuthProtectedResourceMetadataWithPtrs
-	if err := json.Unmarshal(data, &withPtrs); err != nil {
-		return err
-	}
-	m.fromPointers(withPtrs)
-	return nil
-}
-
-// UnmarshalJSON implements the json.Unmarshaler interface
-func (m *oAuthProtectedResourceMetadataWithPtrs) UnmarshalJSON(data []byte) error {
-	type Alias oAuthProtectedResourceMetadataWithPtrs
-	mm := Alias(*m)
-
-	extra, err := unmarshalWithExtra(data, &mm)
-	if err != nil {
-		return errors.WithStack(err)
-	}
-	mm.Extra = extra
-	*m = oAuthProtectedResourceMetadataWithPtrs(mm)
-	return nil
-}
-
-// UnmarshalMsgpack implements the msgpack.Unmarshaler interface
-func (m *oAuthProtectedResourceMetadataWithPtrs) UnmarshalMsgpack(data []byte) error {
-	type Alias oAuthProtectedResourceMetadataWithPtrs
-	mm := Alias(*m)
-	err := msgpack.Unmarshal(data, &mm)
-	if err != nil {
-		return errors.WithStack(err)
-	}
-	*m = oAuthProtectedResourceMetadataWithPtrs(mm)
-	return nil
-}
-
-// UnmarshalMsgpack implements the msgpack.Unmarshaler interface
-func (m *OAuthProtectedResourceMetadata) UnmarshalMsgpack(data []byte) error {
-	var withPtrs oAuthProtectedResourceMetadataWithPtrs
-	if err := msgpack.Unmarshal(data, &withPtrs); err != nil {
-		return err
-	}
-	m.fromPointers(withPtrs)
-	return nil
-}
-
-// ApplyPolicy applies a MetadataPolicy to the OAuthProtectedResourceMetadata
-func (m OAuthProtectedResourceMetadata) ApplyPolicy(policy MetadataPolicy) (any, error) {
-	return applyPolicy(&m, policy, "oauth_resource")
 }

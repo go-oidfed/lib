@@ -9,6 +9,7 @@ import (
 
 	"github.com/scylladb/go-set/strset"
 	"github.com/vmihailenco/msgpack/v5"
+	"github.com/zachmann/go-utils/sliceutils"
 	"golang.org/x/crypto/sha3"
 
 	"github.com/go-oidfed/lib/cache"
@@ -319,7 +320,7 @@ func (t *trustTree) resolve(anchors TrustAnchors) {
 	if t.Entity.ExpiresAt.Before(t.expiresAt.Time) {
 		t.expiresAt = t.Entity.ExpiresAt
 	}
-	if utils.SliceContains(t.Entity.Issuer, anchors.EntityIDs()) {
+	if sliceutils.SliceContains(t.Entity.Issuer, anchors.EntityIDs()) {
 		return
 	}
 	if len(t.Entity.AuthorityHints) > 0 {

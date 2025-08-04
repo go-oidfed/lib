@@ -1,4 +1,4 @@
-package jwks
+package jwx
 
 import (
 	"bytes"
@@ -9,6 +9,8 @@ import (
 	"github.com/pkg/errors"
 	"github.com/vmihailenco/msgpack/v5"
 	"gopkg.in/yaml.v3"
+
+	"github.com/go-oidfed/lib/unixtime"
 )
 
 // JWKS is a wrapper type for jwk.Set to implement custom marshaling
@@ -90,22 +92,41 @@ func (jwks *JWKS) UnmarshalMsgpack(data []byte) error {
 	return errors.WithStack(json.Unmarshal(jsonData, jwks))
 }
 
+// MinimalExpirationTime iterates over all keys in the JWKS if they have an exp claim set and returns the minimal
+// expiration time of all keys
+func (jwks JWKS) MinimalExpirationTime() unixtime.Unixtime {
+	var exp unixtime.Unixtime
+	for i := range jwks.Len() {
+		k, _ := jwks.Key(i)
+		var e unixtime.Unixtime
+		if err := k.Get("exp", &e); err != nil {
+			continue
+		}
+		if exp.IsZero() || e.Before(exp.Time) {
+			exp = e
+		}
+	}
+	return exp
+}
+
+var zeroJWKS JWKS
+
 // KeyToJWKS creates a jwk.Set from the passed publicKey and sets the algorithm key in the jwk.Key to the passed jwa.SignatureAlgorithm
-func KeyToJWKS(publicKey interface{}, alg jwa.SignatureAlgorithm) JWKS {
+func KeyToJWKS(publicKey interface{}, alg jwa.SignatureAlgorithm) (JWKS, error) {
 	key, err := jwk.PublicKeyOf(publicKey)
 	if err != nil {
-		panic(err)
+		return zeroJWKS, err
 	}
 	if err = jwk.AssignKeyID(key); err != nil {
-		panic(err)
+		return zeroJWKS, errors.WithStack(err)
 	}
 	if err = key.Set(jwk.KeyUsageKey, string(jwk.ForSignature)); err != nil {
-		panic(err)
+		return zeroJWKS, errors.WithStack(err)
 	}
 	if err = key.Set(jwk.AlgorithmKey, alg); err != nil {
-		panic(err)
+		return zeroJWKS, errors.WithStack(err)
 	}
 	jwks := jwk.NewSet()
-	jwks.AddKey(key)
-	return JWKS{jwks}
+	err = errors.WithStack(jwks.AddKey(key))
+	return JWKS{jwks}, err
 }
