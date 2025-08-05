@@ -9,8 +9,6 @@ import (
 	"sync"
 	"time"
 
-	arrays "github.com/adam-hanna/arrayOperations"
-	"github.com/gofiber/fiber/v2/log"
 	"github.com/google/go-querystring/query"
 	"github.com/lithammer/fuzzysearch/fuzzy"
 	"github.com/pkg/errors"
@@ -248,235 +246,34 @@ func (d *SimpleEntityCollector) CollectEntities(req apimodel.EntityCollectionReq
 const maxCollectWorkers = 128
 
 func (d *SimpleEntityCollector) collect(
-	req apimodel.EntityCollectionRequest, authorities ...TrustAnchor,
-) (entities []*CollectedEntity) {
+	req apimodel.EntityCollectionRequest,
+	authorities ...TrustAnchor,
+) []*CollectedEntity {
 	internal.Logf("Discovering Entities for authorities: %+q", authorities)
 
-	sem := make(chan struct{}, maxCollectWorkers)
-	entityChan := make(chan *CollectedEntity)
-	doneChan := make(chan struct{})
-
-	var ta *EntityStatement
-	var taErr error
-	var taOnce sync.Once
-
-	seen := make(map[string]bool)
-	var seenMu sync.Mutex
-
-	// Collector goroutine
-	go func() {
-		for e := range entityChan {
-			seenMu.Lock()
-			if !seen[e.EntityID] {
-				seen[e.EntityID] = true
-				entities = append(entities, e)
-			}
-			seenMu.Unlock()
-		}
-		doneChan <- struct{}{}
-	}()
-
-	var wg sync.WaitGroup
-
-	// Wrapper to acquire worker token
-	run := func(task func()) {
-		sem <- struct{}{} // acquire
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			defer func() { <-sem }() // release
-			task()
-		}()
+	result := &collectorResult{
+		seen:       make(map[string]bool),
+		entityChan: make(chan *CollectedEntity),
+		doneChan:   make(chan struct{}),
+		workerPool: make(chan struct{}, maxCollectWorkers),
 	}
 
+	// Start collector goroutine
+	go result.collectEntities()
+
+	// Process authorities
 	for _, authority := range authorities {
-		run(
-			func() {
-				if d.visitedEntities.Has(authority.EntityID) {
-					internal.Logf("Already visited: %s -> skipping", authority.EntityID)
-					return
-				}
-				d.visitedEntities.Add(authority.EntityID)
-
-				stmt, err := GetEntityConfiguration(authority.EntityID)
-				if err != nil {
-					internal.Logf("Could not get entity configuration: %s -> skipping", err.Error())
-					return
-				}
-
-				if stmt.Metadata == nil || stmt.Metadata.FederationEntity == nil ||
-					stmt.Metadata.FederationEntity.FederationListEndpoint == "" {
-					internal.Log("No FederationListEndpoint -> skipping")
-					return
-				}
-
-				subordinates, err := fetchList(stmt.Metadata.FederationEntity.FederationListEndpoint)
-				if err != nil {
-					internal.Logf("Could not fetch subordinates: %s", err.Error())
-					return
-				}
-
-				for _, subordinateID := range subordinates {
-					run(
-						func() {
-							entityConfig, err := GetEntityConfiguration(subordinateID)
-							if err != nil {
-								internal.Logf("Failed to get entity config for %s: %s", subordinateID, err.Error())
-								return
-							}
-							if entityConfig.Metadata == nil {
-								internal.Log("No metadata present -> skipping")
-								return
-							}
-
-							et := entityConfig.Metadata.GuessEntityTypes()
-							displayNames := entityConfig.Metadata.GuessDisplayNames()
-
-							includeEntity := true
-							if req.EntityTypes != nil && len(arrays.Intersect(et, req.EntityTypes)) == 0 {
-								includeEntity = false
-							}
-							if req.Query != "" && !matchDisplayName(req.Query, displayNames, MatchModeFuzzy) {
-								includeEntity = false
-							}
-
-							for _, trustMarkType := range req.TrustMarkTypes {
-								trustMarkInfo := entityConfig.TrustMarks.FindByID(trustMarkType)
-								if trustMarkInfo == nil {
-									includeEntity = false
-									break
-								}
-								taOnce.Do(
-									func() {
-										ta, taErr = GetEntityConfiguration(req.TrustAnchor)
-									},
-								)
-								if taErr != nil || trustMarkInfo.VerifyFederation(&ta.EntityStatementPayload) != nil {
-									includeEntity = false
-									break
-								}
-							}
-
-							if includeEntity {
-								collectedEntity := &CollectedEntity{
-									EntityID: subordinateID,
-								}
-
-								if len(req.EntityClaims) == 0 || slices.Contains(req.EntityClaims, "entity_types") {
-									collectedEntity.EntityTypes = et
-								}
-
-								uiInfoClaims := []string{
-									"description",
-									"logo_uri",
-									"policy_uri",
-									"information_uri",
-								}
-								for _, c := range uiInfoClaims {
-									if len(req.UIClaims) == 0 || slices.Contains(req.UIClaims, c) {
-										entityConfig.Metadata.
-											IterateStringClaim(
-												c, func(entityType, value string) {
-													_ = collectedEntity.setUIInfoField(
-														entityType, c, value,
-													)
-												},
-											)
-									}
-								}
-								keywordsTag := "keywords"
-								if len(req.UIClaims) == 0 || slices.Contains(req.UIClaims, keywordsTag) {
-									entityConfig.Metadata.
-										IterateStringSliceClaim(
-											keywordsTag,
-											func(entityType string, value []string) {
-												collectedEntity.setUIInfoField(
-													entityType, keywordsTag, value,
-												)
-											},
-										)
-								}
-
-								if len(req.UIClaims) == 0 || slices.Contains(req.UIClaims, "display_name") {
-									for entityType, displayName := range displayNames {
-										if displayName != "" {
-											if err = collectedEntity.setUIInfoField(
-												entityType, "display_name", displayName,
-											); err != nil {
-												log.Error(err.Error())
-											}
-										}
-									}
-								}
-
-								if slices.ContainsFunc(
-									req.EntityClaims, func(c string) bool {
-										return c == "metadata"
-									},
-								) {
-									resolveRequest := apimodel.ResolveRequest{
-										Subject:     subordinateID,
-										TrustAnchor: []string{req.TrustAnchor},
-									}
-									var res ResolveResponsePayload
-									switch resolver := DefaultMetadataResolver.(type) {
-									case LocalMetadataResolver:
-										res, _, err = resolver.resolveResponsePayloadWithoutTrustMarks(resolveRequest)
-									default:
-										res, err = DefaultMetadataResolver.ResolveResponsePayload(resolveRequest)
-									}
-									if err == nil {
-										if res.TrustMarks != nil && slices.Contains(req.EntityClaims, "trust_marks") {
-											collectedEntity.TrustMarks = res.TrustMarks
-										}
-										if slices.Contains(req.EntityClaims, "metadata") {
-											collectedEntity.metadata = res.Metadata
-										}
-									} else {
-										internal.Logf(
-											"Trust chain resolution failed for %s: %s", subordinateID, err.Error(),
-										)
-									}
-								}
-
-								if collectedEntity.TrustMarks == nil && slices.Contains(
-									req.EntityClaims, "trust_marks",
-								) {
-									taOnce.Do(
-										func() {
-											ta, taErr = GetEntityConfiguration(req.TrustAnchor)
-										},
-									)
-									if taErr == nil {
-										collectedEntity.TrustMarks = entityConfig.TrustMarks.VerifiedFederation(&ta.EntityStatementPayload)
-									}
-								}
-
-								entityChan <- collectedEntity
-							}
-
-							if entityConfig.Metadata.FederationEntity != nil &&
-								entityConfig.Metadata.FederationEntity.FederationListEndpoint != "" {
-								nested := d.collect(req, NewTrustAnchorsFromEntityIDs(subordinateID)...)
-								for _, nestedEntity := range nested {
-									entityChan <- nestedEntity
-								}
-							}
-						},
-					)
-				}
-			},
-		)
+		result.processAuthority(authority, req, d)
 	}
 
-	// Wait and close channels
+	// Wait for completion
 	go func() {
-		wg.Wait()
-		close(entityChan)
+		result.wg.Wait()
+		close(result.entityChan)
 	}()
+	<-result.doneChan
 
-	<-doneChan
-	return
+	return result.entities
 }
 
 type matchMode string
