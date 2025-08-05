@@ -8,7 +8,6 @@ require (
 	github.com/TwiN/gocache/v2 v2.2.2
 	github.com/adam-hanna/arrayOperations v1.0.1
 	github.com/go-resty/resty/v2 v2.16.5
-	github.com/gofiber/fiber/v2 v2.52.9
 	github.com/google/go-querystring v1.1.0
 	github.com/google/uuid v1.6.0
 	github.com/jarcoal/httpmock v1.4.0
@@ -16,7 +15,7 @@ require (
 	github.com/lithammer/fuzzysearch v1.1.8
 	github.com/luci/go-render v0.0.0-20160219211803-9a04cc21af0f
 	github.com/pkg/errors v0.9.1
-	github.com/redis/go-redis/v9 v9.11.0
+	github.com/redis/go-redis/v9 v9.12.0
 	github.com/scylladb/go-set v1.0.3-0.20200225121959-cc7b2070d91e
 	github.com/sirupsen/logrus v1.9.3
 	github.com/vmihailenco/msgpack/v5 v5.4.1
@@ -41,7 +40,6 @@ require (
 	github.com/lestrrat-go/option/v2 v2.0.0 // indirect
 	github.com/rogpeppe/go-internal v1.13.1 // indirect
 	github.com/segmentio/asm v1.2.0 // indirect
-	github.com/valyala/bytebufferpool v1.0.0 // indirect
 	github.com/valyala/fastjson v1.6.4 // indirect
 	github.com/vmihailenco/tagparser/v2 v2.0.0 // indirect
 	golang.org/x/exp v0.0.0-20250606033433-dcc06ee1d476 // indirect
