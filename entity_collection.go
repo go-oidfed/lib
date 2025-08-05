@@ -179,7 +179,7 @@ func (r *collectorResult) createCollectedEntity(
 
 	processUIClaims(entity, entityConfig, req)
 	processDisplayNames(entity, displayNames, req)
-	r.processTrustMarks(entity, entityID, entityConfig, req)
+	r.processTrustMarks(entity, entityConfig, req)
 
 	return entity
 }
@@ -240,7 +240,6 @@ func processDisplayNames(
 
 func (r *collectorResult) processTrustMarks(
 	entity *CollectedEntity,
-	entityID string,
 	entityConfig *EntityStatement,
 	req apimodel.EntityCollectionRequest,
 ) {
