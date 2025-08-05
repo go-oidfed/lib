@@ -76,56 +76,25 @@ func (sks *privateKeyStorageMultiAlg) initKeyRotation(pks *pkCollection, pksOnCh
 
 // Load loads the private keys from disk and if necessary generates missing keys
 func (sks *privateKeyStorageMultiAlg) Load(pks *pkCollection, pksOnChange func() error) error {
-	populatePKFromSK := false
+	addPublicKeysToJWKS := false
 	if sks.signers == nil {
 		sks.signers = make(map[jwa.SignatureAlgorithm]crypto.Signer)
 	}
 	if len(pks.jwks) == 0 {
 		pks.jwks = []JWKS{NewJWKS()}
-		populatePKFromSK = true
+		addPublicKeysToJWKS = true
 	}
 	pksChanged := false
-	// load oidc keys
+
 	for _, alg := range sks.algs {
-		filePath := sks.keyFilePath(alg, false)
-		signer, err := readSignerFromFile(filePath, alg)
+		signer, changed, err := sks.loadOrGenerateSigner(alg, pks, addPublicKeysToJWKS)
 		if err != nil {
-			// could not load key, generating a new one for this alg
-			sk, pk, err := generateKeyPair(
-				alg, sks.rsaKeyLen, keyLifetimeConf{
-					NowIssued: true,
-					Expires:   sks.rollover.Enabled,
-					Lifetime:  sks.rollover.Interval.Duration(),
-				},
-			)
-			if err != nil {
-				return err
-			}
-			if err = writeSignerToFile(sk, sks.keyFilePath(alg, false)); err != nil {
-				return err
-			}
-			if err = pks.jwks[0].AddKey(pk); err != nil {
-				return errors.WithStack(err)
-			}
-			pksChanged = true
-			signer = sk
-		} else if populatePKFromSK {
-			pk, err := signerToPublicJWK(
-				signer, alg, keyLifetimeConf{
-					NowIssued: false,
-					Expires:   sks.rollover.Enabled,
-					Lifetime:  sks.rollover.Interval.Duration(),
-				},
-			)
-			if err != nil {
-				return err
-			}
-			if err = pks.jwks[0].AddKey(pk); err != nil {
-				return errors.WithStack(err)
-			}
+			return err
 		}
+		pksChanged = pksChanged || changed
 		sks.signers[alg] = signer
 
+		// Ensure the next key file exists for rollover
 		if !fileutils.FileExists(sks.keyFilePath(alg, true)) {
 			_, err = generateStoreAndSetNextPrivateKey(
 				pks, alg, sks.rsaKeyLen, keyLifetimeConf{
@@ -140,13 +109,57 @@ func (sks *privateKeyStorageMultiAlg) Load(pks *pkCollection, pksOnChange func()
 			}
 		}
 	}
-	if populatePKFromSK || pksChanged {
+
+	if addPublicKeysToJWKS || pksChanged {
 		if err := pksOnChange(); err != nil {
 			return err
 		}
 	}
 	sks.initKeyRotation(pks, pksOnChange)
 	return nil
+}
+
+// loadOrGenerateSigner loads a signer from disk or generates a new one if it doesn't exist.
+// If addPublicKeysToJWKS is true, it also adds the public key to the pkCollection.
+func (sks *privateKeyStorageMultiAlg) loadOrGenerateSigner(
+	alg jwa.SignatureAlgorithm, pks *pkCollection, addPublicKeysToJWKS bool,
+) (crypto.Signer, bool, error) {
+	filePath := sks.keyFilePath(alg, false)
+	signer, err := readSignerFromFile(filePath, alg)
+	if err != nil {
+		// Could not load key, generating a new one for this alg
+		sk, pk, err := generateKeyPair(
+			alg,
+			sks.rsaKeyLen,
+			keyLifetimeConf{
+				NowIssued: true,
+				Expires:   sks.rollover.Enabled,
+				Lifetime:  sks.rollover.Interval.Duration(),
+			},
+		)
+		if err != nil {
+			return nil, false, err
+		}
+		if err = writeSignerToFile(sk, filePath); err != nil {
+			return nil, false, err
+		}
+		pks.addCurrentJWK(pk)
+		return sk, true, nil
+	}
+	if addPublicKeysToJWKS {
+		pk, err := signerToPublicJWK(
+			signer, alg, keyLifetimeConf{
+				NowIssued: false,
+				Expires:   sks.rollover.Enabled,
+				Lifetime:  sks.rollover.Interval.Duration(),
+			},
+		)
+		if err != nil {
+			return nil, false, err
+		}
+		pks.addCurrentJWK(pk)
+	}
+	return signer, addPublicKeysToJWKS, nil
 }
 
 // GenerateNewKeys generates a new set of keys
