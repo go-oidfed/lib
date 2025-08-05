@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/pkg/errors"
 	"github.com/scylladb/go-set/strset"
 	"github.com/vmihailenco/msgpack/v5"
 	"github.com/zachmann/go-utils/sliceutils"
@@ -317,60 +318,122 @@ func (t *trustTree) resolve(anchors TrustAnchors) {
 	if t.Entity == nil {
 		return
 	}
-	if t.Entity.ExpiresAt.Before(t.expiresAt.Time) {
-		t.expiresAt = t.Entity.ExpiresAt
-	}
+
+	t.updateExpirationTime()
+
+	// Early return if entity is issued by a trust anchor
 	if sliceutils.SliceContains(t.Entity.Issuer, anchors.EntityIDs()) {
 		return
 	}
+
+	t.resolveAuthorities(anchors)
+}
+
+func (t *trustTree) updateExpirationTime() {
+	if t.Entity.ExpiresAt.Before(t.expiresAt.Time) {
+		t.expiresAt = t.Entity.ExpiresAt
+	}
+}
+
+func (t *trustTree) resolveAuthorities(anchors TrustAnchors) {
 	if len(t.Entity.AuthorityHints) > 0 {
 		t.Authorities = make([]trustTree, len(t.Entity.AuthorityHints))
 	}
-	for i, aID := range t.Entity.AuthorityHints {
-		if t.subordinateIDs.Has(aID) {
-			// loop prevention
-			continue
+
+	for i, authorityID := range t.Entity.AuthorityHints {
+		if t.subordinateIDs.Has(authorityID) {
+			continue // Loop prevention
 		}
-		aStmt, err := GetEntityConfiguration(aID)
+
+		authority, err := t.resolveAuthority(authorityID, anchors)
 		if err != nil {
 			continue
 		}
-		if !utils.Equal(aStmt.Issuer, aStmt.Subject, aID) || !aStmt.TimeValid() {
-			continue
-		}
-		if aStmt.Metadata == nil || aStmt.Metadata.FederationEntity == nil || aStmt.Metadata.FederationEntity.
-			FederationFetchEndpoint == "" {
-			continue
-		}
-		subordinateStmt, err := FetchEntityStatement(
-			aStmt.Metadata.FederationEntity.FederationFetchEndpoint, t.Entity.Issuer, aID,
-		)
-		if err != nil {
-			continue
-		}
-		if subordinateStmt.Issuer != aID || subordinateStmt.Subject != t.Entity.Issuer || !subordinateStmt.TimeValid() {
-			continue
-		}
-		if !t.checkConstraints(subordinateStmt.Constraints) {
-			continue
-		}
-		if subordinateStmt.ExpiresAt.Before(t.expiresAt.Time) {
-			t.expiresAt = subordinateStmt.ExpiresAt
-		}
-		entityTypes := t.includedEntityTypes.Copy()
-		entityTypes.Add(aStmt.Metadata.GuessEntityTypes()...)
-		subordinates := t.subordinateIDs.Copy()
-		subordinates.Add(aID)
-		tt := trustTree{
-			Entity:              aStmt,
-			Subordinate:         subordinateStmt,
-			depth:               t.depth + 1,
-			includedEntityTypes: entityTypes,
-			subordinateIDs:      subordinates,
-		}
-		tt.resolve(anchors)
-		t.Authorities[i] = tt
+
+		t.Authorities[i] = authority
 	}
+}
+
+func (t *trustTree) resolveAuthority(authorityID string, anchors TrustAnchors) (trustTree, error) {
+	authorityStmt, err := GetEntityConfiguration(authorityID)
+	if err != nil {
+		return trustTree{}, err
+	}
+
+	if !isValidAuthorityStatement(authorityStmt, authorityID) {
+		return trustTree{}, errors.New("invalid authority statement")
+	}
+
+	subordinateStmt, err := t.fetchAndValidateSubordinateStatement(authorityStmt, authorityID)
+	if err != nil {
+		return trustTree{}, err
+	}
+
+	if !t.checkConstraints(subordinateStmt.Constraints) {
+		return trustTree{}, errors.New("constraints check failed")
+	}
+
+	t.updateExpirationTimeFromSubordinate(subordinateStmt)
+
+	return t.createAuthorityTrustTree(authorityStmt, subordinateStmt, authorityID, anchors), nil
+}
+
+func isValidAuthorityStatement(stmt *EntityStatement, authorityID string) bool {
+	return utils.Equal(stmt.Issuer, stmt.Subject, authorityID) &&
+		stmt.TimeValid() &&
+		stmt.Metadata != nil &&
+		stmt.Metadata.FederationEntity != nil &&
+		stmt.Metadata.FederationEntity.FederationFetchEndpoint != ""
+}
+
+func (t *trustTree) fetchAndValidateSubordinateStatement(
+	authorityStmt *EntityStatement, authorityID string,
+) (*EntityStatement, error) {
+	subordinateStmt, err := FetchEntityStatement(
+		authorityStmt.Metadata.FederationEntity.FederationFetchEndpoint, t.Entity.Issuer, authorityID,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	if !isValidSubordinateStatement(subordinateStmt, authorityID, t.Entity.Issuer) {
+		return nil, errors.New("invalid subordinate statement")
+	}
+
+	return subordinateStmt, nil
+}
+
+func isValidSubordinateStatement(stmt *EntityStatement, authorityID, entityIssuer string) bool {
+	return stmt.Issuer == authorityID &&
+		stmt.Subject == entityIssuer &&
+		stmt.TimeValid()
+}
+
+func (t *trustTree) updateExpirationTimeFromSubordinate(subordinateStmt *EntityStatement) {
+	if subordinateStmt.ExpiresAt.Before(t.expiresAt.Time) {
+		t.expiresAt = subordinateStmt.ExpiresAt
+	}
+}
+
+func (t *trustTree) createAuthorityTrustTree(
+	authorityStmt, subordinateStmt *EntityStatement, authorityID string, anchors TrustAnchors,
+) trustTree {
+	entityTypes := t.includedEntityTypes.Copy()
+	entityTypes.Add(authorityStmt.Metadata.GuessEntityTypes()...)
+
+	subordinates := t.subordinateIDs.Copy()
+	subordinates.Add(authorityID)
+
+	newTree := trustTree{
+		Entity:              authorityStmt,
+		Subordinate:         subordinateStmt,
+		depth:               t.depth + 1,
+		includedEntityTypes: entityTypes,
+		subordinateIDs:      subordinates,
+	}
+	newTree.resolve(anchors)
+
+	return newTree
 }
 
 func (t *trustTree) checkConstraints(constraints *ConstraintSpecification) bool {
