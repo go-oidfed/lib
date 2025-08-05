@@ -4,57 +4,76 @@ import (
 	"reflect"
 )
 
-// ReflectSliceCast casts a slice to another type using reflection
+// ReflectSliceCast converts a slice to another type using reflection.
+// Parameters:
+//   - slice: source slice to convert
+//   - newType: target type for the slice elements
+//
+// Retur
+// Returns:
+//   - converted slice or original value if input is not a slice
 func ReflectSliceCast(slice, newType any) any {
 	if !IsSlice(slice) {
 		return slice
 	}
+
 	typeType := reflect.TypeOf(newType)
 	sliceV := reflect.ValueOf(slice)
 	out := reflect.MakeSlice(typeType, sliceV.Len(), sliceV.Len())
+
 	for i := 0; i < sliceV.Len(); i++ {
-		vv := sliceV.Index(i)
-		var v reflect.Value
-		// This is stupid and has faults, but I did not find a better way
-		switch typeType.Elem().Kind() {
-		case reflect.Bool:
-			v = reflect.ValueOf(vv.Interface().(bool))
-		case reflect.Int:
-			v = reflect.ValueOf(vv.Interface().(int))
-		case reflect.Int8:
-			v = reflect.ValueOf(vv.Interface().(int8))
-		case reflect.Int16:
-			v = reflect.ValueOf(vv.Interface().(int16))
-		case reflect.Int32:
-			v = reflect.ValueOf(vv.Interface().(int32))
-		case reflect.Int64:
-			v = reflect.ValueOf(vv.Interface().(int64))
-		case reflect.Uint:
-			v = reflect.ValueOf(vv.Interface().(uint))
-		case reflect.Uint8:
-			v = reflect.ValueOf(vv.Interface().(uint8))
-		case reflect.Uint16:
-			v = reflect.ValueOf(vv.Interface().(uint16))
-		case reflect.Uint32:
-			v = reflect.ValueOf(vv.Interface().(uint32))
-		case reflect.Uint64:
-			v = reflect.ValueOf(vv.Interface().(uint64))
-		case reflect.Uintptr:
-			v = reflect.ValueOf(vv.Interface().(*uint))
-		case reflect.Float32:
-			v = reflect.ValueOf(vv.Interface().(float32))
-		case reflect.Float64:
-			v = reflect.ValueOf(vv.Interface().(float64))
-		case reflect.Interface:
-			v = vv
-		case reflect.String:
-			v = reflect.ValueOf(vv.Interface().(string))
-		default:
-			v = vv.Convert(typeType.Elem())
-		}
-		out.Index(i).Set(v)
+		sourceVal := sliceV.Index(i)
+		convertedVal := convertToTargetType(sourceVal, typeType.Elem())
+		out.Index(i).Set(convertedVal)
 	}
+
 	return out.Interface()
+}
+
+// convertToTargetType converts a reflect.Value to the target type.
+// It handles primitive types explicitly and falls back to generic conversion for other types.
+func convertToTargetType(val reflect.Value, targetType reflect.Type) reflect.Value {
+	if targetType.Kind() == reflect.Interface {
+		return val
+	}
+
+	// Get the underlying interface value
+	srcInterface := val.Interface()
+
+	// Handle primitive types
+	switch targetType.Kind() {
+	case reflect.Bool:
+		return reflect.ValueOf(srcInterface.(bool))
+	case reflect.Int:
+		return reflect.ValueOf(srcInterface.(int))
+	case reflect.Int8:
+		return reflect.ValueOf(srcInterface.(int8))
+	case reflect.Int16:
+		return reflect.ValueOf(srcInterface.(int16))
+	case reflect.Int32:
+		return reflect.ValueOf(srcInterface.(int32))
+	case reflect.Int64:
+		return reflect.ValueOf(srcInterface.(int64))
+	case reflect.Uint:
+		return reflect.ValueOf(srcInterface.(uint))
+	case reflect.Uint8:
+		return reflect.ValueOf(srcInterface.(uint8))
+	case reflect.Uint16:
+		return reflect.ValueOf(srcInterface.(uint16))
+	case reflect.Uint32:
+		return reflect.ValueOf(srcInterface.(uint32))
+	case reflect.Uint64:
+		return reflect.ValueOf(srcInterface.(uint64))
+	case reflect.Float32:
+		return reflect.ValueOf(srcInterface.(float32))
+	case reflect.Float64:
+		return reflect.ValueOf(srcInterface.(float64))
+	case reflect.String:
+		return reflect.ValueOf(srcInterface.(string))
+	default:
+		// For other types, try to convert using reflection
+		return val.Convert(targetType)
+	}
 }
 
 // ReflectSliceContains checks if a slice contains a value using reflection
