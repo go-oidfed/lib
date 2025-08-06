@@ -43,109 +43,146 @@ func (m Metadata) GuessEntityTypes() (entityTypes []string) {
 // The returned map has entity types as keys and maps of language tags to display names as values.
 // An empty string language tag represents the default/untagged value.
 func (m Metadata) GuessMultilingualDisplayNames() map[string]map[string]string {
-	// Initialize the result map
-	result := make(map[string]map[string]string)
+	displayNames := make(map[string]map[string]string)
+	m.collectDefaultDisplayNames(displayNames)
+	m.collectLanguageTaggedDisplayNames(displayNames)
+	return displayNames
+}
 
-	// Get default display names directly from metadata types
+// collectDefaultDisplayNames extracts default (untagged) display names from metadata fields
+func (m Metadata) collectDefaultDisplayNames(result map[string]map[string]string) {
 	value := reflect.ValueOf(m)
 	typ := value.Type()
 
 	for i := 0; i < value.NumField(); i++ {
 		field := value.Field(i)
-		if field.Kind() == reflect.Ptr && !field.IsNil() {
-			structField := typ.Field(i)
-			entityTag := structField.Tag.Get("json")
-			entityTag = strings.TrimSuffix(entityTag, ",omitempty")
+		if !isValidPointerField(field) {
+			continue
+		}
 
-			// Initialize the language map for this entity type
-			if result[entityTag] == nil {
-				result[entityTag] = make(map[string]string)
-			}
+		entityTag := getEntityTag(typ.Field(i))
+		ensureLanguageMapExists(result, entityTag)
 
-			// Get the display name and organization/client/resource name fields
-			elem := field.Elem()
-			elemType := elem.Type()
+		elem := field.Elem()
+		elemType := elem.Type()
 
-			// Look for DisplayName field
-			for j := 0; j < elem.NumField(); j++ {
-				subField := elem.Field(j)
-				subStructField := elemType.Field(j)
-				jsonTag := subStructField.Tag.Get("json")
+		// First try to find DisplayName field
+		if displayName := findDisplayName(elem, elemType); displayName != "" {
+			result[entityTag][""] = displayName
+			continue
+		}
 
-				if strings.HasPrefix(jsonTag, "display_name") && subField.Kind() == reflect.String {
-					displayName := subField.String()
-					if displayName != "" {
-						result[entityTag][""] = displayName
-						break
-					}
-				}
-			}
-
-			// If no DisplayName, look for fallback fields (OrganizationName, ClientName, etc.)
-			if result[entityTag][""] == "" {
-				for j := 0; j < elem.NumField(); j++ {
-					subField := elem.Field(j)
-					subStructField := elemType.Field(j)
-					fieldName := subStructField.Name
-
-					if (fieldName == "OrganizationName" || fieldName == "ClientName" ||
-						fieldName == "ResourceName") && subField.Kind() == reflect.String {
-						fallbackName := subField.String()
-						if fallbackName != "" {
-							result[entityTag][""] = fallbackName
-							break
-						}
-					}
-				}
-			}
+		// If no DisplayName, look for fallback fields
+		if fallbackName := findFallbackName(elem, elemType); fallbackName != "" {
+			result[entityTag][""] = fallbackName
 		}
 	}
+}
 
-	// Then look for language-tagged display names in the Extra field of each metadata type
+// collectLanguageTaggedDisplayNames extracts language-tagged display names from Extra fields
+func (m Metadata) collectLanguageTaggedDisplayNames(result map[string]map[string]string) {
+	value := reflect.ValueOf(m)
+	typ := value.Type()
+
 	for i := 0; i < value.NumField(); i++ {
 		field := value.Field(i)
-		if field.Kind() == reflect.Ptr && !field.IsNil() {
-			structField := typ.Field(i)
-			entityTag := structField.Tag.Get("json")
-			entityTag = strings.TrimSuffix(entityTag, ",omitempty")
+		if !isValidPointerField(field) {
+			continue
+		}
 
-			elem := field.Elem()
-			elemType := elem.Type()
+		entityTag := getEntityTag(typ.Field(i))
+		elem := field.Elem()
+		elemType := elem.Type()
 
-			// Check if this entity type has an Extra field
-			var extraField reflect.Value
-			var hasExtra bool
-			for j := 0; j < elem.NumField(); j++ {
-				subStructField := elemType.Field(j)
-				if subStructField.Name == "Extra" {
-					extraField = elem.Field(j)
-					hasExtra = true
-					break
-				}
+		extraField, hasExtra := findExtraField(elem, elemType)
+		if !hasExtra || extraField.IsNil() {
+			continue
+		}
+
+		// Process language-tagged display names from Extra
+		extraMap := extraField.Interface().(map[string]interface{})
+		for key, val := range extraMap {
+			if !strings.HasPrefix(key, "display_name#") {
+				continue
 			}
 
-			if hasExtra && !extraField.IsNil() {
-				// Look for language-tagged display_name values in Extra
-				extraMap := extraField.Interface().(map[string]interface{})
+			langTag := strings.TrimPrefix(key, "display_name#")
+			if strVal, ok := val.(string); ok && strVal != "" {
+				ensureLanguageMapExists(result, entityTag)
+				result[entityTag][langTag] = strVal
+			}
+		}
+	}
+}
 
-				// Check for the new format (display_name#langTag)
-				for key, val := range extraMap {
-					// Check if the key follows the pattern "display_name#langTag"
-					if strings.HasPrefix(key, "display_name#") {
-						langTag := strings.TrimPrefix(key, "display_name#")
-						if strVal, ok := val.(string); ok && strVal != "" {
-							if result[entityTag] == nil {
-								result[entityTag] = make(map[string]string)
-							}
-							result[entityTag][langTag] = strVal
-						}
-					}
+// isValidPointerField checks if a field is a non-nil pointer
+func isValidPointerField(field reflect.Value) bool {
+	return field.Kind() == reflect.Ptr && !field.IsNil()
+}
+
+// getEntityTag extracts the entity tag from a struct field
+func getEntityTag(structField reflect.StructField) string {
+	entityTag := structField.Tag.Get("json")
+	return strings.TrimSuffix(entityTag, ",omitempty")
+}
+
+// ensureLanguageMapExists ensures that a language map exists for the given entity type
+func ensureLanguageMapExists(result map[string]map[string]string, entityTag string) {
+	if result[entityTag] == nil {
+		result[entityTag] = make(map[string]string)
+	}
+}
+
+// findDisplayName searches for a DisplayName field in a struct and returns its value
+func findDisplayName(elem reflect.Value, elemType reflect.Type) string {
+	for j := 0; j < elem.NumField(); j++ {
+		subField := elem.Field(j)
+		subStructField := elemType.Field(j)
+		jsonTag := subStructField.Tag.Get("json")
+
+		if strings.HasPrefix(jsonTag, "display_name") && subField.Kind() == reflect.String {
+			displayName := subField.String()
+			if displayName != "" {
+				return displayName
+			}
+		}
+	}
+	return ""
+}
+
+// findFallbackName searches for fallback name fields in a struct and returns the first non-empty one
+func findFallbackName(elem reflect.Value, elemType reflect.Type) string {
+	fallbackFields := []string{
+		"OrganizationName",
+		"ClientName",
+		"ResourceName",
+	}
+
+	for j := 0; j < elem.NumField(); j++ {
+		subField := elem.Field(j)
+		subStructField := elemType.Field(j)
+		fieldName := subStructField.Name
+
+		for _, fallbackField := range fallbackFields {
+			if fieldName == fallbackField && subField.Kind() == reflect.String {
+				fallbackName := subField.String()
+				if fallbackName != "" {
+					return fallbackName
 				}
 			}
 		}
 	}
+	return ""
+}
 
-	return result
+// findExtraField looks for an Extra field in a struct and returns it if found
+func findExtraField(elem reflect.Value, elemType reflect.Type) (reflect.Value, bool) {
+	for j := 0; j < elem.NumField(); j++ {
+		if elemType.Field(j).Name == "Extra" {
+			return elem.Field(j), true
+		}
+	}
+	return reflect.Value{}, false
 }
 
 // IterateStringSliceClaim collects a claim that has a []string value for all
