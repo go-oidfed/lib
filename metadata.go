@@ -316,6 +316,12 @@ func applyPolicy(metadata any, policy MetadataPolicy, ownTag string) (any, error
 // FindEntityMetadata finds metadata for the specified entity type in the
 // metadata and decodes it into the provided metadata object.
 func (m *Metadata) FindEntityMetadata(entityType string, metadata any) error {
+	// Validate that metadata is a pointer
+	metadataValue := reflect.ValueOf(metadata)
+	if metadataValue.Kind() != reflect.Ptr || metadataValue.IsNil() {
+		return errors.New("metadata parameter must be a non-nil pointer")
+	}
+
 	// Check if the entity type indicates one of the explicit struct fields.
 	v := reflect.ValueOf(m)
 	t := v.Elem().Type()
@@ -329,16 +335,23 @@ func (m *Metadata) FindEntityMetadata(entityType string, metadata any) error {
 		if j != entityType {
 			continue
 		}
-		if j == entityType {
-			fmt.Printf("found entity type %s\n", entityType)
-		}
 
 		value := v.Elem().FieldByName(t.Field(i).Name)
 		if value.IsZero() {
 			continue
 		}
 
-		metadata = value.Interface()
+		// Get the field value and set it to the metadata parameter
+		fieldValue := value.Interface()
+		sourceValue := reflect.ValueOf(fieldValue).Elem()
+
+		// Create a new instance of the same type as the field
+		targetValue := metadataValue.Elem()
+		if !sourceValue.Type().AssignableTo(targetValue.Type()) {
+			return errors.Errorf("cannot assign %v to %v", sourceValue.Type(), targetValue.Type())
+		}
+
+		targetValue.Set(sourceValue)
 		return nil
 	}
 
@@ -353,10 +366,13 @@ func (m *Metadata) FindEntityMetadata(entityType string, metadata any) error {
 	// struct so we can use RTTI to give the caller a richer representation.
 	jsonMetadata, err := json.Marshal(metadataMap)
 	if err != nil {
-		return errors.Errorf("failed to marshal metadata: %s", err)
+		return errors.Wrapf(err, "failed to marshal metadata")
 	}
-
-	return json.Unmarshal(jsonMetadata, metadata)
+	// Unmarshal the JSON data into the new instance
+	if err = json.Unmarshal(jsonMetadata, metadata); err != nil {
+		return errors.Wrapf(err, "failed to unmarshal metadata")
+	}
+	return nil
 }
 
 // OAuthClientMetadata is a type for holding the metadata about an oauth client

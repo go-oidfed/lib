@@ -3,6 +3,7 @@ package oidfed
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"reflect"
 	"testing"
 
@@ -333,7 +334,9 @@ func TestMetadata_UnmarshalJSON(t *testing.T) {
 }
 
 func TestMetadata_FindEntityMetadata(t *testing.T) {
-	type AnotherEntityMetadata struct{}
+	type AnotherEntityMetadata struct {
+		AKey string `json:"a-key"`
+	}
 	var metadata Metadata
 	if err := json.Unmarshal(metadataMarshalData["extra metadata"].Data, &metadata); err != nil {
 		t.Fatal(err)
@@ -341,40 +344,118 @@ func TestMetadata_FindEntityMetadata(t *testing.T) {
 
 	testCases := map[string]struct {
 		metadataType    string
-		deserializeInto any
+		deserializeInto string
 		shouldSucceed   bool
+		expectedResult  any
 	}{
 		"Metadata is present and in an explicit struct field": {
 			metadataType:    "federation_entity",
-			deserializeInto: FederationEntityMetadata{},
+			deserializeInto: "federation_entity_metadata",
 			shouldSucceed:   true,
+			expectedResult: FederationEntityMetadata{
+				FederationFetchEndpoint: "https://federation.endpoint/fetch",
+				wasSet: map[string]bool{
+					"FederationFetchEndpoint": true,
+				},
+			},
+		},
+		"Metadata handle nil pointer parameter": {
+			metadataType:    "federation_entity",
+			deserializeInto: "",
+			shouldSucceed:   false,
+			expectedResult:  nil,
+		},
+		"Metadata present in Extra but incorrectly typed": {
+			metadataType:    "another-entity",
+			deserializeInto: "struct name",
+			shouldSucceed:   true,
+			expectedResult:  struct{ Name string }{},
+		},
+		"Struct field present but empty": {
+			metadataType:    "openid_provider",
+			deserializeInto: "openid_provider_metadata",
+			shouldSucceed:   false,
+			expectedResult:  OpenIDProviderMetadata{},
+		},
+		"Extra metadata with invalid entity type": {
+			metadataType:    "invalid-extra",
+			deserializeInto: "struct",
+			shouldSucceed:   false,
+			expectedResult:  struct{}{},
 		},
 		"Metadata is present and in extra metadata": {
 			metadataType:    "another-entity",
-			deserializeInto: AnotherEntityMetadata{},
+			deserializeInto: "another_entity_metadata",
 			shouldSucceed:   true,
+			expectedResult: AnotherEntityMetadata{
+				AKey: "a-value",
+			},
 		},
 		"Metadata is absent and would be in an explicit struct field": {
 			metadataType:    "openid_provider",
-			deserializeInto: OpenIDProviderMetadata{},
+			deserializeInto: "openid_provider_metadata",
 			shouldSucceed:   false,
+			expectedResult:  OpenIDProviderMetadata{},
 		},
 		"Metadata is absent and would be in extra metadata": {
 			metadataType:    "no-such-metadata",
-			deserializeInto: struct{}{},
+			deserializeInto: "struct",
 			shouldSucceed:   false,
+			expectedResult:  struct{}{},
 		},
 	}
 
 	for name, testCase := range testCases {
 		t.Run(
 			name, func(t *testing.T) {
-				err := metadata.FindEntityMetadata(testCase.metadataType, &testCase.deserializeInto)
+				var err error
+				var result any
+				switch testCase.deserializeInto {
+				case "federation_entity_metadata":
+					var deserialize FederationEntityMetadata
+					err = metadata.FindEntityMetadata(testCase.metadataType, &deserialize)
+					result = deserialize
+				case "openid_provider_metadata":
+					var deserialize OpenIDProviderMetadata
+					err = metadata.FindEntityMetadata(testCase.metadataType, &deserialize)
+					result = deserialize
+				case "another_entity_metadata":
+					var deserialize AnotherEntityMetadata
+					err = metadata.FindEntityMetadata(testCase.metadataType, &deserialize)
+					result = deserialize
+				case "struct":
+					var deserialize struct{}
+					err = metadata.FindEntityMetadata(testCase.metadataType, &deserialize)
+					result = deserialize
+				case "struct name":
+					var deserialize struct{ Name string }
+					err = metadata.FindEntityMetadata(testCase.metadataType, &deserialize)
+					result = deserialize
+				default:
+					err = metadata.FindEntityMetadata(testCase.metadataType, nil)
+				}
+				fmt.Printf("Result: %T %+v\n", result, result)
+
 				if testCase.shouldSucceed && err != nil {
 					t.Error(err)
 				} else if !testCase.shouldSucceed && err == nil {
 					t.Errorf("finding %s metadata should fail", testCase.metadataType)
-					t.Logf("%+v", testCase.deserializeInto)
+					if result != nil {
+						// t.Logf("%+v", reflect.ValueOf(testValue).Elem().Interface())
+						t.Logf("%+v", result)
+					}
+				}
+
+				if testCase.expectedResult != nil && result != nil {
+					if !reflect.DeepEqual(result, testCase.expectedResult) {
+						t.Errorf(
+							"Result not as expected.\nExpected: %T: %+v\n	 Got: %T: %+v",
+							testCase.expectedResult,
+							testCase.expectedResult,
+							result,
+							result,
+						)
+					}
 				}
 			},
 		)
