@@ -286,14 +286,30 @@ const (
 	MatchModeFuzzy                    matchMode = "fuzzy"
 )
 
-func matchDisplayName(input string, names map[string]string, mode matchMode) bool {
-	collectedNames := make([]string, len(names))
-	i := 0
-	for _, name := range names {
-		collectedNames[i] = name
-		i++
+// matchMultilingualDisplayName checks if any of the multilingual display names match the input string
+// using the specified match mode. This function works with the multilingual display names map structure
+// (map[string]map[string]string).
+//
+// Parameters:
+// - input: The string to match against display names
+// - multilingualNames: A map of entity types to maps of language tags to display names
+// - mode: The matching mode to use (e.g., fuzzy, exact, substring)
+//
+// Returns:
+// - true if any display name matches the input string, false otherwise
+func matchMultilingualDisplayName(input string, multilingualNames map[string]map[string]string, mode matchMode) bool {
+	// Collect all display names from all entity types and languages
+	var allNames []string
+
+	for _, langMap := range multilingualNames {
+		for _, name := range langMap {
+			if name != "" {
+				allNames = append(allNames, name)
+			}
+		}
 	}
-	return matchWithMode(input, collectedNames, mode)
+
+	return matchWithMode(input, allNames, mode)
 }
 
 func matchWithMode(input string, names []string, mode matchMode) bool {
@@ -412,16 +428,15 @@ func httpFetchList(listEndpoint string) ([]string, error) {
 }
 
 func getMetadataForCollectedEntity(e *CollectedEntity, trustAnchors []string) *Metadata {
-	if e.metadata != nil {
-		return e.metadata
+	if e.metadata == nil {
+		e.metadata, _ = DefaultMetadataResolver.Resolve(
+			apimodel.ResolveRequest{
+				Subject:     e.EntityID,
+				TrustAnchor: trustAnchors,
+			},
+		)
 	}
-	metadata, _ := DefaultMetadataResolver.Resolve(
-		apimodel.ResolveRequest{
-			Subject:     e.EntityID,
-			TrustAnchor: trustAnchors,
-		},
-	)
-	return metadata
+	return e.metadata
 }
 
 // EntityCollectionFilterOPSupportedGrantTypesIncludes returns an

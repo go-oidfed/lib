@@ -101,10 +101,8 @@ func (r *collectorResult) processSubordinate(
 			}
 
 			et := entityConfig.Metadata.GuessEntityTypes()
-			displayNames := entityConfig.Metadata.GuessDisplayNames()
-
-			if r.shouldIncludeEntity(entityConfig, et, displayNames, req) {
-				entity := r.createCollectedEntity(subordinateID, et, entityConfig, displayNames, req)
+			if r.shouldIncludeEntity(entityConfig, et, req) {
+				entity := r.createCollectedEntity(subordinateID, et, entityConfig, req)
 				r.entityChan <- entity
 			}
 
@@ -121,15 +119,22 @@ func (r *collectorResult) processSubordinate(
 func (r *collectorResult) shouldIncludeEntity(
 	entityConfig *EntityStatement,
 	entityTypes []string,
-	displayNames map[string]string,
 	req apimodel.EntityCollectionRequest,
 ) bool {
 	if req.EntityTypes != nil && len(arrays.Intersect(entityTypes, req.EntityTypes)) == 0 {
 		return false
 	}
 
-	if req.Query != "" && !matchDisplayName(req.Query, displayNames, MatchModeFuzzy) {
-		return false
+	if req.Query != "" {
+		if entityConfig != nil && entityConfig.Metadata != nil {
+			multilingualDisplayNames := entityConfig.Metadata.GuessMultilingualDisplayNames()
+			if !matchMultilingualDisplayName(req.Query, multilingualDisplayNames, MatchModeFuzzy) {
+				return false
+			}
+		} else {
+			// If no metadata available, exclude the entity
+			return false
+		}
 	}
 
 	for _, trustMarkType := range req.TrustMarkTypes {
@@ -168,7 +173,6 @@ func (r *collectorResult) createCollectedEntity(
 	entityID string,
 	entityTypes []string,
 	entityConfig *EntityStatement,
-	displayNames map[string]string,
 	req apimodel.EntityCollectionRequest,
 ) *CollectedEntity {
 	entity := &CollectedEntity{EntityID: entityID}
@@ -178,7 +182,6 @@ func (r *collectorResult) createCollectedEntity(
 	}
 
 	processUIClaims(entity, entityConfig, req)
-	processDisplayNames(entity, displayNames, req)
 	r.processTrustMarks(entity, entityConfig, req)
 
 	return entity
@@ -197,6 +200,7 @@ func processUIClaims(
 	req apimodel.EntityCollectionRequest,
 ) {
 	uiInfoClaims := []string{
+		"display_name",
 		"description",
 		"logo_uri",
 		"policy_uri",
@@ -205,10 +209,13 @@ func processUIClaims(
 
 	for _, claim := range uiInfoClaims {
 		if len(req.UIClaims) == 0 || slices.Contains(req.UIClaims, claim) {
-			entityConfig.Metadata.IterateStringClaim(
+			entityConfig.Metadata.IterateMultilingualStringClaim(
 				claim,
-				func(entityType, value string) {
-					_ = entity.setUIInfoField(entityType, claim, value)
+				func(entityType, langTag, value string) {
+					// If language tags are specified in the request, only include those languages
+					if shouldIncludeLanguage(langTag, req.LanguageTags) {
+						_ = entity.setMultilingualUIInfoField(entityType, claim, langTag, value)
+					}
 				},
 			)
 		}
@@ -224,18 +231,40 @@ func processUIClaims(
 	}
 }
 
-func processDisplayNames(
-	entity *CollectedEntity,
-	displayNames map[string]string,
-	req apimodel.EntityCollectionRequest,
-) {
-	if len(req.UIClaims) == 0 || slices.Contains(req.UIClaims, "display_name") {
-		for entityType, displayName := range displayNames {
-			if displayName != "" {
-				_ = entity.setUIInfoField(entityType, "display_name", displayName)
-			}
-		}
+// shouldIncludeLanguage determines if a language tag should be included based on the requested language tags.
+// This function is used to filter multilingual UI claims based on the language preferences
+// specified in the EntityCollectionRequest.
+//
+// The function follows these rules:
+// 1. If no language tags are specified in the request, all languages are included
+// 2. The default/untagged value (empty string) is always included
+// 3. A language tag is included if it exactly matches one of the requested language tags
+//
+// In a future implementation, this could be enhanced to support language tag matching
+// according to RFC4647 (e.g., "en" matches "en-US").
+//
+// Parameters:
+// - langTag: The language tag to check (empty string for default/untagged value)
+// - requestedLangTags: The list of requested language tags from the EntityCollectionRequest
+//
+// Returns:
+// - true if the language tag should be included, false otherwise
+func shouldIncludeLanguage(langTag string, requestedLangTags []string) bool {
+	// If no language tags are specified in the request, include all languages
+	if len(requestedLangTags) == 0 {
+		return true
 	}
+
+	// Empty language tag (default/untagged value) is always included
+	if langTag == "" {
+		return true
+	}
+
+	// Check if the language tag matches any of the requested language tags
+	// For now, we do a simple exact match
+	// In a more sophisticated implementation, we could handle language tag matching
+	// according to RFC4647 (e.g., "en" matches "en-US")
+	return slices.Contains(requestedLangTags, langTag)
 }
 
 func (r *collectorResult) processTrustMarks(
