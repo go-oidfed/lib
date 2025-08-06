@@ -22,11 +22,6 @@ type Metadata struct {
 	Extra map[string]any `json:"-"`
 }
 
-// DisplayNameGuesser is an interface for types to return a (guessed) display name
-type DisplayNameGuesser interface {
-	GuessDisplayName() string
-}
-
 // GuessEntityTypes returns a slice of entity types for which metadata is set
 func (m Metadata) GuessEntityTypes() (entityTypes []string) {
 	value := reflect.ValueOf(m)
@@ -43,75 +38,151 @@ func (m Metadata) GuessEntityTypes() (entityTypes []string) {
 	return
 }
 
-// GuessDisplayName implements the DisplayNameGuesser interface
-func (m OpenIDProviderMetadata) GuessDisplayName() string {
-	if dn := m.DisplayName; dn != "" {
-		return dn
-	}
-	return m.OrganizationName
+// GuessMultilingualDisplayNames collects display names for all present metadata types
+// with support for multiple languages according to BCP47 (RFC5646).
+// The returned map has entity types as keys and maps of language tags to display names as values.
+// An empty string language tag represents the default/untagged value.
+func (m Metadata) GuessMultilingualDisplayNames() map[string]map[string]string {
+	displayNames := make(map[string]map[string]string)
+	m.collectDefaultDisplayNames(displayNames)
+	m.collectLanguageTaggedDisplayNames(displayNames)
+	return displayNames
 }
 
-// GuessDisplayName implements the DisplayNameGuesser interface
-func (m OpenIDRelyingPartyMetadata) GuessDisplayName() string {
-	if dn := m.DisplayName; dn != "" {
-		return dn
-	}
-	return m.ClientName
-}
-
-// GuessDisplayName implements the DisplayNameGuesser interface
-func (m OAuthAuthorizationServerMetadata) GuessDisplayName() string {
-	if dn := m.DisplayName; dn != "" {
-		return dn
-	}
-	return m.OrganizationName
-}
-
-// GuessDisplayName implements the DisplayNameGuesser interface
-func (m OAuthClientMetadata) GuessDisplayName() string {
-	if dn := m.DisplayName; dn != "" {
-		return dn
-	}
-	return m.ClientName
-}
-
-// GuessDisplayName implements the DisplayNameGuesser interface
-func (m OAuthProtectedResourceMetadata) GuessDisplayName() string {
-	if dn := m.DisplayName; dn != "" {
-		return dn
-	}
-	return m.ResourceName
-}
-
-// GuessDisplayName implements the DisplayNameGuesser interface
-func (m FederationEntityMetadata) GuessDisplayName() string {
-	if dn := m.DisplayName; dn != "" {
-		return dn
-	}
-	return m.OrganizationName
-}
-
-// GuessDisplayNames collects (guessed) display names for all present metadata types.
-func (m Metadata) GuessDisplayNames() map[string]string {
-	result := make(map[string]string)
+// collectDefaultDisplayNames extracts default (untagged) display names from metadata fields
+func (m Metadata) collectDefaultDisplayNames(result map[string]map[string]string) {
 	value := reflect.ValueOf(m)
 	typ := value.Type()
 
 	for i := 0; i < value.NumField(); i++ {
 		field := value.Field(i)
-		if field.Kind() == reflect.Ptr && !field.IsNil() {
-			structField := typ.Field(i)
-			entityTag := structField.Tag.Get("json")
-			entityTag = strings.TrimSuffix(entityTag, ",omitempty")
+		if !isValidPointerField(field) {
+			continue
+		}
 
-			elem := field.Elem().Interface()
-			displayNamer, ok := elem.(DisplayNameGuesser)
-			if ok {
-				result[entityTag] = displayNamer.GuessDisplayName()
+		entityTag := getEntityTag(typ.Field(i))
+		ensureLanguageMapExists(result, entityTag)
+
+		elem := field.Elem()
+		elemType := elem.Type()
+
+		// First try to find DisplayName field
+		if displayName := findDisplayName(elem, elemType); displayName != "" {
+			result[entityTag][""] = displayName
+			continue
+		}
+
+		// If no DisplayName, look for fallback fields
+		if fallbackName := findFallbackName(elem, elemType); fallbackName != "" {
+			result[entityTag][""] = fallbackName
+		}
+	}
+}
+
+// collectLanguageTaggedDisplayNames extracts language-tagged display names from Extra fields
+func (m Metadata) collectLanguageTaggedDisplayNames(result map[string]map[string]string) {
+	value := reflect.ValueOf(m)
+	typ := value.Type()
+
+	for i := 0; i < value.NumField(); i++ {
+		field := value.Field(i)
+		if !isValidPointerField(field) {
+			continue
+		}
+
+		entityTag := getEntityTag(typ.Field(i))
+		elem := field.Elem()
+		elemType := elem.Type()
+
+		extraField, hasExtra := findExtraField(elem, elemType)
+		if !hasExtra || extraField.IsNil() {
+			continue
+		}
+
+		// Process language-tagged display names from Extra
+		extraMap := extraField.Interface().(map[string]interface{})
+		for key, val := range extraMap {
+			if !strings.HasPrefix(key, "display_name#") {
+				continue
+			}
+
+			langTag := strings.TrimPrefix(key, "display_name#")
+			if strVal, ok := val.(string); ok && strVal != "" {
+				ensureLanguageMapExists(result, entityTag)
+				result[entityTag][langTag] = strVal
 			}
 		}
 	}
-	return result
+}
+
+// isValidPointerField checks if a field is a non-nil pointer
+func isValidPointerField(field reflect.Value) bool {
+	return field.Kind() == reflect.Ptr && !field.IsNil()
+}
+
+// getEntityTag extracts the entity tag from a struct field
+func getEntityTag(structField reflect.StructField) string {
+	entityTag := structField.Tag.Get("json")
+	return strings.TrimSuffix(entityTag, ",omitempty")
+}
+
+// ensureLanguageMapExists ensures that a language map exists for the given entity type
+func ensureLanguageMapExists(result map[string]map[string]string, entityTag string) {
+	if result[entityTag] == nil {
+		result[entityTag] = make(map[string]string)
+	}
+}
+
+// findDisplayName searches for a DisplayName field in a struct and returns its value
+func findDisplayName(elem reflect.Value, elemType reflect.Type) string {
+	for j := 0; j < elem.NumField(); j++ {
+		subField := elem.Field(j)
+		subStructField := elemType.Field(j)
+		jsonTag := subStructField.Tag.Get("json")
+
+		if strings.HasPrefix(jsonTag, "display_name") && subField.Kind() == reflect.String {
+			displayName := subField.String()
+			if displayName != "" {
+				return displayName
+			}
+		}
+	}
+	return ""
+}
+
+// findFallbackName searches for fallback name fields in a struct and returns the first non-empty one
+func findFallbackName(elem reflect.Value, elemType reflect.Type) string {
+	fallbackFields := []string{
+		"OrganizationName",
+		"ClientName",
+		"ResourceName",
+	}
+
+	for j := 0; j < elem.NumField(); j++ {
+		subField := elem.Field(j)
+		subStructField := elemType.Field(j)
+		fieldName := subStructField.Name
+
+		for _, fallbackField := range fallbackFields {
+			if fieldName == fallbackField && subField.Kind() == reflect.String {
+				fallbackName := subField.String()
+				if fallbackName != "" {
+					return fallbackName
+				}
+			}
+		}
+	}
+	return ""
+}
+
+// findExtraField looks for an Extra field in a struct and returns it if found
+func findExtraField(elem reflect.Value, elemType reflect.Type) (reflect.Value, bool) {
+	for j := 0; j < elem.NumField(); j++ {
+		if elemType.Field(j).Name == "Extra" {
+			return elem.Field(j), true
+		}
+	}
+	return reflect.Value{}, false
 }
 
 // IterateStringSliceClaim collects a claim that has a []string value for all
@@ -176,6 +247,78 @@ func (m Metadata) IterateStringClaim(tag string, iterator func(entityType, value
 						iterator(entityTag, str)
 					}
 					break
+				}
+			}
+		}
+	}
+}
+
+// IterateMultilingualStringClaim collects a claim that has a string value for all metadata
+// types and calls the iterator on it with language tag information.
+// This is used for human-readable claims that can be represented in multiple languages
+// according to BCP47 (RFC5646).
+//
+// The function first processes the default/untagged values using IterateStringClaim,
+// then looks for language-tagged values in the Extra field of each metadata type.
+// Language-tagged values are expected to be stored in a map under a key with the
+// format "<claim>_lang" (e.g., "description_lang").
+//
+// The iterator function is called with three parameters:
+// - entityType: The type of entity (e.g., "openid_provider")
+// - langTag: The language tag (empty string for default/untagged values)
+// - value: The string value in the specified language
+//
+// Example language tags:
+// - "" (empty string): Default/untagged value
+// - "en": English
+// - "fr": French
+// - "en-US": American English
+// - "zh-Hans": Simplified Chinese
+func (m Metadata) IterateMultilingualStringClaim(tag string, iterator func(entityType, langTag, value string)) {
+	// First, handle the default case (no language tag)
+	m.IterateStringClaim(
+		tag, func(entityType, value string) {
+			iterator(entityType, "", value)
+		},
+	)
+
+	// Then check for language-tagged values in Extra
+	value := reflect.ValueOf(m)
+	typ := value.Type()
+
+	for i := 0; i < value.NumField(); i++ {
+		field := value.Field(i)
+		if field.Kind() == reflect.Ptr && !field.IsNil() {
+			structField := typ.Field(i)
+			entityTag := structField.Tag.Get("json")
+			entityTag = strings.TrimSuffix(entityTag, ",omitempty")
+
+			elem := field.Elem()
+			elemType := elem.Type()
+
+			// Check if this entity type has an Extra field
+			var extraField reflect.Value
+			var hasExtra bool
+			for j := 0; j < elem.NumField(); j++ {
+				subStructField := elemType.Field(j)
+				if subStructField.Name == "Extra" {
+					extraField = elem.Field(j)
+					hasExtra = true
+					break
+				}
+			}
+
+			if hasExtra && !extraField.IsNil() {
+				// Look for language-tagged values in Extra
+				extraMap := extraField.Interface().(map[string]interface{})
+				for key, val := range extraMap {
+					// Check if the key follows the pattern "tag#langTag"
+					if strings.HasPrefix(key, tag+"#") {
+						langTag := strings.TrimPrefix(key, tag+"#")
+						if strVal, ok := val.(string); ok && strVal != "" {
+							iterator(entityTag, langTag, strVal)
+						}
+					}
 				}
 			}
 		}
