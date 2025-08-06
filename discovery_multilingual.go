@@ -87,10 +87,7 @@ func (e *CollectedEntity) setMultilingualUIInfoField(entityType, jsonTag, langTa
 	for i := 0; i < multiUIInfoType.NumField(); i++ {
 		structField := multiUIInfoType.Field(i)
 		tag := structField.Tag.Get("json")
-		tagName := tag
-		if commaIdx := strings.Index(tag, ","); commaIdx != -1 {
-			tagName = tag[:commaIdx]
-		}
+		tagName, _, _ := strings.Cut(tag, ",")
 
 		if tagName == jsonTag {
 			fieldValue := multiUIInfoValue.Field(i)
