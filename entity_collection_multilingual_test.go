@@ -112,6 +112,97 @@ func TestLanguageFiltering(t *testing.T) {
 	)
 }
 
+// TestAdvancedLanguageMatching tests the advanced language matching functionality
+// using the golang.org/x/text/language package. It verifies that the shouldIncludeLanguage
+// function correctly implements language tag matching according to RFC4647.
+func TestAdvancedLanguageMatching(t *testing.T) {
+	testCases := []struct {
+		name              string
+		langTag           string
+		requestedLangTags []string
+		expected          bool
+		description       string
+	}{
+		{
+			name:              "Empty language tag is always included",
+			langTag:           "",
+			requestedLangTags: []string{"en"},
+			expected:          true,
+			description:       "Default/untagged value should always be included",
+		},
+		{
+			name:              "Exact match",
+			langTag:           "en",
+			requestedLangTags: []string{"en"},
+			expected:          true,
+			description:       "Exact match should be included",
+		},
+		{
+			name:              "No match",
+			langTag:           "fr",
+			requestedLangTags: []string{"en"},
+			expected:          false,
+			description:       "No match should not be included",
+		},
+		{
+			name:              "No requested tags includes all languages",
+			langTag:           "fr",
+			requestedLangTags: []string{},
+			expected:          true,
+			description:       "All languages should be included when no filter is specified",
+		},
+		{
+			name:              "Parent tag matches child tag (en matches en-US)",
+			langTag:           "en",
+			requestedLangTags: []string{"en-US"},
+			expected:          true,
+			description:       "Parent tag should match child tag",
+		},
+		{
+			name:              "Child tag matches parent tag (en-US matches en)",
+			langTag:           "en-US",
+			requestedLangTags: []string{"en"},
+			expected:          true,
+			description:       "Child tag should match parent tag",
+		},
+		{
+			name:              "Region variants match (en-US matches en-GB)",
+			langTag:           "en-US",
+			requestedLangTags: []string{"en-GB"},
+			expected:          true,
+			description:       "Different region variants should match at language level",
+		},
+		{
+			name:              "Script variants match (zh-Hans matches zh-Hant)",
+			langTag:           "zh-Hans",
+			requestedLangTags: []string{"zh-Hant"},
+			expected:          true,
+			description:       "Different script variants should match at language level",
+		},
+		{
+			name:              "Invalid tags fall back to exact matching (valid)",
+			langTag:           "invalid-tag",
+			requestedLangTags: []string{"invalid-tag"},
+			expected:          true,
+			description:       "Invalid tags should fall back to exact matching",
+		},
+		{
+			name:              "Invalid tags fall back to exact matching (invalid)",
+			langTag:           "invalid-tag",
+			requestedLangTags: []string{"en"},
+			expected:          false,
+			description:       "Invalid tags should not match valid tags",
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			result := shouldIncludeLanguage(tc.langTag, tc.requestedLangTags)
+			assert.Equal(t, tc.expected, result, tc.description)
+		})
+	}
+}
+
 func TestReadingMultilingualMetadata(t *testing.T) {
 	// Create a test metadata with multilingual values in the new format
 	metadata := Metadata{

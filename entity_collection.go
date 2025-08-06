@@ -5,6 +5,7 @@ import (
 	"sync"
 
 	arrays "github.com/adam-hanna/arrayOperations"
+	"golang.org/x/text/language"
 
 	"github.com/go-oidfed/lib/apimodel"
 	"github.com/go-oidfed/lib/internal"
@@ -238,10 +239,11 @@ func processUIClaims(
 // The function follows these rules:
 // 1. If no language tags are specified in the request, all languages are included
 // 2. The default/untagged value (empty string) is always included
-// 3. A language tag is included if it exactly matches one of the requested language tags
+// 3. A language tag is included if it matches one of the requested language tags according to RFC4647
 //
-// In a future implementation, this could be enhanced to support language tag matching
-// according to RFC4647 (e.g., "en" matches "en-US").
+// This implementation uses the golang.org/x/text/language package to perform advanced language
+// tag matching according to RFC4647. This means that broader language tags will match more
+// specific ones (e.g., "en" matches "en-US", "en-GB", etc.).
 //
 // Parameters:
 // - langTag: The language tag to check (empty string for default/untagged value)
@@ -260,11 +262,39 @@ func shouldIncludeLanguage(langTag string, requestedLangTags []string) bool {
 		return true
 	}
 
+	// Parse the language tag to check
+	tag, err := language.Parse(langTag)
+	if err != nil {
+		// If the tag is invalid, fall back to exact matching
+		return slices.Contains(requestedLangTags, langTag)
+	}
+
+	// Create a slice of language tags from the requested tags
+	var supportedTags []language.Tag
+	for _, reqTag := range requestedLangTags {
+		parsed, err := language.Parse(reqTag)
+		if err != nil {
+			// Skip invalid tags
+			continue
+		}
+		supportedTags = append(supportedTags, parsed)
+	}
+
+	// If there are no valid requested tags, include all languages
+	if len(supportedTags) == 0 {
+		return true
+	}
+
+	// Create a matcher with the requested language tags
+	matcher := language.NewMatcher(supportedTags)
+
 	// Check if the language tag matches any of the requested language tags
-	// For now, we do a simple exact match
-	// In a more sophisticated implementation, we could handle language tag matching
-	// according to RFC4647 (e.g., "en" matches "en-US")
-	return slices.Contains(requestedLangTags, langTag)
+	// The matcher will handle the advanced matching according to RFC4647
+	_, _, confidence := matcher.Match(tag)
+
+	// Include the language if there's a match with at least low confidence
+	// This ensures that broader tags match more specific ones (e.g., "en" matches "en-US")
+	return confidence >= language.Low
 }
 
 func (r *collectorResult) processTrustMarks(
