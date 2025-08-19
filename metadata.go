@@ -207,7 +207,7 @@ func (m Metadata) IterateStringSliceClaim(tag string, iterator func(entityType s
 				jsonTag := subStructField.Tag.Get("json")
 				jsonTag = strings.TrimSuffix(jsonTag, ",omitempty")
 
-				if jsonTag == tag && subField.Kind() == reflect.String {
+				if jsonTag == tag && subField.Kind() == reflect.Slice {
 					slice := subField.Interface().([]string)
 					if slice != nil {
 						iterator(entityTag, slice)
