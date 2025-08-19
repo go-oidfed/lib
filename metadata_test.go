@@ -483,6 +483,7 @@ func TestMetadata_ApplyInformationalClaimsToFederationEntity(t *testing.T) {
 			input: Metadata{
 				RelyingParty: &OpenIDRelyingPartyMetadata{
 					OrganizationName: "RP Org",
+					DisplayName:      "Display Name",
 					Contacts:         []string{"contact@rp.org"},
 					PolicyURI:        "https://rp.org/policy",
 				},
@@ -490,11 +491,13 @@ func TestMetadata_ApplyInformationalClaimsToFederationEntity(t *testing.T) {
 			expectedOutput: Metadata{
 				FederationEntity: &FederationEntityMetadata{
 					OrganizationName: "RP Org",
+					DisplayName:      "Display Name",
 					Contacts:         []string{"contact@rp.org"},
 					PolicyURI:        "https://rp.org/policy",
 				},
 				RelyingParty: &OpenIDRelyingPartyMetadata{
 					OrganizationName: "RP Org",
+					DisplayName:      "Display Name",
 					Contacts:         []string{"contact@rp.org"},
 					PolicyURI:        "https://rp.org/policy",
 				},

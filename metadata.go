@@ -35,14 +35,17 @@ type Metadata struct {
 func (m *Metadata) ApplyInformationalClaimsToFederationEntity() {
 	// Define informational claims by type
 	stringClaims := []string{
-		"organization_name",
-		"policy_uri",
-		"tos_uri",
+		"display_name",
+		"description",
 		"logo_uri",
-		"client_uri",
+		"policy_uri",
+		"information_uri",
+		"organization_name",
+		"organization_uri",
 	}
 	stringSliceClaims := []string{
 		"contacts",
+		"keywords",
 	}
 
 	// Process string claims
