@@ -461,3 +461,99 @@ func TestMetadata_FindEntityMetadata(t *testing.T) {
 		)
 	}
 }
+
+func TestMetadata_ApplyInformationalClaimsToFederationEntity(t *testing.T) {
+	testCases := map[string]struct {
+		input          Metadata
+		expectedOutput Metadata
+	}{
+		"Empty metadata": {
+			input:          Metadata{},
+			expectedOutput: Metadata{},
+		},
+		"Only federation entity with no claims": {
+			input: Metadata{
+				FederationEntity: &FederationEntityMetadata{OrganizationName: "Federation Only"},
+			},
+			expectedOutput: Metadata{
+				FederationEntity: &FederationEntityMetadata{OrganizationName: "Federation Only"},
+			},
+		},
+		"RelyingParty provides non-conflicting claims": {
+			input: Metadata{
+				RelyingParty: &OpenIDRelyingPartyMetadata{
+					OrganizationName: "RP Org",
+					Contacts:         []string{"contact@rp.org"},
+					PolicyURI:        "https://rp.org/policy",
+				},
+			},
+			expectedOutput: Metadata{
+				FederationEntity: &FederationEntityMetadata{
+					OrganizationName: "RP Org",
+					Contacts:         []string{"contact@rp.org"},
+					PolicyURI:        "https://rp.org/policy",
+				},
+				RelyingParty: &OpenIDRelyingPartyMetadata{
+					OrganizationName: "RP Org",
+					Contacts:         []string{"contact@rp.org"},
+					PolicyURI:        "https://rp.org/policy",
+				},
+			},
+		},
+		"Conflicting claims (ignored)": {
+			input: Metadata{
+				OpenIDProvider: &OpenIDProviderMetadata{
+					OrganizationName: "OP Org",
+					Contacts:         []string{"contact@op.org"},
+				},
+				RelyingParty: &OpenIDRelyingPartyMetadata{
+					OrganizationName: "RP Org",
+					Contacts:         []string{"contact@rp.org"},
+				},
+			},
+			expectedOutput: Metadata{
+				OpenIDProvider: &OpenIDProviderMetadata{
+					OrganizationName: "OP Org",
+					Contacts:         []string{"contact@op.org"},
+				},
+				RelyingParty: &OpenIDRelyingPartyMetadata{
+					OrganizationName: "RP Org",
+					Contacts:         []string{"contact@rp.org"},
+				},
+			},
+		},
+		"Federation entity already defined, no conflicting claims": {
+			input: Metadata{
+				FederationEntity: &FederationEntityMetadata{
+					OrganizationName: "Existing Federation",
+				},
+				OpenIDProvider: &OpenIDProviderMetadata{
+					OrganizationName: "OP Org",
+				},
+			},
+			expectedOutput: Metadata{
+				FederationEntity: &FederationEntityMetadata{
+					OrganizationName: "Existing Federation",
+				},
+				OpenIDProvider: &OpenIDProviderMetadata{
+					OrganizationName: "OP Org",
+				},
+			},
+		},
+	}
+
+	for name, testCase := range testCases {
+		t.Run(
+			name, func(t *testing.T) {
+				testCase.input.ApplyInformationalClaimsToFederationEntity()
+				if !reflect.DeepEqual(testCase.input, testCase.expectedOutput) {
+					t.Errorf(
+						"Output not as expected.\nExpected: %+v\n     Got: %+v",
+						render.Render(testCase.expectedOutput),
+						render.Render(testCase.input),
+					)
+				}
+			},
+		)
+	}
+}
