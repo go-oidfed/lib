@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"reflect"
+	"slices"
 	"strings"
 	"unsafe"
 
@@ -20,6 +21,167 @@ type Metadata struct {
 	FederationEntity         *FederationEntityMetadata         `json:"federation_entity,omitempty"`
 	// Extra contains additional metadata this entity should advertise.
 	Extra map[string]any `json:"-"`
+}
+
+// ApplyInformationalClaimsToFederationEntity copies common informational claims from other
+// entity types to the federation entity metadata if they have consistent values and are not already set on the
+// federation entity metadata.
+// It processes both string claims (like organization_name, policy_uri etc.) and string slice
+// claims (like contacts).
+// The method only copies a claim if:
+// - The value is consistent across all entity types that have it set
+// - The federation entity doesn't already have a value for that claim
+// If the federation entity metadata doesn't exist, it will be created when needed.
+func (m *Metadata) ApplyInformationalClaimsToFederationEntity() {
+	// Define informational claims by type
+	stringClaims := []string{
+		"display_name",
+		"description",
+		"logo_uri",
+		"policy_uri",
+		"information_uri",
+		"organization_name",
+		"organization_uri",
+	}
+	stringSliceClaims := []string{
+		"contacts",
+		"keywords",
+	}
+
+	// Process string claims
+	stringClaimsToCopy := m.collectConsistentStringClaims(stringClaims)
+
+	// Process string slice claims
+	stringSliceClaimsToCopy := m.collectConsistentStringSliceClaims(stringSliceClaims)
+
+	// Apply the collected claims to federation entity if needed
+	if len(stringClaimsToCopy) > 0 || len(stringSliceClaimsToCopy) > 0 {
+		if m.FederationEntity == nil {
+			m.FederationEntity = &FederationEntityMetadata{}
+		}
+
+		// Apply string claims
+		if len(stringClaimsToCopy) > 0 {
+			m.applyStringClaimsToFederationEntity(stringClaimsToCopy)
+		}
+
+		// Apply string slice claims
+		if len(stringSliceClaimsToCopy) > 0 {
+			m.applyStringSliceClaimsToFederationEntity(stringSliceClaimsToCopy)
+		}
+	}
+}
+
+// collectConsistentStringClaims gathers string claims that have consistent values across entity types
+// and aren't yet set on the federation entity.
+func (m *Metadata) collectConsistentStringClaims(claims []string) map[string]string {
+	result := make(map[string]string)
+
+	for _, claim := range claims {
+		var commonValue string
+		var hasConflict bool
+
+		m.IterateStringClaim(
+			claim, func(entityType, value string) {
+				if entityType == "federation_entity" {
+					if value != "" {
+						hasConflict = true // if federation_entity already has the value set, to not overwrite it
+					}
+					return
+				}
+				if value == "" {
+					return
+				}
+				if commonValue == "" {
+					commonValue = value
+					return
+				}
+				if value != commonValue {
+					hasConflict = true
+				}
+			},
+		)
+
+		if !hasConflict && commonValue != "" {
+			result[claim] = commonValue
+		}
+	}
+
+	return result
+}
+
+// collectConsistentStringSliceClaims gathers string slice claims that have consistent values across entity types
+// and aren't yet set on the federation entity.
+func (m *Metadata) collectConsistentStringSliceClaims(claims []string) map[string][]string {
+	result := make(map[string][]string)
+
+	for _, claim := range claims {
+		var commonValue []string
+		var hasConflict bool
+
+		m.IterateStringSliceClaim(
+			claim, func(entityType string, value []string) {
+				if entityType == "federation_entity" {
+					if value != nil {
+						hasConflict = true // if federation_entity already has the value set, to not overwrite it
+					}
+					return
+				}
+				if value == nil {
+					return
+				}
+				if commonValue == nil {
+					commonValue = value
+					return
+				}
+				if !slices.Equal(value, commonValue) {
+					hasConflict = true
+				}
+			},
+		)
+
+		if !hasConflict && commonValue != nil {
+			result[claim] = commonValue
+		}
+	}
+
+	return result
+}
+
+// applyStringClaimsToFederationEntity applies the given string claims to the federation entity using reflection.
+func (m *Metadata) applyStringClaimsToFederationEntity(claims map[string]string) {
+	v := reflect.ValueOf(m.FederationEntity).Elem()
+	t := v.Type()
+
+	for i := 0; i < t.NumField(); i++ {
+		field := t.Field(i)
+		if field.Type.Kind() != reflect.String {
+			continue
+		}
+		tag, _, _ := strings.Cut(field.Tag.Get("json"), ",")
+		value, found := claims[tag]
+		if found {
+			v.Field(i).SetString(value)
+		}
+	}
+}
+
+// applyStringSliceClaimsToFederationEntity applies the given string slice claims to the federation entity using reflection.
+func (m *Metadata) applyStringSliceClaimsToFederationEntity(claims map[string][]string) {
+	v := reflect.ValueOf(m.FederationEntity).Elem()
+	t := v.Type()
+
+	for i := 0; i < v.NumField(); i++ {
+		field := t.Field(i)
+		if field.Type.Kind() != reflect.Slice {
+			continue
+		}
+		tag, _, _ := strings.Cut(field.Tag.Get("json"), ",")
+		value, found := claims[tag]
+		if found {
+			v.Field(i).Set(reflect.ValueOf(value))
+		}
+	}
 }
 
 // GuessEntityTypes returns a slice of entity types for which metadata is set
@@ -207,7 +369,7 @@ func (m Metadata) IterateStringSliceClaim(tag string, iterator func(entityType s
 				jsonTag := subStructField.Tag.Get("json")
 				jsonTag = strings.TrimSuffix(jsonTag, ",omitempty")
 
-				if jsonTag == tag && subField.Kind() == reflect.String {
+				if jsonTag == tag && subField.Kind() == reflect.Slice {
 					slice := subField.Interface().([]string)
 					if slice != nil {
 						iterator(entityTag, slice)

@@ -93,6 +93,7 @@ func (f FederationEntity) EntityConfigurationPayload() *EntityStatementPayload {
 	if f.MetadataUpdater != nil {
 		f.MetadataUpdater(f.Metadata)
 	}
+	f.Metadata.ApplyInformationalClaimsToFederationEntity()
 	return &EntityStatementPayload{
 		Issuer:           f.EntityID,
 		Subject:          f.EntityID,
