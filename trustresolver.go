@@ -296,6 +296,9 @@ func (r TrustResolver) cacheSetTrustTree() error {
 	if err != nil {
 		return err
 	}
+	if err = cache.Delete(cache.Key(cache.KeyTrustTreeChains, string(hash))); err != nil {
+		return err
+	}
 	return cache.Set(
 		cache.Key(cache.KeyTrustTree, string(hash)), r.trustTree,
 		unixtime.Until(r.trustTree.expiresAt),
