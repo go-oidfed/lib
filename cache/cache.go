@@ -16,6 +16,7 @@ import (
 type Cache interface {
 	Get(key string, target any) (bool, error)
 	Set(key string, value any, expiration time.Duration) error
+	Delete(key string) error
 }
 
 // cacheWrapper is a type implementing the Cache interface and providing an
@@ -55,6 +56,12 @@ func (c cacheWrapper) Set(key string, value any, expiration time.Duration) error
 		return err
 	}
 	c.c.SetWithTTL(key, data, expiration)
+	return nil
+}
+
+// Delete implements the Cache interface
+func (c cacheWrapper) Delete(key string) error {
+	c.c.Delete(key)
 	return nil
 }
 
@@ -99,4 +106,9 @@ func Set(key string, value any, duration time.Duration) error {
 // Get obtains a value for the given key from the cache
 func Get(key string, target any) (bool, error) {
 	return cacheCache.Get(key, target)
+}
+
+// Delete deletes the value for the given key from the cache
+func Delete(key string) error {
+	return cacheCache.Delete(key)
 }

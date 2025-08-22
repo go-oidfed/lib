@@ -35,6 +35,11 @@ func (c redisCache) Set(key string, value any, expiration time.Duration) error {
 	return c.client.Set(c.ctx, key, data, expiration).Err()
 }
 
+// Delete implements the Cache in	terface
+func (c redisCache) Delete(key string) error {
+	return c.client.Del(c.ctx, key).Err()
+}
+
 // UseRedisCache creates a new redis cache with the passed options and sets it to be used
 func UseRedisCache(options *redis.Options) error {
 	rdb := redis.NewClient(options)
