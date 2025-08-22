@@ -230,7 +230,9 @@ func (r *TrustResolver) Resolve() {
 
 // VerifySignatures verifies the signatures of the internal trust tree
 func (r *TrustResolver) VerifySignatures() {
-	r.trustTree.verifySignatures(r.TrustAnchors)
+	if !r.trustTree.verifySignatures(r.TrustAnchors) {
+		r.trustTree = trustTree{}
+	}
 	if err := r.cacheSetTrustTree(); err != nil {
 		internal.Log(err.Error())
 	}
