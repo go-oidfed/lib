@@ -142,7 +142,7 @@ func (m *JWSMessages) UnmarshalJSON(data []byte) error {
 
 // TrustResolver is type for resolving trust chains from a StartingEntity to one or multiple TrustAnchors
 type TrustResolver struct {
-	TrustAnchors   []TrustAnchor
+	TrustAnchors   TrustAnchors
 	StartingEntity string
 	Types          []string
 	trustTree      trustTree
@@ -222,7 +222,7 @@ func (r *TrustResolver) Resolve() {
 		includedEntityTypes: strset.New(starting.Metadata.GuessEntityTypes()...),
 		subordinateIDs:      strset.New(starting.Subject),
 	}
-	r.trustTree.resolve(r.TrustAnchors)
+	r.trustTree.resolve(r.TrustAnchors.EntityIDs())
 	if err = r.cacheSetTrustTree(); err != nil {
 		internal.Log(err.Error())
 	}
@@ -314,15 +314,15 @@ type trustTree struct {
 	subordinateIDs      *strset.Set
 }
 
-func (t *trustTree) resolve(anchors TrustAnchors) {
+func (t *trustTree) resolve(anchors []string) {
 	if t.Entity == nil {
 		return
 	}
 
 	t.updateExpirationTime()
 
-	// Early return if entity is issued by a trust anchor
-	if sliceutils.SliceContains(t.Entity.Issuer, anchors.EntityIDs()) {
+	// Early return if the entity is issued by a trust anchor
+	if sliceutils.SliceContains(t.Entity.Issuer, anchors) {
 		return
 	}
 
@@ -335,7 +335,7 @@ func (t *trustTree) updateExpirationTime() {
 	}
 }
 
-func (t *trustTree) resolveAuthorities(anchors TrustAnchors) {
+func (t *trustTree) resolveAuthorities(anchors []string) {
 	if len(t.Entity.AuthorityHints) > 0 {
 		t.Authorities = make([]trustTree, len(t.Entity.AuthorityHints))
 	}
@@ -354,7 +354,7 @@ func (t *trustTree) resolveAuthorities(anchors TrustAnchors) {
 	}
 }
 
-func (t *trustTree) resolveAuthority(authorityID string, anchors TrustAnchors) (trustTree, error) {
+func (t *trustTree) resolveAuthority(authorityID string, anchors []string) (trustTree, error) {
 	authorityStmt, err := GetEntityConfiguration(authorityID)
 	if err != nil {
 		return trustTree{}, err
@@ -416,7 +416,7 @@ func (t *trustTree) updateExpirationTimeFromSubordinate(subordinateStmt *EntityS
 }
 
 func (t *trustTree) createAuthorityTrustTree(
-	authorityStmt, subordinateStmt *EntityStatement, authorityID string, anchors TrustAnchors,
+	authorityStmt, subordinateStmt *EntityStatement, authorityID string, anchors []string,
 ) trustTree {
 	entityTypes := t.includedEntityTypes.Copy()
 	entityTypes.Add(authorityStmt.Metadata.GuessEntityTypes()...)
