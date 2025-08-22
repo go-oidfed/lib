@@ -142,7 +142,7 @@ func (m *JWSMessages) UnmarshalJSON(data []byte) error {
 
 // TrustResolver is type for resolving trust chains from a StartingEntity to one or multiple TrustAnchors
 type TrustResolver struct {
-	TrustAnchors   []TrustAnchor
+	TrustAnchors   TrustAnchors
 	StartingEntity string
 	Types          []string
 	trustTree      trustTree
@@ -222,7 +222,7 @@ func (r *TrustResolver) Resolve() {
 		includedEntityTypes: strset.New(starting.Metadata.GuessEntityTypes()...),
 		subordinateIDs:      strset.New(starting.Subject),
 	}
-	r.trustTree.resolve(r.TrustAnchors)
+	r.trustTree.resolve(r.TrustAnchors.EntityIDs())
 	if err = r.cacheSetTrustTree(); err != nil {
 		internal.Log(err.Error())
 	}
@@ -230,7 +230,9 @@ func (r *TrustResolver) Resolve() {
 
 // VerifySignatures verifies the signatures of the internal trust tree
 func (r *TrustResolver) VerifySignatures() {
-	r.trustTree.verifySignatures(r.TrustAnchors)
+	if !r.trustTree.verifySignatures(r.TrustAnchors) {
+		r.trustTree = trustTree{}
+	}
 	if err := r.cacheSetTrustTree(); err != nil {
 		internal.Log(err.Error())
 	}
@@ -296,6 +298,9 @@ func (r TrustResolver) cacheSetTrustTree() error {
 	if err != nil {
 		return err
 	}
+	if err = cache.Delete(cache.Key(cache.KeyTrustTreeChains, string(hash))); err != nil {
+		return err
+	}
 	return cache.Set(
 		cache.Key(cache.KeyTrustTree, string(hash)), r.trustTree,
 		unixtime.Until(r.trustTree.expiresAt),
@@ -314,15 +319,15 @@ type trustTree struct {
 	subordinateIDs      *strset.Set
 }
 
-func (t *trustTree) resolve(anchors TrustAnchors) {
+func (t *trustTree) resolve(anchors []string) {
 	if t.Entity == nil {
 		return
 	}
 
 	t.updateExpirationTime()
 
-	// Early return if entity is issued by a trust anchor
-	if sliceutils.SliceContains(t.Entity.Issuer, anchors.EntityIDs()) {
+	// Early return if the entity is issued by a trust anchor
+	if sliceutils.SliceContains(t.Entity.Issuer, anchors) {
 		return
 	}
 
@@ -335,7 +340,7 @@ func (t *trustTree) updateExpirationTime() {
 	}
 }
 
-func (t *trustTree) resolveAuthorities(anchors TrustAnchors) {
+func (t *trustTree) resolveAuthorities(anchors []string) {
 	if len(t.Entity.AuthorityHints) > 0 {
 		t.Authorities = make([]trustTree, len(t.Entity.AuthorityHints))
 	}
@@ -354,7 +359,7 @@ func (t *trustTree) resolveAuthorities(anchors TrustAnchors) {
 	}
 }
 
-func (t *trustTree) resolveAuthority(authorityID string, anchors TrustAnchors) (trustTree, error) {
+func (t *trustTree) resolveAuthority(authorityID string, anchors []string) (trustTree, error) {
 	authorityStmt, err := GetEntityConfiguration(authorityID)
 	if err != nil {
 		return trustTree{}, err
@@ -416,7 +421,7 @@ func (t *trustTree) updateExpirationTimeFromSubordinate(subordinateStmt *EntityS
 }
 
 func (t *trustTree) createAuthorityTrustTree(
-	authorityStmt, subordinateStmt *EntityStatement, authorityID string, anchors TrustAnchors,
+	authorityStmt, subordinateStmt *EntityStatement, authorityID string, anchors []string,
 ) trustTree {
 	entityTypes := t.includedEntityTypes.Copy()
 	entityTypes.Add(authorityStmt.Metadata.GuessEntityTypes()...)
@@ -500,15 +505,21 @@ func (t *trustTree) verifySignatures(anchors TrustAnchors) bool {
 	if t.signaturesVerified {
 		return true
 	}
-	if t.Subordinate != nil {
+	if t.Entity == nil {
+		return false
+	}
+	if t.Entity.Issuer == t.Entity.Subject {
 		for _, ta := range anchors {
-			if utils.Equal(ta.EntityID, t.Entity.Issuer, t.Entity.Subject, t.Subordinate.Issuer) {
+			if ta.EntityID == t.Entity.Issuer {
 				// t is about a TA
 				jwks := ta.JWKS
 				if jwks.Set == nil {
 					jwks = t.Entity.JWKS
 				}
-				t.signaturesVerified = t.Entity.Verify(jwks) && t.Subordinate.Verify(jwks)
+				t.signaturesVerified = t.Entity.Verify(jwks)
+				if t.signaturesVerified && t.Subordinate != nil {
+					t.signaturesVerified = t.Subordinate.Verify(jwks)
+				}
 				return t.signaturesVerified
 			}
 		}
