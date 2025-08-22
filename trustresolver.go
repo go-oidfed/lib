@@ -505,6 +505,9 @@ func (t *trustTree) verifySignatures(anchors TrustAnchors) bool {
 	if t.signaturesVerified {
 		return true
 	}
+	if t.Entity == nil {
+		return false
+	}
 	if t.Entity.Issuer == t.Entity.Subject {
 		for _, ta := range anchors {
 			if ta.EntityID == t.Entity.Issuer {
