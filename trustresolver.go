@@ -505,15 +505,18 @@ func (t *trustTree) verifySignatures(anchors TrustAnchors) bool {
 	if t.signaturesVerified {
 		return true
 	}
-	if t.Subordinate != nil {
+	if t.Entity.Issuer == t.Entity.Subject {
 		for _, ta := range anchors {
-			if utils.Equal(ta.EntityID, t.Entity.Issuer, t.Entity.Subject, t.Subordinate.Issuer) {
+			if ta.EntityID == t.Entity.Issuer {
 				// t is about a TA
 				jwks := ta.JWKS
 				if jwks.Set == nil {
 					jwks = t.Entity.JWKS
 				}
-				t.signaturesVerified = t.Entity.Verify(jwks) && t.Subordinate.Verify(jwks)
+				t.signaturesVerified = t.Entity.Verify(jwks)
+				if t.signaturesVerified && t.Subordinate != nil {
+					t.signaturesVerified = t.Subordinate.Verify(jwks)
+				}
 				return t.signaturesVerified
 			}
 		}
