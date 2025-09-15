@@ -98,9 +98,9 @@ type openIDProviderMetadata struct {
 	GrantTypesSupported                                       []string          `json:"grant_types_supported,omitempty"`
 	ACRValuesSupported                                        []string          `json:"acr_values_supported,omitempty"`
 	SubjectTypesSupported                                     []string          `json:"subject_types_supported"`
-	IDTokenSignedResponseAlgValuesSupported                   []string          `json:"id_token_signed_response_alg_values_supported,omitempty"`
-	IDTokenEncryptedResponseAlgValuesSupported                []string          `json:"id_token_encrypted_response_alg_values_supported,omitempty"`
-	IDTokenEncryptedResponseEncValuesSupported                []string          `json:"id_token_encrypted_response_enc_values_supported,omitempty"`
+	IDTokenSigningAlgValuesSupported                          []string          `json:"id_token_signing_alg_values_supported,omitempty"`
+	IDTokenEncryptionAlgValuesSupported                       []string          `json:"id_token_encryption_alg_values_supported,omitempty"`
+	IDTokenEncryptionEncValuesSupported                       []string          `json:"id_token_encryption_enc_values_supported,omitempty"`
 	UserinfoSignedResponseAlgValuesSupported                  []string          `json:"userinfo_signed_response_alg_values_supported,omitempty"`
 	UserinfoEncryptedResponseAlgValuesSupported               []string          `json:"userinfo_encrypted_response_alg_values_supported,omitempty"`
 	UserinfoEncryptedResponseEncValuesSupported               []string          `json:"userinfo_encrypted_response_enc_values_supported,omitempty"`
