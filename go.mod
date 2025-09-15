@@ -1,6 +1,6 @@
 module github.com/go-oidfed/lib
 
-go 1.24
+go 1.24.0
 
 toolchain go1.24.1
 
@@ -22,7 +22,7 @@ require (
 	github.com/vmihailenco/msgpack/v5 v5.4.1
 	github.com/zachmann/go-utils v0.0.0-20250730083409-d07980e6b54b
 	golang.org/x/crypto v0.41.0
-	golang.org/x/text v0.28.0
+	golang.org/x/text v0.29.0
 	gopkg.in/yaml.v3 v3.0.1
 	tideland.dev/go/slices v0.2.0
 )
