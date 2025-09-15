@@ -42,9 +42,9 @@ type openIDRelyingPartyMetadata struct {
 	UserinfoSignedResponseAlg             string   `json:"userinfo_signed_response_alg,omitempty"`
 	UserinfoEncryptedResponseAlg          string   `json:"userinfo_encrypted_response_alg,omitempty"`
 	UserinfoEncryptedResponseEnc          string   `json:"userinfo_encrypted_response_enc,omitempty"`
-	RequestSignedResponseAlg              string   `json:"request_signed_response_alg,omitempty"`
-	RequestEncryptedResponseAlg           string   `json:"request_encrypted_response_alg,omitempty"`
-	RequestEncryptedResponseEnc           string   `json:"request_encrypted_response_enc,omitempty"`
+	RequestObjectSigningAlg               string   `json:"request_object_signing_alg,omitempty"`
+	RequestObjectEncryptionAlg            string   `json:"request_object_encryption_alg,omitempty"`
+	RequestObjectEncryptionEnc            string   `json:"request_object_encryption_enc,omitempty"`
 	TokenEndpointAuthMethod               string   `json:"token_endpoint_auth_method,omitempty"`
 	TokenEndpointAuthSigningAlg           string   `json:"token_endpoint_auth_signing_alg,omitempty"`
 	DefaultMaxAge                         int64    `json:"default_max_age,omitempty"`
