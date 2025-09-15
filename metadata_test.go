@@ -41,7 +41,7 @@ var metadataMarshalData = map[string]marshalData{
 		},
 	},
 	"federation + op": {
-		Data: []byte(`{"federation_entity":{"contacts":["contact@op.example.com"],"organization_name":"Test OP Org"},"openid_provider":{"authorization_endpoint":"https://op.example.com/authorization","client_registration_types_supported":["automatic"],"code_challenge_methods_supported":["S256"],"grant_types_supported":["authorization_code","refresh_token"],"id_token_signed_response_alg_values_supported":["ES256","ES512"],"introspection_endpoint":"https://op.example.com/introspect","issuer":"https://op.example.com","jwks_uri":"https://op.example.com/jwks","organization_name":"Test OP Org","request_object_signing_alg_values_supported":["ES256","ES512"],"response_types_supported":["code"],"revocation_endpoint":"https://op.example.com/revoke","scopes_supported":["openid","profile","email","offline_access"],"subject_types_supported":null,"token_endpoint":"https://op.example.com/token","userinfo_endpoint":"https://op.example.com/userinfo","userinfo_signed_response_alg_values_supported":["ES256","ES512"]}}`),
+		Data: []byte(`{"federation_entity":{"contacts":["contact@op.example.com"],"organization_name":"Test OP Org"},"openid_provider":{"authorization_endpoint":"https://op.example.com/authorization","client_registration_types_supported":["automatic"],"code_challenge_methods_supported":["S256"],"grant_types_supported":["authorization_code","refresh_token"],"id_token_signing_alg_values_supported":["ES256","ES512"],"introspection_endpoint":"https://op.example.com/introspect","issuer":"https://op.example.com","jwks_uri":"https://op.example.com/jwks","organization_name":"Test OP Org","request_object_signing_alg_values_supported":["ES256","ES512"],"response_types_supported":["code"],"revocation_endpoint":"https://op.example.com/revoke","scopes_supported":["openid","profile","email","offline_access"],"subject_types_supported":null,"token_endpoint":"https://op.example.com/token","userinfo_endpoint":"https://op.example.com/userinfo","userinfo_signed_response_alg_values_supported":["ES256","ES512"]}}`),
 		Object: Metadata{
 			OpenIDProvider: &OpenIDProviderMetadata{
 				Issuer:                "https://op.example.com",
@@ -59,7 +59,7 @@ var metadataMarshalData = map[string]marshalData{
 					"authorization_code",
 					"refresh_token",
 				},
-				IDTokenSignedResponseAlgValuesSupported: []string{
+				IDTokenSigningAlgValuesSupported: []string{
 					"ES256",
 					"ES512",
 				},
@@ -85,7 +85,7 @@ var metadataMarshalData = map[string]marshalData{
 					"ScopesSupported":                          true,
 					"ResponseTypesSupported":                   true,
 					"GrantTypesSupported":                      true,
-					"IDTokenSignedResponseAlgValuesSupported":  true,
+					"IDTokenSigningAlgValuesSupported":         true,
 					"UserinfoSignedResponseAlgValuesSupported": true,
 					"RequestObjectSigningAlgValuesSupported":   true,
 					"RevocationEndpoint":                       true,
