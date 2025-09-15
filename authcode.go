@@ -158,7 +158,7 @@ func (f FederationLeaf) GetAuthorizationURL(
 	requestParams["scope"] = scope
 
 	requestObject, err := f.oidcROProducer.RequestObject(
-		requestParams, opMetadata.RequestObjectSignedResponseAlgValuesSupported...,
+		requestParams, opMetadata.RequestObjectSigningAlgValuesSupported...,
 	)
 	if err != nil {
 		return "", errors.Wrap(err, "could not create request object")

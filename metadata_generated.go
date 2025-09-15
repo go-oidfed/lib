@@ -279,9 +279,9 @@ type OpenIDProviderMetadata struct {
 	UserinfoSignedResponseAlgValuesSupported                  []string            `json:"userinfo_signed_response_alg_values_supported,omitempty"`
 	UserinfoEncryptedResponseAlgValuesSupported               []string            `json:"userinfo_encrypted_response_alg_values_supported,omitempty"`
 	UserinfoEncryptedResponseEncValuesSupported               []string            `json:"userinfo_encrypted_response_enc_values_supported,omitempty"`
-	RequestObjectSignedResponseAlgValuesSupported             []string            `json:"request_object_signed_response_alg_values_supported,omitempty"`
-	RequestObjectEncryptedResponseAlgValuesSupported          []string            `json:"request_object_encrypted_response_alg_values_supported,omitempty"`
-	RequestObjectEncryptedResponseEncValuesSupported          []string            `json:"request_object_encrypted_response_enc_values_supported,omitempty"`
+	RequestObjectSigningAlgValuesSupported                    []string            `json:"request_object_signing_alg_values_supported,omitempty"`
+	RequestObjectEncryptionAlgValuesSupported                 []string            `json:"request_object_encryption_alg_values_supported,omitempty"`
+	RequestObjectEncryptionEncValuesSupported                 []string            `json:"request_object_encryption_enc_values_supported,omitempty"`
 	TokenEndpointAuthMethodsSupported                         []string            `json:"token_endpoint_auth_methods_supported,omitempty"`
 	TokenEndpointAuthSigningAlgValuesSupported                []string            `json:"token_endpoint_auth_signing_alg_values_supported,omitempty"`
 	DisplayValuesSupported                                    []string            `json:"display_values_supported,omitempty"`
@@ -363,9 +363,9 @@ type openIDProviderMetadataWithPtrs struct {
 	UserinfoSignedResponseAlgValuesSupported                  []string            `json:"userinfo_signed_response_alg_values_supported,omitempty"`
 	UserinfoEncryptedResponseAlgValuesSupported               []string            `json:"userinfo_encrypted_response_alg_values_supported,omitempty"`
 	UserinfoEncryptedResponseEncValuesSupported               []string            `json:"userinfo_encrypted_response_enc_values_supported,omitempty"`
-	RequestObjectSignedResponseAlgValuesSupported             []string            `json:"request_object_signed_response_alg_values_supported,omitempty"`
-	RequestObjectEncryptedResponseAlgValuesSupported          []string            `json:"request_object_encrypted_response_alg_values_supported,omitempty"`
-	RequestObjectEncryptedResponseEncValuesSupported          []string            `json:"request_object_encrypted_response_enc_values_supported,omitempty"`
+	RequestObjectSigningAlgValuesSupported                    []string            `json:"request_object_signing_alg_values_supported,omitempty"`
+	RequestObjectEncryptionAlgValuesSupported                 []string            `json:"request_object_encryption_alg_values_supported,omitempty"`
+	RequestObjectEncryptionEncValuesSupported                 []string            `json:"request_object_encryption_enc_values_supported,omitempty"`
 	TokenEndpointAuthMethodsSupported                         []string            `json:"token_endpoint_auth_methods_supported,omitempty"`
 	TokenEndpointAuthSigningAlgValuesSupported                []string            `json:"token_endpoint_auth_signing_alg_values_supported,omitempty"`
 	DisplayValuesSupported                                    []string            `json:"display_values_supported,omitempty"`
