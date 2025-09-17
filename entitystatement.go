@@ -81,7 +81,7 @@ type EntityStatementPayload struct {
 	TrustMarkIssuers   AllowedTrustMarkIssuers  `json:"trust_mark_issuers,omitempty"`
 	TrustMarkOwners    TrustMarkOwners          `json:"trust_mark_owners,omitempty"`
 	SourceEndpoint     string                   `json:"source_endpoint,omitempty"`
-	TrustAnchorID      string                   `json:"trust_anchor_id,omitempty"`
+	TrustAnchor        string                   `json:"trust_anchor,omitempty"`
 	Extra              map[string]interface{}   `json:"-"`
 }
 
