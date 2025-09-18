@@ -55,9 +55,14 @@ func Get(url string, params url.Values, res interface{}) (*resty.Response, *Http
 	return resp, nil, nil
 }
 
-// Post performs a http POST request and parses the response into the given interface{}
-func Post(url string, req interface{}, res interface{}) (*resty.Response, *HttpError, error) {
-	resp, err := client.R().SetBody(req).SetError(&HttpError{}).SetResult(res).Post(url)
+// Post performs an http POST request and parses the response into the given
+// interface{}
+func Post(url string, req interface{}, res interface{}, headers map[string]string) (
+	*resty.Response, *HttpError, error,
+) {
+	resp, err := client.R().SetBody(req).SetHeaders(headers).SetError(&HttpError{}).SetResult(
+		res,
+	).Post(url)
 	if err != nil {
 		return nil, nil, errors.WithStack(err)
 	}
