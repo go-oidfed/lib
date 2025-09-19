@@ -3,7 +3,7 @@ module github.com/go-oidfed/lib
 go 1.24.4
 
 require (
-	github.com/TwiN/gocache/v2 v2.2.2
+	github.com/TwiN/gocache/v2 v2.3.1
 	github.com/adam-hanna/arrayOperations v1.0.1
 	github.com/coreos/go-oidc/v3 v3.15.0
 	github.com/go-resty/resty/v2 v2.16.5
