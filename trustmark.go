@@ -54,8 +54,14 @@ func (tms TrustMarkInfos) Find(matcher func(info TrustMarkInfo) bool) *TrustMark
 }
 
 // FindByID returns the (first) TrustMarkInfo with the passed id
+// DEPRECATED: use FindByType instead
 func (tms TrustMarkInfos) FindByID(id string) *TrustMarkInfo {
-	return tms.Find(func(info TrustMarkInfo) bool { return info.TrustMarkType == id })
+	return tms.FindByType(id)
+}
+
+// FindByType returns the (first) TrustMarkInfo with the passed trust mark type
+func (tms TrustMarkInfos) FindByType(trustMarkType string) *TrustMarkInfo {
+	return tms.Find(func(info TrustMarkInfo) bool { return info.TrustMarkType == trustMarkType })
 }
 
 // TrustMarkInfo is a type for holding a trust mark as represented in an EntityConfiguration

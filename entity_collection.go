@@ -152,7 +152,7 @@ func (r *collectorResult) verifyTrustMark(
 	trustMarkType string,
 	trustAnchor string,
 ) bool {
-	trustMarkInfo := entityConfig.TrustMarks.FindByID(trustMarkType)
+	trustMarkInfo := entityConfig.TrustMarks.FindByType(trustMarkType)
 	if trustMarkInfo == nil {
 		return false
 	}
