@@ -1,11 +1,16 @@
 package oidfed
 
 import (
+	"slices"
 	"sync"
 	"time"
 
+	log "github.com/sirupsen/logrus"
+
 	"github.com/go-oidfed/lib/apimodel"
+	"github.com/go-oidfed/lib/cache"
 	"github.com/go-oidfed/lib/internal"
+	"github.com/go-oidfed/lib/internal/utils"
 	"github.com/go-oidfed/lib/unixtime"
 )
 
@@ -27,13 +32,13 @@ type PeriodicEntityCollector struct {
 	// If 0 or negative, a sensible default is used.
 	Concurrency int `yaml:"concurrency"`
 
-	// internal state
-	startOnce sync.Once
-	stopOnce  sync.Once
-	stopCh    chan struct{}
+	SortEntitiesComparisonFunc func(a, b *CollectedEntity) int
 
-	cacheMu sync.RWMutex
-	cache   map[string]cachedCollection
+	// internal state
+	cacheMutex sync.RWMutex
+	startOnce  sync.Once
+	stopOnce   sync.Once
+	stopCh     chan struct{}
 }
 
 type cachedCollection struct {
@@ -44,6 +49,13 @@ type cachedCollection struct {
 // defaultInterval is used if no interval is configured.
 const defaultInterval = time.Hour * 8
 
+// periodicCacheSubsystem defines the cache subsystem key for this collector.
+const (
+	periodicCacheSubsystem    = "periodic_entity_collection"
+	cacheSubSubSystemAll      = "all"
+	cacheSubSubSystemRequests = "requests"
+)
+
 // Start launches the periodic background collection. Calling Start multiple
 // times is safe; only the first call has an effect.
 func (p *PeriodicEntityCollector) Start() {
@@ -53,9 +65,6 @@ func (p *PeriodicEntityCollector) Start() {
 				p.Collector = &SimpleEntityCollector{}
 			}
 			p.stopCh = make(chan struct{})
-			if p.cache == nil {
-				p.cache = make(map[string]cachedCollection)
-			}
 
 			interval := p.Interval
 			if interval <= 0 {
@@ -96,16 +105,44 @@ func (p *PeriodicEntityCollector) Stop() {
 // and trimming based on the request.
 func (p *PeriodicEntityCollector) CollectEntities(req apimodel.EntityCollectionRequest) *EntityCollectionResponse {
 	p.Start()
-	p.cacheMu.RLock()
-	cc := p.cache[req.TrustAnchor]
-	p.cacheMu.RUnlock()
-	if len(cc.Entities) == 0 {
+
+	reqHash, err := utils.HashStruct(req)
+	if err != nil {
+		log.WithError(err).Error("error while hashing request")
 		return nil
 	}
-	return &EntityCollectionResponse{
+	cacheRequestKey := cache.Key(periodicCacheSubsystem, cacheSubSubSystemRequests, reqHash)
+	var res EntityCollectionResponse
+	p.cacheMutex.RLock()
+	set, err := cache.Get(cacheRequestKey, &res)
+	p.cacheMutex.RUnlock()
+	if err != nil {
+		log.WithError(err).Error("error while retrieving cached response")
+		return nil
+	}
+	if set {
+		return &res
+	}
+
+	var cc cachedCollection
+	p.cacheMutex.RLock()
+	set, err = cache.Get(cache.Key(periodicCacheSubsystem, cacheSubSubSystemAll, req.TrustAnchor), &cc)
+	p.cacheMutex.RUnlock()
+	if err != nil {
+		internal.Logf("PeriodicEntityCollector cache get error: %v", err)
+		return nil
+	}
+	if !set || len(cc.Entities) == 0 {
+		return nil
+	}
+	res = EntityCollectionResponse{
 		FederationEntities: FilterAndTrimEntities(cc.Entities, req),
 		LastUpdated:        &cc.LastUpdated,
 	}
+	if err = cache.Set(cacheRequestKey, res, p.Interval); err != nil {
+		log.Errorf("PeriodicEntityCollector cache set error: %v", err)
+	}
+	return &res
 }
 
 func (p *PeriodicEntityCollector) runOnce() {
@@ -122,8 +159,14 @@ func (p *PeriodicEntityCollector) runOnce() {
 	if conc > len(anchors) {
 		conc = len(anchors)
 	}
+	p.cacheMutex.Lock()
+	defer p.cacheMutex.Unlock()
 
-	// Worker pool pattern with buffered semaphore channel.
+	if err := cache.Clear(periodicCacheSubsystem); err != nil {
+		log.Errorf("PeriodicEntityCollector cache clear error: %v", err)
+	}
+
+	// Worker pool pattern with a buffered semaphore channel.
 	sem := make(chan struct{}, conc)
 	var wg sync.WaitGroup
 	for _, ta := range anchors {
@@ -145,12 +188,19 @@ func (p *PeriodicEntityCollector) runOnce() {
 			if res == nil {
 				return
 			}
-			p.cacheMu.Lock()
-			p.cache[trustAnchor] = cachedCollection{
-				Entities:    res.FederationEntities,
-				LastUpdated: unixtime.Now(),
+			if p.SortEntitiesComparisonFunc != nil {
+				slices.SortFunc(res.FederationEntities, p.SortEntitiesComparisonFunc)
 			}
-			p.cacheMu.Unlock()
+			if err := cache.Set(
+				cache.Key(periodicCacheSubsystem, cacheSubSubSystemAll, trustAnchor),
+				cachedCollection{
+					Entities:    res.FederationEntities,
+					LastUpdated: unixtime.Now(),
+				},
+				p.Interval,
+			); err != nil {
+				log.Errorf("PeriodicEntityCollector cache set error: %v", err)
+			}
 		}(ta)
 	}
 	wg.Wait()
