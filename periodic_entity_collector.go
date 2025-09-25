@@ -33,6 +33,7 @@ type PeriodicEntityCollector struct {
 	Concurrency int `yaml:"concurrency"`
 
 	SortEntitiesComparisonFunc func(a, b *CollectedEntity) int
+	PagingLimit                int `yaml:"paging_limit"`
 
 	// internal state
 	cacheMutex sync.RWMutex
@@ -105,7 +106,9 @@ func (p *PeriodicEntityCollector) Stop() {
 // and trimming based on the request.
 func (p *PeriodicEntityCollector) CollectEntities(req apimodel.EntityCollectionRequest) *EntityCollectionResponse {
 	p.Start()
-
+	if p.PagingLimit < req.Limit || req.Limit == 0 {
+		req.Limit = p.PagingLimit
+	}
 	reqHash, err := utils.HashStruct(req)
 	if err != nil {
 		log.WithError(err).Error("error while hashing request")
@@ -135,14 +138,65 @@ func (p *PeriodicEntityCollector) CollectEntities(req apimodel.EntityCollectionR
 	if !set || len(cc.Entities) == 0 {
 		return nil
 	}
+	entities := FilterAndTrimEntities(cc.Entities, req)
+	if req.FromEntityID != "" {
+		n, found := slices.BinarySearchFunc(
+			entities, &CollectedEntity{EntityID: req.FromEntityID}, p.SortEntitiesComparisonFunc,
+		)
+		if !found {
+			//TODO return error
+			return nil
+		}
+		entities = entities[n:]
+	}
+	var nextEntityID string
+	if len(entities) > req.Limit {
+		others := entities[req.Limit:]
+		entities = entities[:req.Limit]
+		nextEntityID = others[0].EntityID
+		go preparePaginatedResponses(req, others, &cc.LastUpdated, p.Interval)
+	}
 	res = EntityCollectionResponse{
-		FederationEntities: FilterAndTrimEntities(cc.Entities, req),
+		FederationEntities: entities,
 		LastUpdated:        &cc.LastUpdated,
+		NextEntityID:       nextEntityID,
 	}
 	if err = cache.Set(cacheRequestKey, res, p.Interval); err != nil {
 		log.Errorf("PeriodicEntityCollector cache set error: %v", err)
 	}
 	return &res
+}
+
+func preparePaginatedResponses(
+	req apimodel.EntityCollectionRequest, entities []*CollectedEntity,
+	lastUpdated *unixtime.Unixtime, interval time.Duration,
+) {
+	for len(entities) > 0 {
+		var others []*CollectedEntity
+		if len(entities) > req.Limit {
+			others = entities[req.Limit:]
+			entities = entities[:req.Limit]
+		}
+		var nextEntityID string
+		if len(others) > 0 {
+			nextEntityID = others[0].EntityID
+		}
+		res := EntityCollectionResponse{
+			FederationEntities: entities,
+			LastUpdated:        lastUpdated,
+			NextEntityID:       nextEntityID,
+		}
+		req.FromEntityID = entities[0].EntityID
+		reqHash, err := utils.HashStruct(req)
+		if err != nil {
+			log.WithError(err).Error("error while hashing request")
+		}
+		cacheRequestKey := cache.Key(periodicCacheSubsystem, cacheSubSubSystemRequests, reqHash)
+		if err = cache.Set(cacheRequestKey, res, interval); err != nil {
+			log.Errorf("PeriodicEntityCollector cache set error: %v", err)
+		}
+		entities = others
+	}
 }
 
 func (p *PeriodicEntityCollector) runOnce() {
