@@ -79,10 +79,11 @@ func (r ResolveResponse) MarshalJSON() ([]byte, error) {
 
 // ResolveResponsePayload holds the actual payload of a resolve response
 type ResolveResponsePayload struct {
-	Metadata   *Metadata              `json:"metadata,omitempty"`
-	TrustMarks TrustMarkInfos         `json:"trust_marks,omitempty"`
-	TrustChain JWSMessages            `json:"trust_chain,omitempty"`
-	Extra      map[string]interface{} `json:"-"`
+	Metadata    *Metadata              `json:"metadata,omitempty"`
+	TrustMarks  TrustMarkInfos         `json:"trust_marks,omitempty"`
+	TrustChain  JWSMessages            `json:"trust_chain,omitempty"`
+	TrustAnchor string                 `json:"trust_anchor,omitempty"`
+	Extra       map[string]interface{} `json:"-"`
 }
 
 // MarshalJSON implements the json.Marshaler interface.

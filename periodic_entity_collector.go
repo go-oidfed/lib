@@ -14,6 +14,14 @@ import (
 	"github.com/go-oidfed/lib/unixtime"
 )
 
+// EntityObserver is a callback interface that PeriodicEntityCollector
+// can call for each discovered entity, e.g. to trigger proactive resolve generation.
+type EntityObserver interface {
+	// OnDiscoveredEntities is called with the trust anchor and the full set of
+	// entities discovered for it.
+	OnDiscoveredEntities(trustAnchor string, entities []*CollectedEntity)
+}
+
 // PeriodicEntityCollector runs background entity collection for a set of
 // trust anchors at a configurable interval. It implements EntityCollector by
 // delegating synchronous collection to an inner Collector while warming caches
@@ -40,6 +48,10 @@ type PeriodicEntityCollector struct {
 	startOnce  sync.Once
 	stopOnce   sync.Once
 	stopCh     chan struct{}
+
+	// Optional handler invoked after each trust anchor collection with the
+	// discovered entities; can be used to trigger proactive resolver jobs.
+	Handler EntityObserver
 }
 
 type cachedCollection struct {
@@ -106,7 +118,7 @@ func (p *PeriodicEntityCollector) Stop() {
 // and trimming based on the request.
 func (p *PeriodicEntityCollector) CollectEntities(req apimodel.EntityCollectionRequest) *EntityCollectionResponse {
 	p.Start()
-	if p.PagingLimit < req.Limit || req.Limit == 0 {
+	if p.PagingLimit < req.Limit || req.Limit <= 0 {
 		req.Limit = p.PagingLimit
 	}
 	reqHash, err := utils.HashStruct(req)
@@ -254,6 +266,11 @@ func (p *PeriodicEntityCollector) runOnce() {
 				p.Interval,
 			); err != nil {
 				log.Errorf("PeriodicEntityCollector cache set error: %v", err)
+			}
+
+			// Notify handler for proactive resolve generation.
+			if p.Handler != nil && len(res.FederationEntities) > 0 {
+				p.Handler.OnDiscoveredEntities(trustAnchor, res.FederationEntities)
 			}
 		}(ta)
 	}
