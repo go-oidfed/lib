@@ -9,6 +9,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/gofiber/fiber/v2"
 	"github.com/google/go-querystring/query"
 	"github.com/lithammer/fuzzysearch/fuzzy"
 	"github.com/pkg/errors"
@@ -156,7 +157,7 @@ func (i *UIInfo) UnmarshalJSON(data []byte) error {
 // EntityCollector is an interface that discovers / collects Entities in a
 // federation
 type EntityCollector interface {
-	CollectEntities(req apimodel.EntityCollectionRequest) *EntityCollectionResponse
+	CollectEntities(req apimodel.EntityCollectionRequest) (*EntityCollectionResponse, *ErrorResponse)
 }
 
 // SimpleEntityCollector is an EntityCollector that collects entities in a
@@ -193,7 +194,9 @@ func newMutexedStrSet() *mutexedStrSet {
 type SimpleOPCollector struct{}
 
 // CollectEntities implements the EntityCollector interface
-func (*SimpleOPCollector) CollectEntities(req apimodel.EntityCollectionRequest) *EntityCollectionResponse {
+func (*SimpleOPCollector) CollectEntities(req apimodel.EntityCollectionRequest) (
+	*EntityCollectionResponse, *ErrorResponse,
+) {
 	req.EntityTypes = []string{"openid_provider"}
 	return (&SimpleEntityCollector{}).CollectEntities(req)
 }
@@ -238,15 +241,14 @@ type FilterableVerifiedChainsEntityCollector struct {
 }
 
 // CollectEntities implements the EntityCollector interface
-func (d *SimpleEntityCollector) CollectEntities(req apimodel.EntityCollectionRequest) *EntityCollectionResponse {
+func (d *SimpleEntityCollector) CollectEntities(req apimodel.EntityCollectionRequest) (
+	*EntityCollectionResponse, *ErrorResponse,
+) {
 	d.visitedEntities = newMutexedStrSet()
 	entities := d.collect(req, NewTrustAnchorsFromEntityIDs(req.TrustAnchor)...)
-	if entities == nil {
-		return nil
-	}
 	return &EntityCollectionResponse{
 		FederationEntities: entities,
-	}
+	}, nil
 }
 
 const maxCollectWorkers = 128
@@ -264,7 +266,7 @@ func (d *SimpleEntityCollector) collect(
 		workerPool: make(chan struct{}, maxCollectWorkers),
 	}
 
-	// Start collector goroutine
+	// Start the collector goroutine
 	go result.collectEntities()
 
 	// Process authorities
@@ -348,23 +350,22 @@ func matchWithMode(input string, names []string, mode matchMode) bool {
 }
 
 // CollectEntities implements the EntityCollector interface
-func (VerifiedChainsEntityCollector) CollectEntities(
-	req apimodel.
-		EntityCollectionRequest,
-) *EntityCollectionResponse {
+func (VerifiedChainsEntityCollector) CollectEntities(req apimodel.EntityCollectionRequest) (
+	*EntityCollectionResponse, *ErrorResponse,
+) {
 	return FilterableVerifiedChainsEntityCollector{}.CollectEntities(req)
 }
 
 // CollectEntities implements the EntityCollector interface
-func (d *filterableVerifiedChainsEntityCollector) CollectEntities(
-	req apimodel.EntityCollectionRequest,
-) *EntityCollectionResponse {
+func (d *filterableVerifiedChainsEntityCollector) CollectEntities(req apimodel.EntityCollectionRequest) (
+	*EntityCollectionResponse, *ErrorResponse,
+) {
 	if d.Collector == nil {
 		d.Collector = &SimpleEntityCollector{}
 	}
-	res := d.Collector.CollectEntities(req)
-	if res == nil {
-		return nil
+	res, errRes := d.Collector.CollectEntities(req)
+	if errRes != nil {
+		return nil, errRes
 	}
 	var filteredEntities []*CollectedEntity
 	for _, e := range res.FederationEntities {
@@ -379,11 +380,13 @@ func (d *filterableVerifiedChainsEntityCollector) CollectEntities(
 		}
 	}
 	res.FederationEntities = filteredEntities
-	return res
+	return res, nil
 }
 
 // CollectEntities implements the EntityCollector interface
-func (d FilterableVerifiedChainsEntityCollector) CollectEntities(req apimodel.EntityCollectionRequest) *EntityCollectionResponse {
+func (d FilterableVerifiedChainsEntityCollector) CollectEntities(req apimodel.EntityCollectionRequest) (
+	*EntityCollectionResponse, *ErrorResponse,
+) {
 	discoverer := filterableVerifiedChainsEntityCollector{
 		Collector: d.Collector,
 		Filters: append(
@@ -397,7 +400,8 @@ func (d FilterableVerifiedChainsEntityCollector) CollectEntities(req apimodel.En
 	return discoverer.CollectEntities(req)
 }
 
-// EntityCollectionFilterVerifiedChains is a EntityCollectionFilter that filters the discovered OPs to the one that have a
+// EntityCollectionFilterVerifiedChains is an EntityCollectionFilter that
+// filters the discovered OPs to the one that have a
 // valid TrustChain to one of the specified TrustAnchors
 type EntityCollectionFilterVerifiedChains struct {
 	TrustAnchors TrustAnchors
@@ -573,19 +577,23 @@ func subordinateListingCacheGet(listingEndpoint string) []string {
 	return ids
 }
 
-// SimpleRemoteEntityCollector is a EntityCollector that utilizes a given
-// EntityCollectionEndpoint
+// SimpleRemoteEntityCollector is an EntityCollector that utilizes a given EntityCollectionEndpoint
 type SimpleRemoteEntityCollector struct {
 	EntityCollectionEndpoint string
 }
 
 // CollectEntities queries a remote EntityCollectionEndpoint for the
 // collected entities and implements the EntityCollector interface
-func (c SimpleRemoteEntityCollector) CollectEntities(req apimodel.EntityCollectionRequest) *EntityCollectionResponse {
+func (c SimpleRemoteEntityCollector) CollectEntities(req apimodel.EntityCollectionRequest) (
+	*EntityCollectionResponse, *ErrorResponse,
+) {
 	params, err := query.Values(req)
 	if err != nil {
 		internal.Logf("error while creating query parameters for entity collection request: %s", err)
-		return nil
+		return nil, &ErrorResponse{
+			Status: fiber.StatusInternalServerError,
+			Error:  ErrorServerError(err.Error()),
+		}
 	}
 	var res EntityCollectionResponse
 	_, errRes, err := http.Get(
@@ -594,13 +602,22 @@ func (c SimpleRemoteEntityCollector) CollectEntities(req apimodel.EntityCollecti
 	)
 	if err != nil {
 		internal.Logf("error while fetching entity collection endpoint: %s", err)
-		return nil
+		return nil, &ErrorResponse{
+			Status: fiber.StatusInternalServerError,
+			Error:  ErrorServerError(err.Error()),
+		}
 	}
 	if errRes != nil {
 		internal.Logf("error while fetching entity collection endpoint: %s", errRes.Err().Error())
-		return nil
+		return nil, &ErrorResponse{
+			Status: errRes.Status,
+			Error: &Error{
+				Error:            errRes.Error,
+				ErrorDescription: errRes.ErrorDescription,
+			},
+		}
 	}
-	return &res
+	return &res, nil
 }
 
 // SmartRemoteEntityCollector is an EntityCollector that uses remote
@@ -613,8 +630,10 @@ type SmartRemoteEntityCollector struct {
 	TrustAnchors []string
 }
 
-// CollectEntities  implements the EntityCollector interface
-func (c SmartRemoteEntityCollector) CollectEntities(req apimodel.EntityCollectionRequest) *EntityCollectionResponse {
+// CollectEntities implements the EntityCollector interface
+func (c SmartRemoteEntityCollector) CollectEntities(req apimodel.EntityCollectionRequest) (
+	*EntityCollectionResponse, *ErrorResponse,
+) {
 	// construct a list of trust anchors to query; always start with the
 	// trust anchor from the request
 	trustAnchors := append([]string{req.TrustAnchor}, sliceutils.RemoveFromSlice(c.TrustAnchors, req.TrustAnchor)...)
@@ -635,11 +654,11 @@ func (c SmartRemoteEntityCollector) CollectEntities(req apimodel.EntityCollectio
 		remoteCollector := SimpleRemoteEntityCollector{
 			EntityCollectionEndpoint: entityCollectionEndpoint,
 		}
-		remoteRes := remoteCollector.CollectEntities(req)
+		remoteRes, _ := remoteCollector.CollectEntities(req)
 		if remoteRes == nil {
 			continue
 		}
-		return remoteRes
+		return remoteRes, nil
 	}
 	return (&SimpleEntityCollector{}).CollectEntities(req)
 }

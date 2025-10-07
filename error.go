@@ -1,5 +1,11 @@
 package oidfed
 
+// ErrorResponse is type for holding an Error including the status code
+type ErrorResponse struct {
+	*Error
+	Status int `json:"-"`
+}
+
 // Error is type for holding an error
 type Error struct {
 	Error            string `json:"error"`
@@ -19,6 +25,7 @@ const (
 	ServerError            = "server_error"
 	TemporarilyUnavailable = "temporarily_unavailable"
 	UnsupportedParameter   = "unsupported_parameter"
+	EntityIDNotFound       = "entity_id_not_found"
 )
 
 // ErrorInvalidRequest returns an Error for using InvalidRequest

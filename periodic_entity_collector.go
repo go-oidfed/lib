@@ -5,6 +5,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/gofiber/fiber/v2"
+	"github.com/pkg/errors"
 	log "github.com/sirupsen/logrus"
 
 	"github.com/go-oidfed/lib/apimodel"
@@ -116,15 +118,19 @@ func (p *PeriodicEntityCollector) Stop() {
 
 // CollectEntities serves from the cached periodic results, applying filters
 // and trimming based on the request.
-func (p *PeriodicEntityCollector) CollectEntities(req apimodel.EntityCollectionRequest) *EntityCollectionResponse {
+func (p *PeriodicEntityCollector) CollectEntities(req apimodel.EntityCollectionRequest) (
+	*EntityCollectionResponse, *ErrorResponse,
+) {
 	p.Start()
 	if p.PagingLimit < req.Limit || req.Limit <= 0 {
 		req.Limit = p.PagingLimit
 	}
 	reqHash, err := utils.HashStruct(req)
 	if err != nil {
-		log.WithError(err).Error("error while hashing request")
-		return nil
+		return nil, &ErrorResponse{
+			Status: fiber.StatusInternalServerError,
+			Error:  ErrorServerError(errors.Wrap(err, "PeriodicEntityCollector: error while hashing request").Error()),
+		}
 	}
 	cacheRequestKey := cache.Key(periodicCacheSubsystem, cacheSubSubSystemRequests, reqHash)
 	var res EntityCollectionResponse
@@ -132,11 +138,17 @@ func (p *PeriodicEntityCollector) CollectEntities(req apimodel.EntityCollectionR
 	set, err := cache.Get(cacheRequestKey, &res)
 	p.cacheMutex.RUnlock()
 	if err != nil {
-		log.WithError(err).Error("error while retrieving cached response")
-		return nil
+		return nil, &ErrorResponse{
+			Status: fiber.StatusInternalServerError,
+			Error: ErrorServerError(
+				errors.Wrap(
+					err, "PeriodicEntityCollector: error while retrieving cached response",
+				).Error(),
+			),
+		}
 	}
 	if set {
-		return &res
+		return &res, nil
 	}
 
 	var cc cachedCollection
@@ -144,11 +156,20 @@ func (p *PeriodicEntityCollector) CollectEntities(req apimodel.EntityCollectionR
 	set, err = cache.Get(cache.Key(periodicCacheSubsystem, cacheSubSubSystemAll, req.TrustAnchor), &cc)
 	p.cacheMutex.RUnlock()
 	if err != nil {
-		internal.Logf("PeriodicEntityCollector cache get error: %v", err)
-		return nil
+		return nil, &ErrorResponse{
+			Status: fiber.StatusInternalServerError,
+			Error: ErrorServerError(
+				errors.Wrap(
+					err, "PeriodicEntityCollector: error while retrieving cached collection",
+				).Error(),
+			),
+		}
 	}
-	if !set || len(cc.Entities) == 0 {
-		return nil
+	if !set {
+		return nil, &ErrorResponse{
+			Error:  ErrorInvalidTrustAnchor("trust anchor not supported"),
+			Status: fiber.StatusNotFound,
+		}
 	}
 	entities := FilterAndTrimEntities(cc.Entities, req)
 	if req.FromEntityID != "" {
@@ -156,8 +177,10 @@ func (p *PeriodicEntityCollector) CollectEntities(req apimodel.EntityCollectionR
 			entities, &CollectedEntity{EntityID: req.FromEntityID}, p.SortEntitiesComparisonFunc,
 		)
 		if !found {
-			//TODO return error
-			return nil
+			return nil, &ErrorResponse{
+				Error:  &Error{Error: EntityIDNotFound},
+				Status: fiber.StatusNotFound,
+			}
 		}
 		entities = entities[n:]
 	}
@@ -176,7 +199,7 @@ func (p *PeriodicEntityCollector) CollectEntities(req apimodel.EntityCollectionR
 	if err = cache.Set(cacheRequestKey, res, p.Interval); err != nil {
 		log.Errorf("PeriodicEntityCollector cache set error: %v", err)
 	}
-	return &res
+	return &res, nil
 }
 
 func preparePaginatedResponses(
@@ -250,7 +273,7 @@ func (p *PeriodicEntityCollector) runOnce() {
 				},
 			}
 			internal.Logf("PeriodicEntityCollector: collecting for trust anchor %s", trustAnchor)
-			res := p.Collector.CollectEntities(req)
+			res, _ := p.Collector.CollectEntities(req)
 			if res == nil {
 				return
 			}
