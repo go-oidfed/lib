@@ -587,37 +587,68 @@ type SimpleRemoteEntityCollector struct {
 func (c SimpleRemoteEntityCollector) CollectEntities(req apimodel.EntityCollectionRequest) (
 	*EntityCollectionResponse, *ErrorResponse,
 ) {
-	params, err := query.Values(req)
-	if err != nil {
-		internal.Logf("error while creating query parameters for entity collection request: %s", err)
-		return nil, &ErrorResponse{
-			Status: fiber.StatusInternalServerError,
-			Error:  ErrorServerError(err.Error()),
+	// Aggregate remote pages if the endpoint returns a paginated response.
+	// Forward the request as-is (including limit if set) and do not expose
+	// pagination upstream.
+	currReq := req
+	var combined []*CollectedEntity
+	var lastUpdated *unixtime.Unixtime
+	// Safety cap to avoid infinite loops in case of misbehaving endpoints.
+	const maxPages = 10000
+	pagesFetched := 0
+
+	for pagesFetched < maxPages {
+		params, err := query.Values(currReq)
+		if err != nil {
+			internal.Logf("error while creating query parameters for entity collection request: %s", err)
+			return nil, &ErrorResponse{
+				Status: fiber.StatusInternalServerError,
+				Error:  ErrorServerError(err.Error()),
+			}
 		}
-	}
-	var res EntityCollectionResponse
-	_, errRes, err := http.Get(
-		c.EntityCollectionEndpoint, params,
-		&res,
-	)
-	if err != nil {
-		internal.Logf("error while fetching entity collection endpoint: %s", err)
-		return nil, &ErrorResponse{
-			Status: fiber.StatusInternalServerError,
-			Error:  ErrorServerError(err.Error()),
+
+		var pageRes EntityCollectionResponse
+		_, errRes, err := http.Get(
+			c.EntityCollectionEndpoint, params,
+			&pageRes,
+		)
+		if err != nil {
+			internal.Logf("error while fetching entity collection endpoint: %s", err)
+			return nil, &ErrorResponse{
+				Status: fiber.StatusInternalServerError,
+				Error:  ErrorServerError(err.Error()),
+			}
 		}
-	}
-	if errRes != nil {
-		internal.Logf("error while fetching entity collection endpoint: %s", errRes.Err().Error())
-		return nil, &ErrorResponse{
-			Status: errRes.Status,
-			Error: &Error{
-				Error:            errRes.Error,
-				ErrorDescription: errRes.ErrorDescription,
-			},
+		if errRes != nil {
+			internal.Logf("error while fetching entity collection endpoint: %s", errRes.Err().Error())
+			return nil, &ErrorResponse{
+				Status: errRes.Status,
+				Error: &Error{
+					Error:            errRes.Error,
+					ErrorDescription: errRes.ErrorDescription,
+				},
+			}
 		}
+
+		pagesFetched++
+		lastUpdated = pageRes.LastUpdated
+
+		// Append all fetched entities from this page
+		if len(pageRes.FederationEntities) > 0 {
+			combined = append(combined, pageRes.FederationEntities...)
+		}
+
+		if pageRes.NextEntityID == "" {
+			break
+		}
+		// Advance to next page
+		currReq.FromEntityID = pageRes.NextEntityID
 	}
-	return &res, nil
+
+	return &EntityCollectionResponse{
+		FederationEntities: combined,
+		LastUpdated:        lastUpdated,
+	}, nil
 }
 
 // SmartRemoteEntityCollector is an EntityCollector that uses remote
