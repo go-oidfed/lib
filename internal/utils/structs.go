@@ -1,9 +1,13 @@
 package utils
 
 import (
+	"encoding/base64"
 	"reflect"
 	"slices"
 	"strings"
+
+	"github.com/vmihailenco/msgpack/v5"
+	"golang.org/x/crypto/sha3"
 )
 
 // NilAllExceptByTag sets all fields of a struct to their zero values except for
@@ -49,4 +53,14 @@ func NilAllExceptByTag(v interface{}, jsonTags []string) {
 			field.Set(reflect.Zero(field.Type()))
 		}
 	}
+}
+
+// HashStruct hashes a struct using msgpack and SHA3-256.
+func HashStruct(v any) (string, error) {
+	data, err := msgpack.Marshal(v)
+	if err != nil {
+		return "", err
+	}
+	hash := sha3.Sum256(data)
+	return base64.RawURLEncoding.EncodeToString(hash[:]), nil
 }
