@@ -60,6 +60,7 @@ func (LocalMetadataResolver) resolveResponsePayloadWithoutTrustMarks(
 		if err == nil {
 			res.TrustChain = chain.Messages()
 			res.Metadata = m
+			res.TrustAnchor = chain[len(chain)-1].Issuer
 			return res, chain, nil
 		}
 	}

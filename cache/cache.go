@@ -3,6 +3,7 @@ package cache
 import (
 	"encoding/base64"
 	"log"
+	"strings"
 	"time"
 
 	"github.com/TwiN/gocache/v2"
@@ -17,6 +18,8 @@ type Cache interface {
 	Get(key string, target any) (bool, error)
 	Set(key string, value any, expiration time.Duration) error
 	Delete(key string) error
+	// Clear clears all entries with the given prefix
+	Clear(prefix string) error
 }
 
 // cacheWrapper is a type implementing the Cache interface and providing an
@@ -65,6 +68,12 @@ func (c cacheWrapper) Delete(key string) error {
 	return nil
 }
 
+// Clear implements the Cache interface
+func (c cacheWrapper) Clear(prefix string) error {
+	c.c.DeleteKeysByPattern(prefix + "*")
+	return nil
+}
+
 var cacheCache Cache
 
 func init() {
@@ -89,8 +98,8 @@ const (
 )
 
 // Key combines a sub system prefix with the key to a cache key
-func Key(subsystem, subkey string) string {
-	return subsystem + ":" + subkey
+func Key(subsystem ...string) string {
+	return strings.Join(subsystem, ":")
 }
 
 // EntityStmtCacheKey constructs a cache key for an EntityStatementPayload
@@ -112,4 +121,9 @@ func Get(key string, target any) (bool, error) {
 // Delete deletes the value for the given key from the cache
 func Delete(key string) error {
 	return cacheCache.Delete(key)
+}
+
+// Clear clears all entries with the given prefix
+func Clear(prefix string) error {
+	return cacheCache.Clear(prefix)
 }

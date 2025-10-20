@@ -9,9 +9,7 @@ import (
 
 	"github.com/pkg/errors"
 	"github.com/scylladb/go-set/strset"
-	"github.com/vmihailenco/msgpack/v5"
 	"github.com/zachmann/go-utils/sliceutils"
-	"golang.org/x/crypto/sha3"
 
 	"github.com/go-oidfed/lib/cache"
 	"github.com/go-oidfed/lib/internal"
@@ -81,10 +79,11 @@ func (r ResolveResponse) MarshalJSON() ([]byte, error) {
 
 // ResolveResponsePayload holds the actual payload of a resolve response
 type ResolveResponsePayload struct {
-	Metadata   *Metadata              `json:"metadata,omitempty"`
-	TrustMarks TrustMarkInfos         `json:"trust_marks,omitempty"`
-	TrustChain JWSMessages            `json:"trust_chain,omitempty"`
-	Extra      map[string]interface{} `json:"-"`
+	Metadata    *Metadata              `json:"metadata,omitempty"`
+	TrustMarks  TrustMarkInfos         `json:"trust_marks,omitempty"`
+	TrustChain  JWSMessages            `json:"trust_chain,omitempty"`
+	TrustAnchor string                 `json:"trust_anchor,omitempty"`
+	Extra       map[string]interface{} `json:"-"`
 }
 
 // MarshalJSON implements the json.Marshaler interface.
@@ -148,7 +147,7 @@ type TrustResolver struct {
 	trustTree      trustTree
 }
 
-func (r TrustResolver) hash() ([]byte, error) {
+func (r TrustResolver) hash() (string, error) {
 	tas := make([]string, len(r.TrustAnchors))
 	for i, ta := range r.TrustAnchors {
 		tas[i] = ta.EntityID
@@ -162,12 +161,7 @@ func (r TrustResolver) hash() ([]byte, error) {
 		TAs:            tas,
 		Types:          r.Types,
 	}
-	data, err := msgpack.Marshal(forSerialization)
-	if err != nil {
-		return nil, err
-	}
-	hash := sha3.Sum256(data)
-	return hash[:], nil
+	return utils.HashStruct(forSerialization)
 }
 
 // ResolveToValidChains starts the trust chain resolution process, building an internal trust tree,
@@ -265,7 +259,7 @@ func (r TrustResolver) cacheGetTrustChains() (
 		return nil, false, err
 	}
 	set, err = cache.Get(
-		cache.Key(cache.KeyTrustTreeChains, string(hash)), &chains,
+		cache.Key(cache.KeyTrustTreeChains, hash), &chains,
 	)
 	return
 }
@@ -276,7 +270,7 @@ func (r TrustResolver) cacheSetTrustChains(chains TrustChains) error {
 		return err
 	}
 	return cache.Set(
-		cache.Key(cache.KeyTrustTreeChains, string(hash)), chains,
+		cache.Key(cache.KeyTrustTreeChains, hash), chains,
 		unixtime.Until(r.trustTree.expiresAt),
 	)
 }
@@ -289,7 +283,7 @@ func (r *TrustResolver) cacheGetTrustTree() (
 		return false, err
 	}
 	set, err = cache.Get(
-		cache.Key(cache.KeyTrustTree, string(hash)), &r.trustTree,
+		cache.Key(cache.KeyTrustTree, hash), &r.trustTree,
 	)
 	return
 }
@@ -298,11 +292,11 @@ func (r TrustResolver) cacheSetTrustTree() error {
 	if err != nil {
 		return err
 	}
-	if err = cache.Delete(cache.Key(cache.KeyTrustTreeChains, string(hash))); err != nil {
+	if err = cache.Delete(cache.Key(cache.KeyTrustTreeChains, hash)); err != nil {
 		return err
 	}
 	return cache.Set(
-		cache.Key(cache.KeyTrustTree, string(hash)), r.trustTree,
+		cache.Key(cache.KeyTrustTree, hash), r.trustTree,
 		unixtime.Until(r.trustTree.expiresAt),
 	)
 }

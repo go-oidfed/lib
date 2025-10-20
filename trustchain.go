@@ -4,26 +4,20 @@ import (
 	"reflect"
 
 	"github.com/pkg/errors"
-	"github.com/vmihailenco/msgpack/v5"
 	"github.com/zachmann/go-utils/maputils"
-	"golang.org/x/crypto/sha3"
 	"tideland.dev/go/slices"
 
 	"github.com/go-oidfed/lib/cache"
 	"github.com/go-oidfed/lib/internal"
+	"github.com/go-oidfed/lib/internal/utils"
 	"github.com/go-oidfed/lib/unixtime"
 )
 
 // TrustChain is a slice of *EntityStatements
 type TrustChain []*EntityStatement
 
-func (c TrustChain) hash() ([]byte, error) {
-	data, err := msgpack.Marshal(c)
-	if err != nil {
-		return nil, err
-	}
-	hash := sha3.Sum256(data)
-	return hash[:], nil
+func (c TrustChain) hash() (string, error) {
+	return utils.HashStruct(c)
 }
 
 // PathLen returns the path len of a chain as defined by the spec,
