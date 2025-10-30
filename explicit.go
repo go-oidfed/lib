@@ -32,7 +32,7 @@ type OIDCRP struct {
 // GetExplicitRegistrationOIDCRP returns an OIDCRP by re-using an explicit client registration from cache or
 // registering a new one.
 func (f FederationLeaf) GetExplicitRegistrationOIDCRP(
-	op string, ctx context.Context,
+	ctx context.Context, op string,
 ) (*OIDCRP, error) {
 	client, errRes, err := f.GetExplicitRegistration(op)
 	if err != nil {
