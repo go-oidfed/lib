@@ -115,10 +115,13 @@ func (f FederationLeaf) DoExplicitClientRegistration(op string) (
 	if opMetadata == nil || opMetadata.FederationRegistrationEndpoint == "" {
 		return nil, nil, errors.New("op does not have a federation registration endpoint")
 	}
-	entityConfigurationData := f.EntityConfigurationPayload()
+	entityConfigurationData, err := f.EntityConfigurationPayload()
+	if err != nil {
+		return nil, nil, errors.Wrap(err, "could not get entity configuration payload")
+	}
 	AdjustRPMetadataToOP(entityConfigurationData.Metadata.RelyingParty, opMetadata)
 	entityConfigurationData.Audience = op
-	entityConfiguration, err := f.EntityStatementSigner.JWT(entityConfigurationData)
+	entityConfiguration, err := f.SignEntityStatement(*entityConfigurationData)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -147,7 +150,7 @@ func (f FederationLeaf) DoExplicitClientRegistration(op string) (
 	if err != nil {
 		return nil, nil, errors.Wrap(err, "could not parse explicit registration response")
 	}
-	if res.Audience != f.EntityID {
+	if res.Audience != f.EntityID() {
 		return nil, nil,
 			errors.New("explicit client registration: OP returned unexpected audience")
 	}
