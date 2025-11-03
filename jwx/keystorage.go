@@ -31,13 +31,7 @@ func NewKeyStorage(keyDir string, conf map[string]KeyStorageConfig) (*KeyStorage
 			if !ok {
 				return nil, errors.Errorf("unknown algorithm '%s'", cfg.Algorithm)
 			}
-			sks = &privateKeyStorageSingleAlg{
-				typeID:    t,
-				alg:       alg,
-				rollover:  cfg.RolloverConf,
-				rsaKeyLen: cfg.RSAKeyLen,
-				keyDir:    keyDir,
-			}
+			sks = newSingleAlgPrivateKeyStorage(t, alg, cfg.RolloverConf, cfg.RSAKeyLen, keyDir)
 		} else {
 			// multi alg
 			var algs []jwa.SignatureAlgorithm
