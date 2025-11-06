@@ -84,16 +84,18 @@ var tmo = newMockTrustMarkOwner(
 	},
 )
 
+var tmoJWKS, _ = tmo.JWKS()
+
 var taWithTmo = newMockAuthority(
 	"https://trustmark.ta.com", EntityStatementPayload{
 		TrustMarkOwners: map[string]TrustMarkOwnerSpec{
 			"https://trustmarks.org/tm-delegated": {
 				ID:   "https://tmo.example.eu",
-				JWKS: tmo.JWKS(),
+				JWKS: tmoJWKS,
 			},
 			"https://trustmarks.org/test": {
 				ID:   "https://tmo.example.eu",
-				JWKS: tmo.JWKS(),
+				JWKS: tmoJWKS,
 			},
 			"https://trustmarks.org/other": {
 				ID:   "https://other.owner.org",
@@ -223,7 +225,12 @@ func TestTrustMarkOwner_DelegationJWT(t *testing.T) {
 						return
 					}
 				}
-				if err = delegation.VerifyExternal(tmo.JWKS()); err != nil {
+				jwks, err := tmo.JWKS()
+				if err != nil {
+					t.Errorf("could not get JWKS: %v", err)
+					return
+				}
+				if err = delegation.VerifyExternal(jwks); err != nil {
 					t.Errorf("error verifying issued delegation jwt: %v", err)
 					return
 				}
@@ -238,9 +245,9 @@ func TestDelegationJWT_VerifyExternal(t *testing.T) {
 		[]byte(`{"keys":[{"alg":"ES512","crv":"P-521","kid":"bjQ4ZO1kfWr-cxi-_tU9bKTWwG6XoUwnSW6M5food_U","kty":"EC","use":"sig","x":"AKj5_1MgsEFKCSNN4UyDqQP2wanr9ZD1Q1eBUGJ1BJej8MTQnRkDPRY_35Ctae8bxoj2fxZMufXnWAuVxERelwzL","y":"AObqfUE1k0YIlO1qe-5D8CcTWxZn6OIXC3s_cPrug69sM580aCtug7vEdaBcfNY8RGTwUV1hMxqvOTsQsROrrXG2"}]}`),
 		&correctJWKS,
 	); err != nil {
-		t.Error(err)
+		panic(err)
 	}
-	wrongKey := tmo.JWKS()
+	wrongKey := tmoJWKS
 	tests := []struct {
 		name        string
 		jwks        jwx.JWKS

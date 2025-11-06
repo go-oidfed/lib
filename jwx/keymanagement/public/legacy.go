@@ -1,4 +1,4 @@
-package jwx
+package public
 
 import (
 	"encoding/json"
@@ -11,11 +11,18 @@ import (
 	"github.com/pkg/errors"
 	log "github.com/sirupsen/logrus"
 	"github.com/zachmann/go-utils/fileutils"
+
+	"github.com/go-oidfed/lib/jwx"
 )
 
-type jwksSlice []JWKS
+type jwksSlice []jwx.JWKS
 
-type pkCollection struct {
+var zeroJWKS jwx.JWKS
+
+// LegacyPKCollection is a collection of public keys, used for signing.
+// Deprecated: Only provided for backwards compatibility to provide an easy
+// upgrade path from this old implementation to the new one.
+type LegacyPKCollection struct {
 	// jwksSlice stores the public key JWKS; the order matters!
 	// [0] the current JWKS (currently used for signing)
 	// [1] the next JWKS (will be used next for signing)
@@ -23,20 +30,20 @@ type pkCollection struct {
 	jwks                      jwksSlice
 	NumberOfOldKeysKeptInJWKS int
 	KeepHistory               bool
-	history                   JWKS
+	history                   jwx.JWKS
 }
 
 // MarshalJSON implements the json.Marshaler interface
-func (pks pkCollection) MarshalJSON() ([]byte, error) {
+func (pks LegacyPKCollection) MarshalJSON() ([]byte, error) {
 	return json.Marshal(pks.jwks)
 }
 
 // UnmarshalJSON implements the json.Unmarshaler interface
-func (pks *pkCollection) UnmarshalJSON(data []byte) error {
+func (pks *LegacyPKCollection) UnmarshalJSON(data []byte) error {
 	return json.Unmarshal(data, &pks.jwks)
 }
 
-func (pks *pkCollection) setCurrentJWKS(current JWKS) {
+func (pks *LegacyPKCollection) setCurrentJWKS(current jwx.JWKS) {
 	if len(pks.jwks) == 0 {
 		pks.jwks = append(pks.jwks, current)
 		return
@@ -44,9 +51,9 @@ func (pks *pkCollection) setCurrentJWKS(current JWKS) {
 	pks.jwks[0] = current
 }
 
-func (pks *pkCollection) addCurrentJWK(current jwk.Key) {
+func (pks *LegacyPKCollection) addCurrentJWK(current jwk.Key) {
 	if len(pks.jwks) == 0 {
-		set := NewJWKS()
+		set := jwx.NewJWKS()
 		_ = set.AddKey(current)
 		pks.jwks = jwksSlice{set}
 		return
@@ -54,9 +61,9 @@ func (pks *pkCollection) addCurrentJWK(current jwk.Key) {
 	_ = pks.jwks[0].AddKey(current)
 }
 
-func (pks *pkCollection) setNextJWKS(next JWKS) {
+func (pks *LegacyPKCollection) setNextJWKS(next jwx.JWKS) {
 	if len(pks.jwks) == 0 {
-		log.Error("error setting next JWKS in pkCollection: no current JWKS set")
+		log.Error("error setting next JWKS in LegacyPKCollection: no current JWKS set")
 		pks.jwks = append(pks.jwks, next)
 	}
 	if len(pks.jwks) == 1 {
@@ -66,15 +73,15 @@ func (pks *pkCollection) setNextJWKS(next JWKS) {
 	pks.jwks[1] = next
 }
 
-func (pks *pkCollection) addNextJWK(next jwk.Key) {
+func (pks *LegacyPKCollection) addNextJWK(next jwk.Key) {
 	if len(pks.jwks) == 0 {
-		log.Error("error setting next JWKS in pkCollection: no current JWKS set")
-		set := NewJWKS()
+		log.Error("error setting next JWKS in LegacyPKCollection: no current JWKS set")
+		set := jwx.NewJWKS()
 		_ = set.AddKey(next)
 		pks.jwks = jwksSlice{set}
 	}
 	if len(pks.jwks) == 1 {
-		set := NewJWKS()
+		set := jwx.NewJWKS()
 		_ = set.AddKey(next)
 		pks.jwks = append(pks.jwks, set)
 		return
@@ -82,7 +89,7 @@ func (pks *pkCollection) addNextJWK(next jwk.Key) {
 	_ = pks.jwks[1].AddKey(next)
 }
 
-func (pks *pkCollection) pushOldJWKS(old JWKS) JWKS {
+func (pks *LegacyPKCollection) pushOldJWKS(old jwx.JWKS) jwx.JWKS {
 	l := len(pks.jwks)
 	if l < 2 {
 		pks.jwks = append(pks.jwks, old)
@@ -115,7 +122,7 @@ func (pks *pkCollection) pushOldJWKS(old JWKS) JWKS {
 // the previously next JWKS becomes the current JWKS, the previous current JWKS becomes the first old JWKS,
 // and all old JWKS are shifted, while the oldest JWKS (
 // if it exceeds the number of old JWKS kept) is removed from the collection and returned.
-func (pks *pkCollection) rotate(next JWKS) JWKS {
+func (pks *LegacyPKCollection) rotate(next jwx.JWKS) jwx.JWKS {
 	if len(pks.jwks) == 0 {
 		pks.jwks = append(pks.jwks, next)
 		return zeroJWKS
@@ -128,7 +135,7 @@ func (pks *pkCollection) rotate(next JWKS) JWKS {
 	return old
 }
 
-type aggregatedPublicKeyStorage map[string]*pkCollection
+type aggregatedPublicKeyStorage map[string]*LegacyPKCollection
 
 // Load loads the public keys from disk
 func (pks *aggregatedPublicKeyStorage) Load(dir string) error {

@@ -146,7 +146,10 @@ func (f DynamicFederationEntity) EntityConfigurationPayload() (*EntityStatementP
 
 	var jwks jwx.JWKS
 	if signer != nil {
-		jwks = signer.JWKS()
+		jwks, err = signer.JWKS()
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	return &EntityStatementPayload{
