@@ -6,7 +6,7 @@ import (
 
 	"github.com/pkg/errors"
 	"github.com/zachmann/go-utils/maputils"
-	"tideland.dev/go/slices"
+	"github.com/zachmann/go-utils/sliceutils"
 )
 
 // MetadataPolicies is a type for holding the different MetadataPolicy
@@ -241,7 +241,7 @@ func (p MetadataPolicyEntry) Verify(pathInfo string) error {
 		if mayCombine == nil {
 			continue
 		}
-		notAllowed := slices.Subtract(activeOperators, append(mayCombine, op.Name()))
+		notAllowed := sliceutils.Subtract(activeOperators, append(mayCombine, op.Name()))
 		if len(notAllowed) > 0 {
 			return errors.Errorf(
 				"policy operator '%s' in '%s' cannot be combined with these operators: %v", opN,

@@ -5,7 +5,7 @@ import (
 
 	"github.com/pkg/errors"
 	"github.com/zachmann/go-utils/maputils"
-	"tideland.dev/go/slices"
+	"github.com/zachmann/go-utils/sliceutils"
 
 	"github.com/go-oidfed/lib/cache"
 	"github.com/go-oidfed/lib/internal"
@@ -73,7 +73,7 @@ func (c TrustChain) Metadata() (*Metadata, error) {
 			critPolicies[mpoc] = struct{}{}
 		}
 	}
-	unsupportedCritPolicies := slices.Subtract(maputils.Keys(critPolicies), OperatorOrder)
+	unsupportedCritPolicies := sliceutils.Subtract(maputils.Keys(critPolicies), OperatorOrder)
 	if len(unsupportedCritPolicies) > 0 {
 		return nil, errors.Errorf(
 			"the following metadata policy operators are critical but not understood: %v",

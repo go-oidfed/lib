@@ -1,6 +1,6 @@
 module github.com/go-oidfed/lib
 
-go 1.24.4
+go 1.25.1
 
 require (
 	github.com/TwiN/gocache/v2 v2.4.0
@@ -20,12 +20,11 @@ require (
 	github.com/sirupsen/logrus v1.9.3
 	github.com/stretchr/testify v1.11.1
 	github.com/vmihailenco/msgpack/v5 v5.4.1
-	github.com/zachmann/go-utils v0.0.0-20250930110126-c5ff4cbcb3d3
+	github.com/zachmann/go-utils v0.0.0-20251110102534-86c6793a17ed
 	golang.org/x/crypto v0.43.0
 	golang.org/x/oauth2 v0.32.0
 	golang.org/x/text v0.30.0
 	gopkg.in/yaml.v3 v3.0.1
-	tideland.dev/go/slices v0.2.0
 )
 
 require (
