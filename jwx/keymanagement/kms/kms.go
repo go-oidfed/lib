@@ -5,10 +5,12 @@ import (
 	"time"
 
 	"github.com/lestrrat-go/jwx/v3/jwa"
+	log "github.com/sirupsen/logrus"
 	"github.com/zachmann/go-utils/duration"
 
 	"github.com/go-oidfed/lib/jwx"
 	"github.com/go-oidfed/lib/jwx/keymanagement/public"
+	"github.com/go-oidfed/lib/unixtime"
 )
 
 type nbfMode int
@@ -95,5 +97,50 @@ func KMSToVersatileSignerWithPKStorage(kms BasicKeyManagementSystem, pkStorage p
 			}
 			return list.JWKS()
 		},
+	}
+}
+
+// Shared rotation helpers to reduce duplication across KMS implementations.
+
+// earliestFutureNbfForAlg returns the earliest NotBefore among valid, non-revoked
+// keys for the given algorithm, that are in the future relative to now.
+func earliestFutureNbfForAlg(pkStorage public.PublicKeyStorage, alg jwa.SignatureAlgorithm, now time.Time) (time.Time, bool, error) {
+	validPKs, vErr := pkStorage.GetValid()
+	if vErr != nil {
+		return time.Time{}, false, vErr
+	}
+	earliestNbf := time.Time{}
+	for _, pk := range validPKs {
+		algI, set := pk.Key.Algorithm()
+		if !set {
+			continue
+		}
+		a, ok := algI.(jwa.SignatureAlgorithm)
+		if !ok || a.String() != alg.String() {
+			continue
+		}
+		if !pk.RevokedAt.IsZero() && pk.RevokedAt.Before(now) {
+			continue
+		}
+		if !pk.NotBefore.IsZero() && pk.NotBefore.After(now) {
+			if earliestNbf.IsZero() || pk.NotBefore.Before(earliestNbf) {
+				earliestNbf = pk.NotBefore.Time
+			}
+		}
+	}
+	return earliestNbf, !earliestNbf.IsZero(), nil
+}
+
+// shortenExpirationUntilFuture updates the expiration of current active keys so that
+// they extend until the future key's NotBefore plus overlap.
+func shortenExpirationUntilFuture(pkStorage public.PublicKeyStorage, algPKs []public.PublicKeyEntry, earliestNbf time.Time, overlap time.Duration, logPrefix string) {
+	newExpForOldKey := unixtime.Unixtime{Time: earliestNbf.Add(overlap)}
+	for _, k := range algPKs {
+		if k.ExpiresAt.IsZero() || newExpForOldKey.Before(k.ExpiresAt.Time) {
+			k.ExpiresAt = newExpForOldKey
+			if uErr := pkStorage.Update(k.KID, k.UpdateablePublicKeyMetadata); uErr != nil {
+				log.WithError(uErr).Error(logPrefix + ": automatic rotation: failed to update old key exp")
+			}
+		}
 	}
 }

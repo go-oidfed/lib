@@ -107,7 +107,7 @@ func (kms *FilesystemKMS) GetForAlgs(algs ...string) (
 ) {
 	activePKs, err := kms.PKs.GetActive()
 	if err != nil {
-		log.WithError(err).Error("failed to get active public keys")
+		log.WithError(err).Error("FilesystemKMS: failed to get active public keys")
 		return nil, jwa.SignatureAlgorithm{}
 	}
 	pksByAlg := activePKs.ByAlg()
@@ -176,7 +176,7 @@ func (kms *FilesystemKMS) Load() error {
 		alg := kalg.(jwa.SignatureAlgorithm)
 		signer, err := jwx.ReadSignerFromFile(kms.keyFilePath(kid), alg)
 		if err != nil {
-			log.WithError(err).WithField("kid", kid).Warn("could not load signing key")
+			log.WithError(err).WithField("kid", kid).Warn("FilesystemKMS: could not load signing key")
 		} else {
 			kms.signers[kid] = signer
 			loadedAlgs[alg] = struct{}{}
@@ -202,25 +202,27 @@ func (kms *FilesystemKMS) Load() error {
 // loadLegacyOrGenerateSigner loads a signer from a legacy location or generates
 // a new one if it doesn't exist (and generation is enabled).
 func (kms *FilesystemKMS) loadLegacyOrGenerateSigner(alg jwa.SignatureAlgorithm) error {
-	log.WithField("alg", alg.String()).Debug("Try loading key from legacy")
+	log.WithField("alg", alg.String()).Debug("FilesystemKMS: Try loading key from legacy")
 	filePath := kms.legacyKeyFilePath(alg, false)
 	signer, err := jwx.ReadSignerFromFile(filePath, alg)
 	if err == nil {
-		log.WithField("alg", alg.String()).Debug("Found legacy key")
+		log.WithField("alg", alg.String()).Debug("FilesystemKMS: Found legacy key")
 		pk, kid, err := jwx.SignerToPublicJWK(signer, alg)
 		if err != nil {
 			return err
 		}
 		kms.signers[kid] = signer
 		if !fileutils.FileExists(kms.keyFilePath(kid)) {
-			log.WithField("alg", alg.String()).WithField("kid", kid).Debug("Writing legacy key to new key file")
+			log.WithField("alg", alg.String()).WithField(
+				"kid", kid,
+			).Debug("FilesystemKMS: Writing legacy key to new key file")
 			if err = jwx.WriteSignerToFile(signer, kms.keyFilePath(kid)); err != nil {
 				return err
 			}
 		} else {
 			log.WithField("alg", alg.String()).WithField(
 				"kid", kid,
-			).Debug("legacy key already have been written to new key file")
+			).Debug("FilesystemKMS: legacy key already have been written to new key file")
 		}
 		storedPK, err := kms.PKs.Get(kid)
 		if err != nil {
@@ -234,7 +236,7 @@ func (kms *FilesystemKMS) loadLegacyOrGenerateSigner(alg jwa.SignatureAlgorithm)
 			exp = unixtime.Unixtime{Time: time.Unix(int64(sec), int64(dec*(1e9)))}
 		}
 		if storedPK != nil {
-			log.WithField("alg", alg.String()).WithField("kid", kid).Debug("Legacy key already loaded")
+			log.WithField("alg", alg.String()).WithField("kid", kid).Debug("FilesystemKMS: Legacy key already loaded")
 			if storedPK.ExpiresAt.IsZero() || exp.After(time.Now()) {
 				return nil
 			}
@@ -270,22 +272,24 @@ func (kms *FilesystemKMS) loadLegacyOrGenerateSigner(alg jwa.SignatureAlgorithm)
 				return err
 			}
 			if exp.IsZero() || exp.After(time.Now()) {
-				log.WithField("alg", alg.String()).WithField("kid", kid).Info("Successfully loaded legacy key")
+				log.WithField("alg", alg.String()).WithField(
+					"kid", kid,
+				).Info("FilesystemKMS: Successfully loaded legacy key")
 				return nil
 			}
 		}
-		log.WithField("alg", alg.String()).WithField("kid", kid).Info("legacy key is expired")
+		log.WithField("alg", alg.String()).WithField("kid", kid).Info("FilesystemKMS: legacy key is expired")
 	}
-	log.WithField("alg", alg.String()).Info("no valid signing key found")
+	log.WithField("alg", alg.String()).Info("FilesystemKMS: no valid signing key found")
 	// could not load key
 	if !kms.GenerateKeys {
-		log.Info("key generation disabled")
+		log.Info("FilesystemKMS: key generation disabled")
 		return errors.Errorf(
 			"no existing signing key for alg '%s'. "+
 				"Assure the file exists and has the correct format or enable key generation.", alg,
 		)
 	}
-	log.Info("generating new signing key")
+	log.Info("FilesystemKMS: generating new signing key")
 	// Could not load key, generating a new one for this alg
 	_, err = kms.generateNewSigner(alg, nbfModeNow)
 	return err
@@ -337,6 +341,12 @@ func (kms *FilesystemKMS) generateNewSigner(
 }
 
 func (kms *FilesystemKMS) rotateKeys(kids []string, revoked bool, reason string) error {
+	log.WithFields(
+		log.Fields{
+			"kids":    kids,
+			"revoked": revoked,
+		},
+	).Info("FilesystemKMS: rotation: start")
 	ks := make([]*public.PublicKeyEntry, len(kids))
 	var signingAlg jwa.SignatureAlgorithm
 	// Track latest expiration across keys to decide nbf mode for new key
@@ -374,6 +384,13 @@ func (kms *FilesystemKMS) rotateKeys(kids []string, revoked bool, reason string)
 	if err != nil {
 		return err
 	}
+	log.WithFields(
+		log.Fields{
+			"alg":     signingAlg.String(),
+			"mode":    fmt.Sprintf("%v", mode),
+			"new_kid": pk.KID,
+		},
+	).Info("FilesystemKMS: rotation: generated new key")
 	newExpForOldKey := unixtime.Unixtime{Time: pk.NotBefore.Add(kms.KeyRotation.Overlap.Duration())}
 	for _, k := range ks {
 		if revoked {
@@ -387,10 +404,22 @@ func (kms *FilesystemKMS) rotateKeys(kids []string, revoked bool, reason string)
 			return err
 		}
 	}
+	log.WithFields(
+		log.Fields{
+			"alg":     signingAlg.String(),
+			"new_kid": pk.KID,
+		},
+	).Info("FilesystemKMS: rotation: completed")
 	return nil
 }
 
 func (kms *FilesystemKMS) RotateKey(kid string, revoked bool, reason string) error {
+	log.WithFields(
+		log.Fields{
+			"kid":     kid,
+			"revoked": revoked,
+		},
+	).Info("FilesystemKMS: rotate key")
 	return kms.rotateKeys([]string{kid}, revoked, reason)
 }
 
@@ -414,12 +443,16 @@ func (kms *FilesystemKMS) RotateAllKeys(revoked bool, reason string) error {
 			if _, err = kms.generateNewSigner(alg, nbfModeNow); err != nil {
 				return err
 			}
+			log.WithField(
+				"alg", alg.String(),
+			).Info("FilesystemKMS: rotation: seeded new key for alg with no active keys")
 		}
 
 		kids := make([]string, len(algPKs))
 		for i, pk := range algPKs {
 			kids[i] = pk.KID
 		}
+		log.WithField("alg", alg.String()).Info("FilesystemKMS: rotation: processing alg")
 		if err = kms.rotateKeys(kids, revoked, reason); err != nil {
 			return err
 		}
@@ -437,197 +470,14 @@ func (kms *FilesystemKMS) StartAutomaticRotation() error {
 	if kms.rotationStop != nil {
 		return nil
 	}
+	log.Info("FilesystemKMS: automatic rotation: starting")
 	kms.rotationStop = make(chan struct{})
 	kms.rotationWG.Add(1)
 	go func() {
 		defer kms.rotationWG.Done()
-		// helper to compute next wait duration and perform rotations if needed
 		for {
-			now := time.Now()
-			// default sleep if we cannot compute anything meaningful
-			nextSleep := kms.KeyRotation.Overlap.Duration() / 2
-			// clamp to a minimum to avoid busy loops when overlap is zero
-			const minSleep = time.Second
-			if nextSleep <= 0 {
-				nextSleep = minSleep
-			}
-			didRotate := false
-
-			activePKs, err := kms.PKs.GetActive()
-			if err != nil {
-				log.WithError(err).Error("automatic rotation: failed to get active public keys")
-			} else {
-				pksByAlg := activePKs.ByAlg()
-				// iterate only configured algorithms
-				for _, alg := range kms.Algs {
-					algPKs, ok := pksByAlg[alg]
-					if !ok || len(algPKs) == 0 {
-						// No active keys: before seeding a new one, check if a valid future key already exists.
-						// If a future key is present (nbf > now and not revoked/expired), wait until it becomes active
-						// instead of generating more keys.
-						validPKs, vErr := kms.PKs.GetValid()
-						if vErr != nil {
-							log.WithError(vErr).Error("automatic rotation: failed to get valid public keys for future check")
-						} else {
-							// find earliest future nbf for this alg
-							earliestNbf := time.Time{}
-							for _, pk := range validPKs {
-								algI, set := pk.Key.Algorithm()
-								if !set {
-									continue
-								}
-								if a, ok := algI.(jwa.SignatureAlgorithm); !ok || a.String() != alg.String() {
-									continue
-								}
-								// skip revoked
-								if !pk.RevokedAt.IsZero() && pk.RevokedAt.Before(now) {
-									continue
-								}
-								// consider only future keys
-								if !pk.NotBefore.IsZero() && pk.NotBefore.After(now) {
-									if earliestNbf.IsZero() || pk.NotBefore.Before(earliestNbf) {
-										earliestNbf = pk.NotBefore.Time
-									}
-								}
-							}
-							if !earliestNbf.IsZero() {
-								// schedule sleep until the future key becomes active
-								wait := time.Until(earliestNbf)
-								if wait < minSleep {
-									wait = minSleep
-								}
-								if wait < nextSleep {
-									nextSleep = wait
-								}
-								// do not seed a new key; continue to next alg
-								continue
-							}
-						}
-						// no active and no future key; seed a new key immediately
-						if _, err := kms.generateNewSigner(alg, nbfModeNow); err != nil {
-							log.WithError(err).Error("automatic rotation: failed to seed key for alg")
-							// ensure we don't spin; retry soon-ish
-							if nextSleep > minSleep {
-								nextSleep = minSleep
-							}
-							continue
-						}
-						// re-evaluate immediately to include the new key in active set
-						didRotate = true
-						continue
-					}
-					// pick the key with latest expiration as the current signer for this alg
-					current := slices.MaxFunc(
-						algPKs, func(a, b public.PublicKeyEntry) int {
-							return cmp.Compare(a.ExpiresAt.Unix(), b.ExpiresAt.Unix())
-						},
-					)
-					// Trigger rotation early enough to accommodate future nbf = now + lifetime
-					lifetime := time.Duration(0)
-					if kms.KeyRotation.EntityConfigurationLifetimeFunc != nil {
-						if lt, lerr := kms.KeyRotation.EntityConfigurationLifetimeFunc(); lerr == nil {
-							lifetime = lt
-						} else {
-							log.WithError(lerr).Warn("automatic rotation: failed to get lifetime; using 0")
-						}
-					}
-					threshold := current.ExpiresAt.Time.Add(-kms.KeyRotation.Overlap.Duration()).Add(-lifetime)
-					// if rotation needed now or in the past, rotate this algorithm set
-					if !threshold.After(now) {
-						// collect all kids for this alg to rotate cohesively
-						kids := make([]string, len(algPKs))
-						for i, pk := range algPKs {
-							kids[i] = pk.KID
-						}
-						// Before rotating, check whether there is already a future key present for this alg.
-						// If so, skip generating yet another key and just shorten old exp via rotate (still needed).
-						// We detect a future key via GetValid() with nbf > now.
-						hasFuture := false
-						if validPKs, vErr := kms.PKs.GetValid(); vErr == nil {
-							for _, pk := range validPKs {
-								algI, set := pk.Key.Algorithm()
-								if !set {
-									continue
-								}
-								if a, ok := algI.(jwa.SignatureAlgorithm); !ok || a.String() != alg.String() {
-									continue
-								}
-								if !pk.RevokedAt.IsZero() && pk.RevokedAt.Before(now) {
-									continue
-								}
-								if !pk.NotBefore.IsZero() && pk.NotBefore.After(now) {
-									hasFuture = true
-									break
-								}
-							}
-						}
-						if hasFuture {
-							// If a future key exists, do not generate another. Instead, only shorten old keys' exp.
-							// Achieve this by computing overlap end relative to earliest future nbf, and updating old keys.
-							earliestNbf := time.Time{}
-							if validPKs, vErr := kms.PKs.GetValid(); vErr == nil {
-								for _, pk := range validPKs {
-									algI, set := pk.Key.Algorithm()
-									if !set {
-										continue
-									}
-									if a, ok := algI.(jwa.SignatureAlgorithm); !ok || a.String() != alg.String() {
-										continue
-									}
-									if !pk.RevokedAt.IsZero() && pk.RevokedAt.Before(now) {
-										continue
-									}
-									if !pk.NotBefore.IsZero() && pk.NotBefore.After(now) {
-										if earliestNbf.IsZero() || pk.NotBefore.Before(earliestNbf) {
-											earliestNbf = pk.NotBefore.Time
-										}
-									}
-								}
-							}
-							if !earliestNbf.IsZero() {
-								newExpForOldKey := unixtime.Unixtime{Time: earliestNbf.Add(kms.KeyRotation.Overlap.Duration())}
-								for _, k := range algPKs {
-									if k.ExpiresAt.IsZero() || newExpForOldKey.Before(k.ExpiresAt.Time) {
-										k.ExpiresAt = newExpForOldKey
-										if uErr := kms.PKs.Update(k.KID, k.UpdateablePublicKeyMetadata); uErr != nil {
-											log.WithError(uErr).Error("automatic rotation: failed to update old key exp")
-										}
-									}
-								}
-								// schedule re-check at earliestNbf to let future key become active
-								wait := time.Until(earliestNbf)
-								if wait < minSleep {
-									wait = minSleep
-								}
-								if wait < nextSleep {
-									nextSleep = wait
-								}
-								// nothing else to do for this alg
-								continue
-							}
-						}
-						if err = kms.rotateKeys(kids, false, ""); err != nil {
-							log.WithError(err).Error("automatic rotation: rotate failed")
-							// on error, retry after a short delay
-							if nextSleep > minSleep {
-								nextSleep = minSleep
-							}
-						} else {
-							didRotate = true
-						}
-						// after rotation, we will recompute immediately in next loop iteration
-						continue
-					}
-					// compute earliest threshold across algorithms
-					wait := time.Until(threshold)
-					if wait < nextSleep {
-						nextSleep = wait
-					}
-				}
-			}
-
+			nextSleep, didRotate := kms.rotationStep(time.Now())
 			if didRotate {
-				// Immediately re-evaluate without sleeping to compute next threshold
 				select {
 				case <-kms.rotationStop:
 					return
@@ -635,10 +485,8 @@ func (kms *FilesystemKMS) StartAutomaticRotation() error {
 				}
 				continue
 			}
-
-			// sleep until the earliest threshold or default duration
 			if nextSleep <= 0 {
-				nextSleep = minSleep
+				nextSleep = time.Second
 			}
 			timer := time.NewTimer(nextSleep)
 			select {
@@ -648,12 +496,117 @@ func (kms *FilesystemKMS) StartAutomaticRotation() error {
 				}
 				return
 			case <-timer.C:
-				// loop and re-evaluate
+				// loop
 			}
 		}
 	}()
 	return nil
 }
+
+// rotationStep performs one evaluation/rotation cycle and returns the next sleep
+// interval and whether any rotation or seeding occurred (didRotate).
+func (kms *FilesystemKMS) rotationStep(now time.Time) (time.Duration, bool) {
+	nextSleep := kms.KeyRotation.Overlap.Duration() / 2
+	const minSleep = time.Second
+	if nextSleep <= 0 {
+		nextSleep = minSleep
+	}
+	didRotate := false
+
+	activePKs, err := kms.PKs.GetActive()
+	if err != nil {
+		log.WithError(err).Error("FilesystemKMS: automatic rotation: failed to get active public keys")
+		return nextSleep, false
+	}
+	pksByAlg := activePKs.ByAlg()
+	for _, alg := range kms.Algs {
+		sleepCandidate, rotated := kms.rotationEvaluationForAlg(pksByAlg, alg, now, minSleep)
+		if rotated {
+			didRotate = true
+		}
+		if sleepCandidate > 0 && sleepCandidate < nextSleep {
+			nextSleep = sleepCandidate
+		}
+	}
+	return nextSleep, didRotate
+}
+
+// rotationEvaluationForAlg evaluates rotation needs for a single algorithm.
+// It returns a candidate sleep duration until the next action point and whether
+// any rotation or seeding occurred.
+func (kms *FilesystemKMS) rotationEvaluationForAlg(
+	pksByAlg map[jwa.SignatureAlgorithm]public.PublicKeyEntryList,
+	alg jwa.SignatureAlgorithm,
+	now time.Time,
+	minSleep time.Duration,
+) (time.Duration, bool) {
+	algPKs, ok := pksByAlg[alg]
+	if !ok || len(algPKs) == 0 {
+		earliestNbf, hasFuture, vErr := earliestFutureNbfForAlg(kms.PKs, alg, now)
+		if vErr != nil {
+			log.WithError(vErr).Error("FilesystemKMS: automatic rotation: failed to get valid public keys for future check")
+			return 0, false
+		}
+		if hasFuture {
+			wait := time.Until(earliestNbf)
+			if wait < minSleep {
+				wait = minSleep
+			}
+			return wait, false
+		}
+		if _, err := kms.generateNewSigner(alg, nbfModeNow); err != nil {
+			log.WithError(err).Error("FilesystemKMS: automatic rotation: failed to seed key for alg")
+			return minSleep, false
+		}
+		return 0, true
+	}
+
+	current := slices.MaxFunc(
+		algPKs, func(a, b public.PublicKeyEntry) int {
+			return cmp.Compare(a.ExpiresAt.Unix(), b.ExpiresAt.Unix())
+		},
+	)
+
+	lifetime := time.Duration(0)
+	if kms.KeyRotation.EntityConfigurationLifetimeFunc != nil {
+		if lt, lerr := kms.KeyRotation.EntityConfigurationLifetimeFunc(); lerr == nil {
+			lifetime = lt
+		} else {
+			log.WithError(lerr).Warn("FilesystemKMS: automatic rotation: failed to get lifetime; using 0")
+		}
+	}
+	threshold := current.ExpiresAt.Time.Add(-kms.KeyRotation.Overlap.Duration()).Add(-lifetime)
+	if !threshold.After(now) {
+		kids := make([]string, len(algPKs))
+		for i, pk := range algPKs {
+			kids[i] = pk.KID
+		}
+		if earliestNbf, hasFuture, vErr := earliestFutureNbfForAlg(kms.PKs, alg, now); vErr == nil && hasFuture {
+			shortenExpirationUntilFuture(
+				kms.PKs, algPKs, earliestNbf, kms.KeyRotation.Overlap.Duration(), "FilesystemKMS",
+			)
+			wait := time.Until(earliestNbf)
+			if wait < minSleep {
+				wait = minSleep
+			}
+			return wait, false
+		}
+		if err := kms.rotateKeys(kids, false, ""); err != nil {
+			log.WithError(err).Error("FilesystemKMS: automatic rotation: rotate failed")
+			return minSleep, false
+		}
+		return 0, true
+	}
+	wait := time.Until(threshold)
+	if wait < minSleep {
+		wait = minSleep
+	}
+	return wait, false
+}
+
+// earliestFutureNbfForAlg returns the earliest NotBefore among valid, non-revoked
+// keys for the given algorithm, that are in the future relative to now.
+// Removed local earliestFutureNbfForAlg and shortenExpirationUntilFuture in favor of shared helpers.
 
 // StopAutomaticRotation stops the background rotation loop and waits for it to exit.
 func (kms *FilesystemKMS) StopAutomaticRotation() {
@@ -662,5 +615,6 @@ func (kms *FilesystemKMS) StopAutomaticRotation() {
 	}
 	close(kms.rotationStop)
 	kms.rotationWG.Wait()
+	log.Info("FilesystemKMS: automatic rotation: stopped")
 	kms.rotationStop = nil
 }
