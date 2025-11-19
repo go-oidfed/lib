@@ -7,7 +7,6 @@ import (
 	"github.com/jarcoal/httpmock"
 
 	"github.com/go-oidfed/lib/cache"
-	ih "github.com/go-oidfed/lib/internal/http"
 )
 
 // TestNegativeResolutionDoesNotPersist verifies that a transient failure to fetch
@@ -15,10 +14,6 @@ import (
 // It also guards against the side-effect where an empty trust tree might get cached
 // and block subsequent successful resolution with the same resolver inputs.
 func TestNegativeResolutionDoesNotPersist(t *testing.T) {
-	// Activate HTTP mocking for the Resty client used by internal/http
-	httpmock.ActivateNonDefault(ih.Do().GetClient())
-	defer httpmock.DeactivateAndReset()
-
 	// Clear relevant caches to avoid cross-test interference
 	_ = cache.Clear(cache.Key(cache.KeyEntityStatement))
 	_ = cache.Clear(cache.Key(cache.KeyTrustTree))
@@ -42,10 +37,12 @@ func TestNegativeResolutionDoesNotPersist(t *testing.T) {
 			if !failedOnce {
 				failedOnce = true
 				// Return an error response body that matches internal/http.HttpError
-				return httpmock.NewJsonResponse(500, map[string]any{
-					"error":             "server_error",
-					"error_description": "transient failure",
-				})
+				return httpmock.NewJsonResponse(
+					500, map[string]any{
+						"error":             "server_error",
+						"error_description": "transient failure",
+					},
+				)
 			}
 			// Success path: return a properly signed subordinate statement
 			sub := req.URL.Query().Get("sub")
@@ -59,7 +56,12 @@ func TestNegativeResolutionDoesNotPersist(t *testing.T) {
 
 	// Resolver with the TA (including its JWKS for signature verification)
 	resolver := TrustResolver{
-		TrustAnchors:   TrustAnchors{{EntityID: ta.EntityID, JWKS: ta.data.JWKS}},
+		TrustAnchors: TrustAnchors{
+			{
+				EntityID: ta.EntityID,
+				JWKS:     ta.data.JWKS,
+			},
+		},
 		StartingEntity: rp.EntityID,
 	}
 
@@ -73,7 +75,12 @@ func TestNegativeResolutionDoesNotPersist(t *testing.T) {
 	// Use a fresh resolver instance with identical parameters to ensure we hit the
 	// same cache keys if any negative state persisted.
 	resolver2 := TrustResolver{
-		TrustAnchors:   TrustAnchors{{EntityID: ta.EntityID, JWKS: ta.data.JWKS}},
+		TrustAnchors: TrustAnchors{
+			{
+				EntityID: ta.EntityID,
+				JWKS:     ta.data.JWKS,
+			},
+		},
 		StartingEntity: rp.EntityID,
 	}
 	chains2 := resolver2.ResolveToValidChains()
