@@ -329,7 +329,8 @@ func (t *trustTree) resolve(anchors []string) {
 }
 
 func (t *trustTree) updateExpirationTime() {
-	if t.Entity.ExpiresAt.Before(t.expiresAt.Time) {
+	if t.expiresAt.IsZero() || t.expiresAt.Unix() == 0 || t.Entity.ExpiresAt.
+		Before(t.expiresAt.Time) {
 		t.expiresAt = t.Entity.ExpiresAt
 	}
 }
