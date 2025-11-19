@@ -155,94 +155,71 @@ func mergeMetadata(target, source *Metadata) {
 // mergeStructFields merges values from source struct into target struct using reflection.
 // Any field set in source will overwrite the corresponding field in target.
 func mergeStructFields(target, source reflect.Value) {
-	// Get the wasSet map from source if it exists
-	var wasSetMap map[string]bool
-	if wasSetField := source.FieldByName("wasSet"); wasSetField.IsValid() && wasSetField.CanInterface() {
-		if m, ok := wasSetField.Interface().(map[string]bool); ok {
-			wasSetMap = m
+	// Helper: fetch wasSet map from a struct value (if present and accessible)
+	getWasSet := func(v reflect.Value) map[string]bool {
+		f := v.FieldByName("wasSet")
+		if !f.IsValid() || f.IsNil() || !f.CanInterface() {
+			return nil
 		}
+		if m, ok := f.Interface().(map[string]bool); ok {
+			return m
+		}
+		return nil
 	}
 
-	// Get the wasSet map from target if it exists
-	var targetWasSetMap map[string]bool
-	if targetWasSetField := target.FieldByName("wasSet"); targetWasSetField.IsValid() && targetWasSetField.CanInterface() {
-		if m, ok := targetWasSetField.Interface().(map[string]bool); ok {
-			targetWasSetMap = m
-		}
-	} else if targetWasSetField = target.FieldByName("wasSet"); targetWasSetField.IsValid() && targetWasSetField.CanSet() {
-		// If target has a wasSet field but it's nil, initialize it
-		newMap := make(map[string]bool)
-		targetWasSetField.Set(reflect.ValueOf(newMap))
-		targetWasSetMap = newMap
-	}
+	sourceWasSet := getWasSet(source)
+	targetWasSet := getWasSet(target)
 
-	typ := source.Type()
-	// Iterate through all fields of the struct
+	st := source.Type()
 	for i := 0; i < source.NumField(); i++ {
-		field := typ.Field(i)
-		fieldName := field.Name
-
-		// Skip the wasSet field
-		if fieldName == "wasSet" {
+		f := st.Field(i)
+		name := f.Name
+		if name == "wasSet" || name == "Extra" {
+			continue
+		}
+		sf := source.Field(i)
+		tf := target.FieldByName(name)
+		if !tf.IsValid() || !tf.CanSet() {
+			continue
+		}
+		// Only consider fields that were explicitly set in source
+		if sourceWasSet != nil && !sourceWasSet[name] {
+			continue
+		}
+		if sf.IsZero() {
 			continue
 		}
 
-		sourceField := source.Field(i)
-		targetField := target.FieldByName(fieldName)
-
-		// If field doesn't exist in target or can't be set, skip it
-		if !targetField.IsValid() || !targetField.CanSet() {
-			continue
+		if sf.Kind() == reflect.Map && tf.Kind() == reflect.Map {
+			if tf.IsNil() {
+				tf.Set(reflect.MakeMap(tf.Type()))
+			}
+			for _, k := range sf.MapKeys() {
+				tf.SetMapIndex(k, sf.MapIndex(k))
+			}
+		} else {
+			tf.Set(sf)
 		}
 
-		// Check if this field was explicitly set in source
-		fieldWasSet := wasSetMap == nil || wasSetMap[fieldName]
-
-		// Only overwrite if the field was set in source
-		if fieldWasSet && !sourceField.IsZero() {
-			// Handle different field types
-			if sourceField.Kind() == reflect.Map && targetField.Kind() == reflect.Map {
-				// For maps, merge the contents
-				if targetField.IsNil() {
-					targetField.Set(reflect.MakeMap(targetField.Type()))
-				}
-
-				for _, key := range sourceField.MapKeys() {
-					value := sourceField.MapIndex(key)
-					targetField.SetMapIndex(key, value)
-				}
-			} else {
-				// For other types, just copy the value
-				targetField.Set(sourceField)
-			}
-
-			// Update the wasSet map in target if it exists
-			if targetWasSetMap != nil {
-				targetWasSetMap[fieldName] = true
-			}
+		if targetWasSet != nil {
+			targetWasSet[name] = true
 		}
 	}
 
-	// Handle Extra field separately if it exists
-	extraField := source.FieldByName("Extra")
-	if extraField.IsValid() && !extraField.IsNil() {
-		targetExtraField := target.FieldByName("Extra")
-		if targetExtraField.IsValid() {
-			if targetExtraField.IsNil() {
-				targetExtraField.Set(reflect.MakeMap(targetExtraField.Type()))
+	// Merge Extra map specially (copy keys)
+	if se := source.FieldByName("Extra"); se.IsValid() && !se.IsNil() {
+		if te := target.FieldByName("Extra"); te.IsValid() {
+			if te.IsNil() {
+				te.Set(reflect.MakeMap(te.Type()))
 			}
-
-			// Copy all keys from source.Extra to target.Extra
-			for _, key := range extraField.MapKeys() {
-				value := extraField.MapIndex(key)
-				targetExtraField.SetMapIndex(key, value)
+			for _, k := range se.MapKeys() {
+				te.SetMapIndex(k, se.MapIndex(k))
 			}
-
-			// Mark these fields as set in wasSet if needed
-			if targetWasSetMap != nil {
-				for _, key := range extraField.MapKeys() {
-					if k, ok := key.Interface().(string); ok {
-						targetWasSetMap[k] = true
+			// Keep original behavior: mark keys in wasSet (even though these are not struct fields)
+			if targetWasSet != nil {
+				for _, k := range se.MapKeys() {
+					if s, ok := k.Interface().(string); ok {
+						targetWasSet[s] = true
 					}
 				}
 			}
