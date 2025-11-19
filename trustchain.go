@@ -154,77 +154,92 @@ func mergeMetadata(target, source *Metadata) {
 
 // mergeStructFields merges values from source struct into target struct using reflection.
 // Any field set in source will overwrite the corresponding field in target.
-func mergeStructFields(target, source reflect.Value) {
-	// Helper: fetch wasSet map from a struct value (if present and accessible)
-	getWasSet := func(v reflect.Value) map[string]bool {
-		f := v.FieldByName("wasSet")
-		if !f.IsValid() || f.IsNil() || !f.CanInterface() {
-			return nil
-		}
-		if m, ok := f.Interface().(map[string]bool); ok {
-			return m
-		}
+// wasSetMap returns the internal wasSet map if present and accessible
+func wasSetMap(v reflect.Value) map[string]bool {
+	f := v.FieldByName("wasSet")
+	if !f.IsValid() || f.IsNil() || !f.CanInterface() {
 		return nil
 	}
+	if m, ok := f.Interface().(map[string]bool); ok {
+		return m
+	}
+	return nil
+}
 
-	sourceWasSet := getWasSet(source)
-	targetWasSet := getWasSet(target)
+// canMerge determines if a field should be merged from source into target
+func canMerge(fieldName string, sourceField reflect.Value, sourceWasSet map[string]bool) bool {
+	if fieldName == "wasSet" || fieldName == "Extra" {
+		return false
+	}
+	if sourceWasSet != nil && !sourceWasSet[fieldName] {
+		return false
+	}
+	if sourceField.IsZero() {
+		return false
+	}
+	return true
+}
+
+// mergeValue merges a single field value, handling maps specially
+func mergeValue(targetField, sourceField reflect.Value) {
+	if sourceField.Kind() == reflect.Map && targetField.Kind() == reflect.Map {
+		if targetField.IsNil() {
+			targetField.Set(reflect.MakeMap(targetField.Type()))
+		}
+		for _, k := range sourceField.MapKeys() {
+			targetField.SetMapIndex(k, sourceField.MapIndex(k))
+		}
+		return
+	}
+	targetField.Set(sourceField)
+}
+
+// mergeExtra merges the Extra map and optionally marks keys in targetWasSet
+func mergeExtra(target, source reflect.Value, targetWasSet map[string]bool) {
+	se := source.FieldByName("Extra")
+	if !se.IsValid() || se.IsNil() {
+		return
+	}
+	te := target.FieldByName("Extra")
+	if !te.IsValid() {
+		return
+	}
+	if te.IsNil() {
+		te.Set(reflect.MakeMap(te.Type()))
+	}
+	for _, k := range se.MapKeys() {
+		te.SetMapIndex(k, se.MapIndex(k))
+		if targetWasSet != nil {
+			if s, ok := k.Interface().(string); ok {
+				targetWasSet[s] = true
+			}
+		}
+	}
+}
+
+func mergeStructFields(target, source reflect.Value) {
+	sourceWasSet := wasSetMap(source)
+	targetWasSet := wasSetMap(target)
 
 	st := source.Type()
 	for i := 0; i < source.NumField(); i++ {
 		f := st.Field(i)
 		name := f.Name
-		if name == "wasSet" || name == "Extra" {
-			continue
-		}
 		sf := source.Field(i)
 		tf := target.FieldByName(name)
 		if !tf.IsValid() || !tf.CanSet() {
 			continue
 		}
-		// Only consider fields that were explicitly set in source
-		if sourceWasSet != nil && !sourceWasSet[name] {
+		if !canMerge(name, sf, sourceWasSet) {
 			continue
 		}
-		if sf.IsZero() {
-			continue
-		}
-
-		if sf.Kind() == reflect.Map && tf.Kind() == reflect.Map {
-			if tf.IsNil() {
-				tf.Set(reflect.MakeMap(tf.Type()))
-			}
-			for _, k := range sf.MapKeys() {
-				tf.SetMapIndex(k, sf.MapIndex(k))
-			}
-		} else {
-			tf.Set(sf)
-		}
-
+		mergeValue(tf, sf)
 		if targetWasSet != nil {
 			targetWasSet[name] = true
 		}
 	}
 
-	// Merge Extra map specially (copy keys)
-	if se := source.FieldByName("Extra"); se.IsValid() && !se.IsNil() {
-		if te := target.FieldByName("Extra"); te.IsValid() {
-			if te.IsNil() {
-				te.Set(reflect.MakeMap(te.Type()))
-			}
-			for _, k := range se.MapKeys() {
-				te.SetMapIndex(k, se.MapIndex(k))
-			}
-			// Keep original behavior: mark keys in wasSet (even though these are not struct fields)
-			if targetWasSet != nil {
-				for _, k := range se.MapKeys() {
-					if s, ok := k.Interface().(string); ok {
-						targetWasSet[s] = true
-					}
-				}
-			}
-		}
-	}
+	mergeExtra(target, source, targetWasSet)
 }
 
 // Messages returns the jwts of the TrustChain
