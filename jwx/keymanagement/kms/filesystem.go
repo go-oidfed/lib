@@ -4,7 +4,6 @@ import (
 	"cmp"
 	"crypto"
 	"fmt"
-	"math"
 	"slices"
 	"sync"
 	"time"
@@ -12,7 +11,6 @@ import (
 	"github.com/lestrrat-go/jwx/v3/jwa"
 	"github.com/pkg/errors"
 	log "github.com/sirupsen/logrus"
-	"github.com/zachmann/go-utils/fileutils"
 
 	"github.com/go-oidfed/lib/jwx"
 	"github.com/go-oidfed/lib/jwx/keymanagement/public"
@@ -69,14 +67,6 @@ type FilesystemKMS struct {
 	// automatic rotation control
 	rotationStop chan struct{}
 	rotationWG   sync.WaitGroup
-}
-
-func (kms *FilesystemKMS) legacyKeyFilePath(alg jwa.SignatureAlgorithm, future bool) string {
-	var f string
-	if future {
-		f = "f"
-	}
-	return fmt.Sprintf("%s/%s_%s%s.pem", kms.Dir, kms.TypeID, alg.String(), f)
 }
 
 func (kms *FilesystemKMS) keyFilePath(kid string) string {
@@ -191,108 +181,80 @@ func (kms *FilesystemKMS) Load() error {
 			continue
 		}
 		log.WithField("alg", alg.String()).Debug("FilesystemKMS: key for alg is missing")
-		err = kms.loadLegacyOrGenerateSigner(alg)
-		if err != nil {
+		if !kms.GenerateKeys {
+			log.Info("FilesystemKMS: key generation disabled")
+			return errors.Errorf(
+				"no existing signing key for alg '%s'. Assure the file exists and has the correct format or enable key generation.",
+				alg,
+			)
+		}
+		log.Info("FilesystemKMS: generating new signing key")
+		if _, err = kms.generateNewSigner(alg, nbfModeNow); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-// loadLegacyOrGenerateSigner loads a signer from a legacy location or generates
-// a new one if it doesn't exist (and generation is enabled).
-func (kms *FilesystemKMS) loadLegacyOrGenerateSigner(alg jwa.SignatureAlgorithm) error {
-	log.WithField("alg", alg.String()).Debug("FilesystemKMS: Try loading key from legacy")
-	filePath := kms.legacyKeyFilePath(alg, false)
-	signer, err := jwx.ReadSignerFromFile(filePath, alg)
-	if err == nil {
-		log.WithField("alg", alg.String()).Debug("FilesystemKMS: Found legacy key")
-		pk, kid, err := jwx.SignerToPublicJWK(signer, alg)
-		if err != nil {
-			return err
+// NewFilesystemKMSFromBasic creates a new FilesystemKMS initialized from an existing
+// BasicKeyManagementSystem and persists private keys for the configured algorithms
+// into the filesystem at the configured directory.
+func NewFilesystemKMSFromBasic(
+	src BasicKeyManagementSystem,
+	config FilesystemKMSConfig,
+	pks public.PublicKeyStorage,
+) (KeyManagementSystem, error) {
+	kms := &FilesystemKMS{
+		FilesystemKMSConfig: config,
+		PKs:                 pks,
+		signers:             make(map[string]crypto.Signer),
+	}
+
+	// Ensure target PK storage is loaded
+	if err := pks.Load(); err != nil {
+		return nil, err
+	}
+
+	// For each configured algorithm, obtain a signer from the source and persist it
+	for _, alg := range config.Algs {
+		signer, usedAlg := src.GetForAlgs(alg.String())
+		if signer == nil || usedAlg.String() == "" {
+			continue
 		}
+		pk, kid, err := jwx.SignerToPublicJWK(signer, usedAlg)
+		if err != nil {
+			return nil, err
+		}
+		// Write private key to new location
+		if err = jwx.WriteSignerToFile(signer, kms.keyFilePath(kid)); err != nil {
+			return nil, err
+		}
+		// Register signer locally
 		kms.signers[kid] = signer
-		if !fileutils.FileExists(kms.keyFilePath(kid)) {
-			log.WithField("alg", alg.String()).WithField(
-				"kid", kid,
-			).Debug("FilesystemKMS: Writing legacy key to new key file")
-			if err = jwx.WriteSignerToFile(signer, kms.keyFilePath(kid)); err != nil {
-				return err
-			}
-		} else {
-			log.WithField("alg", alg.String()).WithField(
-				"kid", kid,
-			).Debug("FilesystemKMS: legacy key already have been written to new key file")
-		}
-		storedPK, err := kms.PKs.Get(kid)
+		// Add public key metadata to PK storage if missing
+		existing, err := pks.Get(kid)
 		if err != nil {
-			return err
+			return nil, err
 		}
-		var expF float64
-		_ = pk.Get("exp", &expF)
-		var exp unixtime.Unixtime
-		if expF != 0 {
-			sec, dec := math.Modf(expF)
-			exp = unixtime.Unixtime{Time: time.Unix(int64(sec), int64(dec*(1e9)))}
-		}
-		if storedPK != nil {
-			log.WithField("alg", alg.String()).WithField("kid", kid).Debug("FilesystemKMS: Legacy key already loaded")
-			if storedPK.ExpiresAt.IsZero() || exp.After(time.Now()) {
-				return nil
-			}
-		} else {
-			var iatF, nbfF float64
-			_ = pk.Get("iat", &iatF)
-			_ = pk.Get("nbf", &nbfF)
-			var iat, nbf unixtime.Unixtime
-			if iatF != 0 {
-				sec, dec := math.Modf(iatF)
-				iat = unixtime.Unixtime{Time: time.Unix(int64(sec), int64(dec*(1e9)))}
-			}
-			if nbfF != 0 {
-				sec, dec := math.Modf(nbfF)
-				nbf = unixtime.Unixtime{Time: time.Unix(int64(sec), int64(dec*(1e9)))}
-			}
-			if kms.KeyRotation.Enabled {
-				newExp := unixtime.Unixtime{Time: time.Now().Add(kms.KeyRotation.Interval.Duration())}
-				if exp.Before(newExp.Time) {
-					exp = newExp
-				}
-			}
+		if existing == nil {
+			now := unixtime.Now()
 			pke := public.PublicKeyEntry{
 				KID:       kid,
 				Key:       pk,
-				IssuedAt:  iat,
-				NotBefore: nbf,
-				UpdateablePublicKeyMetadata: public.UpdateablePublicKeyMetadata{
-					ExpiresAt: exp,
-				},
+				IssuedAt:  now,
+				NotBefore: now,
 			}
-			if err = kms.PKs.Add(pke); err != nil {
-				return err
-			}
-			if exp.IsZero() || exp.After(time.Now()) {
-				log.WithField("alg", alg.String()).WithField(
-					"kid", kid,
-				).Info("FilesystemKMS: Successfully loaded legacy key")
-				return nil
+			if err = pks.Add(pke); err != nil {
+				return nil, err
 			}
 		}
-		log.WithField("alg", alg.String()).WithField("kid", kid).Info("FilesystemKMS: legacy key is expired")
 	}
-	log.WithField("alg", alg.String()).Info("FilesystemKMS: no valid signing key found")
-	// could not load key
-	if !kms.GenerateKeys {
-		log.Info("FilesystemKMS: key generation disabled")
-		return errors.Errorf(
-			"no existing signing key for alg '%s'. "+
-				"Assure the file exists and has the correct format or enable key generation.", alg,
-		)
+
+	// Finalize by loading any remaining keys normally
+	if err := kms.Load(); err != nil {
+		log.WithError(err).Warn("NewFilesystemKMSFromBasic: Load encountered issues after migration")
 	}
-	log.Info("FilesystemKMS: generating new signing key")
-	// Could not load key, generating a new one for this alg
-	_, err = kms.generateNewSigner(alg, nbfModeNow)
-	return err
+	return kms, nil
 }
 
 func (kms *FilesystemKMS) generateNewSigner(

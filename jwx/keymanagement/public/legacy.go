@@ -3,9 +3,11 @@ package public
 import (
 	"encoding/json"
 	"fmt"
+	"math"
 	"os"
 	"path/filepath"
 	"slices"
+	"time"
 
 	"github.com/lestrrat-go/jwx/v3/jwk"
 	"github.com/pkg/errors"
@@ -13,6 +15,7 @@ import (
 	"github.com/zachmann/go-utils/fileutils"
 
 	"github.com/go-oidfed/lib/jwx"
+	"github.com/go-oidfed/lib/unixtime"
 )
 
 type jwksSlice []jwx.JWKS
@@ -31,6 +34,175 @@ type LegacyPKCollection struct {
 	NumberOfOldKeysKeptInJWKS int
 	KeepHistory               bool
 	history                   jwx.JWKS
+}
+
+// LegacyPublicKeyStorage wraps LegacyPKCollection and exposes the PublicKeyStorage
+// interface to enable migration to the new FilesystemPublicKeyStorage.
+// This should only be used for migrations
+type LegacyPublicKeyStorage struct {
+	Dir    string
+	TypeID string
+	coll   *LegacyPKCollection
+}
+
+func (l *LegacyPublicKeyStorage) Load() error {
+	var agg aggregatedPublicKeyStorage
+	if err := agg.Load(l.Dir); err != nil {
+		return err
+	}
+	c, ok := agg[l.TypeID]
+	if !ok {
+		l.coll = &LegacyPKCollection{}
+		return nil
+	}
+	l.coll = c
+	return nil
+}
+
+func (l *LegacyPublicKeyStorage) GetAll() (PublicKeyEntryList, error) {
+	return l.collectAll(false, false), nil
+}
+
+func (l *LegacyPublicKeyStorage) GetRevoked() (PublicKeyEntryList, error) {
+	// Legacy format does not track revoked explicitly; return empty
+	return PublicKeyEntryList{}, nil
+}
+
+func (l *LegacyPublicKeyStorage) GetExpired() (PublicKeyEntryList, error) {
+	now := time.Now()
+	out := l.collectAll(false, true)
+	var expired PublicKeyEntryList
+	for _, e := range out {
+		if !e.ExpiresAt.IsZero() && e.ExpiresAt.Before(now) {
+			expired = append(expired, e)
+		}
+	}
+	return expired, nil
+}
+
+func (l *LegacyPublicKeyStorage) GetHistorical() (PublicKeyEntryList, error) {
+	now := time.Now()
+	out := l.collectAll(false, true)
+	var hist PublicKeyEntryList
+	for _, e := range out {
+		if !e.ExpiresAt.IsZero() && e.ExpiresAt.Before(now) {
+			hist = append(hist, e)
+		}
+	}
+	return hist, nil
+}
+
+func (l *LegacyPublicKeyStorage) GetActive() (PublicKeyEntryList, error) {
+	now := time.Now()
+	out := l.collectAll(false, false)
+	var active PublicKeyEntryList
+	for _, e := range out {
+		if !e.NotBefore.IsZero() && now.Before(e.NotBefore.Time) {
+			continue
+		}
+		if !e.ExpiresAt.IsZero() && e.ExpiresAt.Before(now) {
+			continue
+		}
+		active = append(active, e)
+	}
+	return active, nil
+}
+
+func (l *LegacyPublicKeyStorage) GetValid() (PublicKeyEntryList, error) {
+	// In legacy, valid = all keys not expired
+	now := time.Now()
+	list := l.collectAll(true, false)
+	var valid PublicKeyEntryList
+	for _, e := range list {
+		if !e.ExpiresAt.IsZero() && e.ExpiresAt.Before(now) {
+			continue
+		}
+		valid = append(valid, e)
+	}
+	return valid, nil
+}
+
+func (l *LegacyPublicKeyStorage) Add(key PublicKeyEntry) error { return errors.New("unsupported") }
+func (l *LegacyPublicKeyStorage) AddAll(keys []PublicKeyEntry) error {
+	return errors.New("unsupported")
+}
+func (l *LegacyPublicKeyStorage) Update(kid string, data UpdateablePublicKeyMetadata) error {
+	return errors.New("unsupported")
+}
+func (l *LegacyPublicKeyStorage) Delete(kid string) error         { return errors.New("unsupported") }
+func (l *LegacyPublicKeyStorage) Revoke(kid, reason string) error { return errors.New("unsupported") }
+
+func (l *LegacyPublicKeyStorage) Get(kid string) (*PublicKeyEntry, error) {
+	list := l.collectAll(true, true)
+	for _, e := range list {
+		if e.KID == kid {
+			return &e, nil
+		}
+	}
+	return nil, nil
+}
+
+// collectAll flattens legacy JWKS (current, next, olds) and history into PublicKeyEntryList
+func (l *LegacyPublicKeyStorage) collectAll(includeNext, includeOlds bool) PublicKeyEntryList {
+	if l.coll == nil {
+		return PublicKeyEntryList{}
+	}
+	var sets []jwx.JWKS
+	if len(l.coll.jwks) > 0 {
+		// current
+		sets = append(sets, l.coll.jwks[0])
+	}
+	if includeNext && len(l.coll.jwks) > 1 {
+		sets = append(sets, l.coll.jwks[1])
+	}
+	if includeOlds && len(l.coll.jwks) > 2 {
+		sets = append(sets, l.coll.jwks[2:]...)
+	}
+	if l.coll.history.Set != nil {
+		sets = append(sets, l.coll.history)
+	}
+	var out PublicKeyEntryList
+	for _, s := range sets {
+		for i := range s.Len() {
+			k, _ := s.Key(i)
+			var kid string
+			_ = k.Get("kid", &kid)
+			if kid == "" {
+				continue
+			}
+			cloned, cerr := k.Clone()
+			if cerr != nil {
+				continue
+			}
+			var iatF, nbfF, expF float64
+			_ = k.Get("iat", &iatF)
+			_ = k.Get("nbf", &nbfF)
+			_ = k.Get("exp", &expF)
+			var iat, nbf, exp unixtime.Unixtime
+			if iatF != 0 {
+				sec, dec := math.Modf(iatF)
+				iat = unixtime.Unixtime{Time: time.Unix(int64(sec), int64(dec*(1e9)))}
+			}
+			if nbfF != 0 {
+				sec, dec := math.Modf(nbfF)
+				nbf = unixtime.Unixtime{Time: time.Unix(int64(sec), int64(dec*(1e9)))}
+			}
+			if expF != 0 {
+				sec, dec := math.Modf(expF)
+				exp = unixtime.Unixtime{Time: time.Unix(int64(sec), int64(dec*(1e9)))}
+			}
+			out = append(
+				out, PublicKeyEntry{
+					KID:                         kid,
+					Key:                         cloned,
+					IssuedAt:                    iat,
+					NotBefore:                   nbf,
+					UpdateablePublicKeyMetadata: UpdateablePublicKeyMetadata{ExpiresAt: exp},
+				},
+			)
+		}
+	}
+	return out
 }
 
 // MarshalJSON implements the json.Marshaler interface

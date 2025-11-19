@@ -2,7 +2,6 @@ package public
 
 import (
 	"encoding/json"
-	"math"
 	"os"
 	"path/filepath"
 	"sync"
@@ -10,6 +9,7 @@ import (
 
 	"github.com/lestrrat-go/jwx/v3/jwk"
 	"github.com/pkg/errors"
+	log "github.com/sirupsen/logrus"
 
 	"github.com/go-oidfed/lib/unixtime"
 )
@@ -37,79 +37,22 @@ func (fs *FilesystemPublicKeyStorage) Load() error {
 		fs.entries = make(map[string]PublicKeyEntry)
 	}
 
-	// Try native storage first
 	data, err := os.ReadFile(fs.storageFilePath())
-	if err == nil {
-		if len(data) == 0 {
-			return nil
-		}
-		var disk map[string]PublicKeyEntry
-		if err = json.Unmarshal(data, &disk); err != nil {
-			return errors.WithStack(err)
-		}
-		fs.entries = disk
+	if err != nil {
+		log.WithError(err).WithField(
+			"filepath", fs.storageFilePath(),
+		).Warn("FilesystemPublicKeyStorage: could not read storage file")
 		return nil
 	}
-
-	// Fallback: load from legacy aggregatedPublicKeyStorage
-	var agg aggregatedPublicKeyStorage
-	if err = agg.Load(fs.Dir); err != nil {
-		return err
-	}
-	coll, ok := agg[fs.TypeID]
-	if !ok || coll == nil {
-		// nothing to load
+	if len(data) == 0 {
 		return nil
 	}
-
-	// Import from all JWKS sets (current, next, old...) and history
-	importSet := func(set jwk.Set) {
-		if set == nil || set.Len() == 0 {
-			return
-		}
-		for i := range set.Len() {
-			k, _ := set.Key(i)
-			var kid string
-			_ = k.Get("kid", &kid)
-			var iatF, nbfF, expF float64
-			_ = k.Get("iat", &iatF)
-			_ = k.Get("nbf", &nbfF)
-			_ = k.Get("exp", &expF)
-
-			// Clone the key to decouple stored state
-			cloned, cerr := k.Clone()
-			if cerr != nil {
-				continue
-			}
-			// Preserve algorithm and other params already present in the key.
-			entry := PublicKeyEntry{
-				KID: kid,
-				Key: cloned,
-			}
-			if iatF != 0 {
-				sec, dec := math.Modf(iatF)
-				entry.IssuedAt = unixtime.Unixtime{Time: time.Unix(int64(sec), int64(dec*(1e9)))}
-			}
-			if nbfF != 0 {
-				sec, dec := math.Modf(nbfF)
-				entry.NotBefore = unixtime.Unixtime{Time: time.Unix(int64(sec), int64(dec*(1e9)))}
-			}
-			if expF != 0 {
-				sec, dec := math.Modf(expF)
-				entry.ExpiresAt = unixtime.Unixtime{Time: time.Unix(int64(sec), int64(dec*(1e9)))}
-			}
-			// Last one wins if duplicate KIDs occur across sets/history
-			fs.entries[kid] = entry
-		}
+	var disk map[string]PublicKeyEntry
+	if err = json.Unmarshal(data, &disk); err != nil {
+		return errors.WithStack(err)
 	}
-	for _, set := range coll.jwks {
-		importSet(set.Set)
-	}
-	if coll.history.Set != nil {
-		importSet(coll.history.Set)
-	}
-	// Persist imported entries to native storage format
-	return fs.persist()
+	fs.entries = disk
+	return nil
 }
 
 // GetAll returns all keys in the storage, including revoked and expired keys.
@@ -324,4 +267,108 @@ func (fs *FilesystemPublicKeyStorage) persist() error {
 		return errors.WithStack(err)
 	}
 	return errors.WithStack(os.WriteFile(fs.storageFilePath(), data, 0o600))
+}
+
+// NewFilesystemPublicKeyStorageFromLegacy creates a new FilesystemPublicKeyStorage and
+// populates it from a LegacyPKCollection stored in the legacy files within the given dir.
+// This helper is intended to aid migration and does not retain legacy aggregation behavior.
+func NewFilesystemPublicKeyStorageFromLegacy(dir, typeID string) (*FilesystemPublicKeyStorage, error) {
+	fs := &FilesystemPublicKeyStorage{
+		Dir:    dir,
+		TypeID: typeID,
+	}
+	if err := fs.Load(); err != nil {
+		return nil, err
+	}
+	// Load legacy aggregated storage and import entries for the given typeID
+	var agg aggregatedPublicKeyStorage
+	if err := agg.Load(dir); err != nil {
+		return nil, err
+	}
+	coll, ok := agg[typeID]
+	if !ok || coll == nil {
+		return fs, nil
+	}
+	// Import all JWKS sets and history
+	importSet := func(set jwk.Set) {
+		if set == nil || set.Len() == 0 {
+			return
+		}
+		for i := range set.Len() {
+			k, _ := set.Key(i)
+			var kid string
+			_ = k.Get("kid", &kid)
+			if kid == "" {
+				continue
+			}
+			cloned, cerr := k.Clone()
+			if cerr != nil {
+				continue
+			}
+			// Extract timing metadata if present
+			var iat, nbf, exp unixtime.Unixtime
+			_ = k.Get("iat", &iat)
+			_ = k.Get("nbf", &nbf)
+			_ = k.Get("exp", &exp)
+			entry := PublicKeyEntry{
+				KID: kid,
+				Key: cloned,
+			}
+			entry.IssuedAt = iat
+			entry.NotBefore = nbf
+			entry.ExpiresAt = exp
+			// Last write wins for duplicate kids
+			fs.entries[kid] = entry
+		}
+	}
+	for _, set := range coll.jwks {
+		importSet(set.Set)
+	}
+	if coll.history.Set != nil {
+		importSet(coll.history.Set)
+	}
+	if err := fs.persist(); err != nil {
+		return nil, err
+	}
+	return fs, nil
+}
+
+// NewFilesystemPublicKeyStorageFromStorage creates a new FilesystemPublicKeyStorage
+// and populates it from the passed PublicKeyStorage implementation.
+func NewFilesystemPublicKeyStorageFromStorage(dir, typeID string, src PublicKeyStorage) (
+	*FilesystemPublicKeyStorage, error,
+) {
+	fs := &FilesystemPublicKeyStorage{
+		Dir:     dir,
+		TypeID:  typeID,
+		entries: make(map[string]PublicKeyEntry),
+	}
+	// Load source if necessary
+	if err := src.Load(); err != nil {
+		return nil, err
+	}
+	list, err := src.GetAll()
+	if err != nil {
+		return nil, err
+	}
+	for _, e := range list {
+		if e.KID == "" && e.Key != nil {
+			var kid string
+			_ = e.Key.Get("kid", &kid)
+			e.KID = kid
+		}
+		if e.KID == "" || e.Key == nil {
+			continue
+		}
+		if k, cerr := e.Key.Clone(); cerr == nil {
+			e.Key = k
+		} else {
+			continue
+		}
+		fs.entries[e.KID] = e
+	}
+	if err = fs.persist(); err != nil {
+		return nil, err
+	}
+	return fs, nil
 }
