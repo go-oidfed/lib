@@ -182,12 +182,13 @@ func (r *TrustResolver) ResolveToValidChainsWithoutVerifyingMetadata() TrustChai
 	chains, set, err := r.cacheGetTrustChains()
 	if err != nil {
 		set = false
-		internal.Log(err.Error())
+		internal.Log("TrustResolver: " + err.Error())
 	}
 	if set {
-		internal.Log("Obtained trust chains from cache")
+		internal.Log("TrustResolver: Obtained trust chains from cache")
 		return chains
 	}
+	internal.Log("TrustResolver: Trust chains cache miss; resolving trust tree and verifying signatures")
 	r.Resolve()
 	r.VerifySignatures()
 	return r.Chains()
@@ -196,20 +197,25 @@ func (r *TrustResolver) ResolveToValidChainsWithoutVerifyingMetadata() TrustChai
 // Resolve starts the trust chain resolution process, building an internal trust tree
 func (r *TrustResolver) Resolve() {
 	if found, err := r.cacheGetTrustTree(); err != nil {
-		internal.Log(err.Error())
+		internal.Log("TrustResolver: " + err.Error())
 	} else if found {
-		internal.Log("Obtained trust tree from cache")
+		internal.Log("TrustResolver: Obtained trust tree from cache")
 		return
 	}
 	if r.StartingEntity == "" {
+		internal.Log("TrustResolver: Resolve: no StartingEntity provided; aborting")
 		return
 	}
 	starting, err := GetEntityConfiguration(r.StartingEntity)
 	if err != nil {
+		internal.Logf(
+			"TrustResolver: Resolve: failed to get starting entity configuration for %s: %v", r.StartingEntity, err,
+		)
 		return
 	}
 	if len(r.Types) > 0 {
 		utils.NilAllExceptByTag(starting.Metadata, r.Types)
+		internal.Logf("TrustResolver: Resolve: constrained metadata to types: %v", r.Types)
 	}
 	r.trustTree = trustTree{
 		Entity:              starting,
@@ -218,17 +224,21 @@ func (r *TrustResolver) Resolve() {
 	}
 	r.trustTree.resolve(r.TrustAnchors.EntityIDs())
 	if err = r.cacheSetTrustTree(); err != nil {
-		internal.Log(err.Error())
+		internal.Log("TrustResolver: " + err.Error())
 	}
 }
 
 // VerifySignatures verifies the signatures of the internal trust tree
 func (r *TrustResolver) VerifySignatures() {
 	if !r.trustTree.verifySignatures(r.TrustAnchors) {
+		internal.Log("TrustResolver: VerifySignatures: signature verification failed; clearing trust tree")
 		r.trustTree = trustTree{}
 	}
 	if err := r.cacheSetTrustTree(); err != nil {
-		internal.Log(err.Error())
+		internal.Log("TrustResolver: " + err.Error())
+	}
+	if r.trustTree.signaturesVerified {
+		internal.Logf("TrustResolver: VerifySignatures: signature verification succeeded; valid authorities at root: %d", len(r.trustTree.Authorities))
 	}
 }
 
@@ -236,18 +246,20 @@ func (r *TrustResolver) VerifySignatures() {
 func (r TrustResolver) Chains() (chains TrustChains) {
 	chains, set, err := r.cacheGetTrustChains()
 	if err != nil {
-		internal.Log(err.Error())
+		internal.Log("TrustResolver: " + err.Error())
 	}
 	if set {
 		return chains
 	}
 	chains = r.trustTree.chains()
 	if chains == nil {
+		internal.Log("TrustResolver: Chains: no chains found from current trust tree")
 		return nil
 	}
 	if err = r.cacheSetTrustChains(chains); err != nil {
-		internal.Log(err.Error())
+		internal.Log("TrustResolver: " + err.Error())
 	}
+	internal.Logf("TrustResolver: Chains: computed %d chain(s) and cached them", len(chains))
 	return
 }
 
@@ -269,9 +281,11 @@ func (r TrustResolver) cacheSetTrustChains(chains TrustChains) error {
 	if err != nil {
 		return err
 	}
+	ttl := unixtime.Until(r.trustTree.expiresAt)
+	internal.Logf("TrustResolver: Caching trust chains with TTL %s (hash:%s)", ttl, hash)
 	return cache.Set(
 		cache.Key(cache.KeyTrustTreeChains, hash), chains,
-		unixtime.Until(r.trustTree.expiresAt),
+		ttl,
 	)
 }
 
@@ -295,9 +309,11 @@ func (r TrustResolver) cacheSetTrustTree() error {
 	if err = cache.Delete(cache.Key(cache.KeyTrustTreeChains, hash)); err != nil {
 		return err
 	}
+	ttl := unixtime.Until(r.trustTree.expiresAt)
+	internal.Logf("TrustResolver: Caching trust tree with TTL %s (hash:%s)", ttl, hash)
 	return cache.Set(
 		cache.Key(cache.KeyTrustTree, hash), r.trustTree,
-		unixtime.Until(r.trustTree.expiresAt),
+		ttl,
 	)
 }
 
@@ -322,6 +338,7 @@ func (t *trustTree) resolve(anchors []string) {
 
 	// Early return if the entity is issued by a trust anchor
 	if sliceutils.SliceContains(t.Entity.Issuer, anchors) {
+		internal.Logf("TrustResolver: resolve: entity %s is issued by a trust anchor; early return", t.Entity.Issuer)
 		return
 	}
 
@@ -340,42 +357,91 @@ func (t *trustTree) resolveAuthorities(anchors []string) {
 		t.Authorities = make([]trustTree, len(t.Entity.AuthorityHints))
 	}
 
+	internal.Logf("TrustResolver: resolveAuthorities: %d authority hint(s) for entity %s at depth %d", len(t.Entity.AuthorityHints), t.Entity.Issuer, t.depth)
 	for i, authorityID := range t.Entity.AuthorityHints {
+		internal.Logf("TrustResolver: resolveAuthorities: working on authority %s (hint %d/%d)", authorityID, i+1, len(t.Entity.AuthorityHints))
 		if t.subordinateIDs.Has(authorityID) {
+			internal.Logf(
+				"TrustResolver: resolveAuthorities: skipping authority %s due to loop prevention", authorityID,
+			)
 			continue // Loop prevention
 		}
 
 		authority, err := t.resolveAuthority(authorityID, anchors)
 		if err != nil {
+			internal.Logf("TrustResolver: resolveAuthorities: failed resolving authority %s: %v", authorityID, err)
 			continue
 		}
 
 		t.Authorities[i] = authority
+		internal.Logf("TrustResolver: resolveAuthorities: successfully resolved authority %s; subtree depth %d with %d hint(s)", authorityID, authority.depth, len(authority.Entity.AuthorityHints))
 	}
 }
 
 func (t *trustTree) resolveAuthority(authorityID string, anchors []string) (trustTree, error) {
 	authorityStmt, err := GetEntityConfiguration(authorityID)
 	if err != nil {
+		internal.Logf("TrustResolver: resolveAuthority: failed to obtain authority EC for %s: %v", authorityID, err)
 		return trustTree{}, err
 	}
 
 	if !isValidAuthorityStatement(authorityStmt, authorityID) {
+		// Try to provide details why it's invalid
+		if !(utils.Equal(authorityStmt.Issuer, authorityStmt.Subject, authorityID)) {
+			internal.Logf(
+				"TrustResolver: resolveAuthority: invalid authority statement for %s: issuer/subject mismatch (iss=%s sub=%s)",
+				authorityID, authorityStmt.Issuer, authorityStmt.Subject,
+			)
+		}
+		if !authorityStmt.TimeValid() {
+			internal.Logf(
+				"TrustResolver: resolveAuthority: invalid authority statement for %s: not time-valid (iat=%v exp=%v)",
+				authorityID,
+				authorityStmt.IssuedAt, authorityStmt.ExpiresAt,
+			)
+		}
+		if authorityStmt.Metadata == nil || authorityStmt.Metadata.FederationEntity == nil {
+			internal.Logf(
+				"TrustResolver: resolveAuthority: invalid authority statement for %s: missing federation_entity metadata",
+				authorityID,
+			)
+		} else if authorityStmt.Metadata.FederationEntity.FederationFetchEndpoint == "" {
+			internal.Logf(
+				"TrustResolver: resolveAuthority: invalid authority statement for %s: missing federation_fetch_endpoint",
+				authorityID,
+			)
+		}
 		return trustTree{}, errors.New("invalid authority statement")
 	}
+	internal.Logf("TrustResolver: resolveAuthority: authority statement valid for %s; fetch endpoint: %s", authorityID, authorityStmt.Metadata.FederationEntity.FederationFetchEndpoint)
 
 	subordinateStmt, err := t.fetchAndValidateSubordinateStatement(authorityStmt, authorityID)
 	if err != nil {
+		internal.Logf(
+			"TrustResolver: resolveAuthority: failed to fetch/validate subordinate stmt for %s->%s: %v", authorityID,
+			t.Entity.Issuer,
+			err,
+		)
 		return trustTree{}, err
 	}
+	internal.Logf("TrustResolver: resolveAuthority: subordinate statement valid for authority %s and subordinate %s", authorityID, t.Entity.Issuer)
 
 	if !t.checkConstraints(subordinateStmt.Constraints) {
+		internal.Logf(
+			"TrustResolver: resolveAuthority: constraints check failed for authority %s and subordinate %s",
+			authorityID,
+			t.Entity.Issuer,
+		)
 		return trustTree{}, errors.New("constraints check failed")
 	}
+	internal.Logf("TrustResolver: resolveAuthority: constraints satisfied for authority %s and subordinate %s", authorityID, t.Entity.Issuer)
 
 	t.updateExpirationTimeFromSubordinate(subordinateStmt)
+	internal.Logf("TrustResolver: resolveAuthority: updated expiration to %v after subordinate stmt", t.expiresAt)
 
-	return t.createAuthorityTrustTree(authorityStmt, subordinateStmt, authorityID, anchors), nil
+	subtree := t.createAuthorityTrustTree(authorityStmt, subordinateStmt, authorityID, anchors)
+	internal.Logf("TrustResolver: resolveAuthority: created subtree for authority %s at depth %d (authorities: %d)", authorityID, subtree.depth, len(subtree.Authorities))
+	return subtree, nil
 }
 
 func isValidAuthorityStatement(stmt *EntityStatement, authorityID string) bool {
