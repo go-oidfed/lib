@@ -7,9 +7,9 @@ import (
 	"path/filepath"
 	"slices"
 
+	"github.com/go-oidfed/lib/internal"
 	"github.com/lestrrat-go/jwx/v3/jwk"
 	"github.com/pkg/errors"
-	log "github.com/sirupsen/logrus"
 	"github.com/zachmann/go-utils/fileutils"
 )
 
@@ -56,7 +56,7 @@ func (pks *pkCollection) addCurrentJWK(current jwk.Key) {
 
 func (pks *pkCollection) setNextJWKS(next JWKS) {
 	if len(pks.jwks) == 0 {
-		log.Error("error setting next JWKS in pkCollection: no current JWKS set")
+		internal.Error("jwx: error setting next JWKS in pkCollection: no current JWKS set")
 		pks.jwks = append(pks.jwks, next)
 	}
 	if len(pks.jwks) == 1 {
@@ -68,7 +68,7 @@ func (pks *pkCollection) setNextJWKS(next JWKS) {
 
 func (pks *pkCollection) addNextJWK(next jwk.Key) {
 	if len(pks.jwks) == 0 {
-		log.Error("error setting next JWKS in pkCollection: no current JWKS set")
+		internal.Error("jwx: error setting next JWKS in pkCollection: no current JWKS set")
 		set := NewJWKS()
 		_ = set.AddKey(next)
 		pks.jwks = jwksSlice{set}
@@ -134,7 +134,7 @@ type aggregatedPublicKeyStorage map[string]*pkCollection
 func (pks *aggregatedPublicKeyStorage) Load(dir string) error {
 	data, err := fileutils.ReadFile(jwksFilePath(dir))
 	if err != nil {
-		log.Warn(err.Error())
+		internal.Warn(err.Error())
 		return nil
 	}
 	if len(data) == 0 {

@@ -7,9 +7,9 @@ import (
 	"slices"
 	"time"
 
+	"github.com/go-oidfed/lib/internal"
 	"github.com/lestrrat-go/jwx/v3/jwa"
 	"github.com/pkg/errors"
-	log "github.com/sirupsen/logrus"
 	"github.com/zachmann/go-utils/fileutils"
 
 	"github.com/go-oidfed/lib/unixtime"
@@ -68,7 +68,7 @@ func (sks *privateKeyStorageMultiAlg) initKeyRotation(pks *pkCollection, pksOnCh
 				time.Sleep(sleepDuration)
 			}
 			if err := sks.GenerateNewKeys(pks, pksOnChange); err != nil {
-				log.Error(err)
+				internal.Error(err)
 			}
 		}
 	}()

@@ -4,9 +4,9 @@ import (
 	"crypto"
 	"sync"
 
+	"github.com/go-oidfed/lib/internal"
 	"github.com/lestrrat-go/jwx/v3/jwa"
 	"github.com/pkg/errors"
-	log "github.com/sirupsen/logrus"
 	"github.com/zachmann/go-utils/duration"
 )
 
@@ -116,7 +116,7 @@ func (ks KeyStorage) JWKS(storageType string) JWKS {
 		for i := range set.Len() {
 			k, _ := set.Key(i)
 			if err := final.AddKey(k); err != nil {
-				log.Error(err.Error())
+				internal.Error(err.Error())
 			}
 		}
 	}

@@ -7,9 +7,9 @@ import (
 	"slices"
 	"time"
 
+	"github.com/go-oidfed/lib/internal"
 	"github.com/lestrrat-go/jwx/v3/jwa"
 	"github.com/pkg/errors"
-	log "github.com/sirupsen/logrus"
 	"github.com/zachmann/go-utils/fileutils"
 
 	"github.com/go-oidfed/lib/unixtime"
@@ -59,7 +59,7 @@ func (sks *privateKeyStorageSingleAlg) initKeyRotation(pks *pkCollection, pksOnC
 				time.Sleep(sleepDuration)
 			}
 			if err := sks.GenerateNewKeys(pks, pksOnChange); err != nil {
-				log.Error(err)
+				internal.Error(err)
 			}
 		}
 	}()
@@ -69,7 +69,7 @@ func (sks *privateKeyStorageSingleAlg) initKeyRotation(pks *pkCollection, pksOnC
 func (sks *privateKeyStorageSingleAlg) Load(pks *pkCollection, pksOnChange func() error) error {
 	signer, err := readSignerFromFile(sks.keyFilePath(false), sks.alg)
 	if err != nil {
-		log.Warn(err)
+		internal.Warn(err)
 		if err = sks.GenerateNewKeys(pks, pksOnChange); err != nil {
 			return err
 		}

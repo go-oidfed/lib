@@ -5,9 +5,9 @@ import (
 	"sync"
 	"time"
 
+	"github.com/go-oidfed/lib/internal"
 	"github.com/gofiber/fiber/v2"
 	"github.com/pkg/errors"
-	log "github.com/sirupsen/logrus"
 
 	"github.com/go-oidfed/lib/apimodel"
 	"github.com/go-oidfed/lib/cache"
@@ -197,7 +197,7 @@ func (p *PeriodicEntityCollector) CollectEntities(req apimodel.EntityCollectionR
 		NextEntityID:       nextEntityID,
 	}
 	if err = cache.Set(cacheRequestKey, res, p.Interval); err != nil {
-		log.Errorf("PeriodicEntityCollector cache set error: %v", err)
+		internal.Errorf("PeriodicEntityCollector cache set error: %v", err)
 	}
 	return &res, nil
 }
@@ -224,11 +224,11 @@ func preparePaginatedResponses(
 		req.FromEntityID = entities[0].EntityID
 		reqHash, err := utils.HashStruct(req)
 		if err != nil {
-			log.WithError(err).Error("error while hashing request")
+			internal.WithError(err).Error("PeriodicEntityCollector: error while hashing request")
 		}
 		cacheRequestKey := cache.Key(periodicCacheSubsystem, cacheSubSubSystemRequests, reqHash)
 		if err = cache.Set(cacheRequestKey, res, interval); err != nil {
-			log.Errorf("PeriodicEntityCollector cache set error: %v", err)
+			internal.Errorf("PeriodicEntityCollector cache set error: %v", err)
 		}
 		entities = others
 	}
@@ -252,7 +252,7 @@ func (p *PeriodicEntityCollector) runOnce() {
 	defer p.cacheMutex.Unlock()
 
 	if err := cache.Clear(periodicCacheSubsystem); err != nil {
-		log.Errorf("PeriodicEntityCollector cache clear error: %v", err)
+		internal.Errorf("PeriodicEntityCollector cache clear error: %v", err)
 	}
 
 	// Worker pool pattern with a buffered semaphore channel.
@@ -288,7 +288,7 @@ func (p *PeriodicEntityCollector) runOnce() {
 				},
 				p.Interval,
 			); err != nil {
-				log.Errorf("PeriodicEntityCollector cache set error: %v", err)
+				internal.Errorf("PeriodicEntityCollector cache set error: %v", err)
 			}
 
 			// Notify handler for proactive resolve generation.

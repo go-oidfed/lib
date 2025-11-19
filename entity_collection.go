@@ -54,25 +54,25 @@ func (r *collectorResult) processAuthority(
 	r.runWorker(
 		func() {
 			if collector.visitedEntities.Has(authority.EntityID) {
-				internal.Logf("Already visited: %s -> skipping", authority.EntityID)
+				internal.Logf("Discovery: Already visited: %s -> skipping", authority.EntityID)
 				return
 			}
 			collector.visitedEntities.Add(authority.EntityID)
 
 			stmt, err := GetEntityConfiguration(authority.EntityID)
 			if err != nil {
-				internal.Logf("Could not get entity configuration: %s -> skipping", err.Error())
+				internal.Logf("Discovery: Could not get entity configuration: %s -> skipping", err.Error())
 				return
 			}
 
 			if !hasValidFederationListEndpoint(stmt) {
-				internal.Log("No FederationListEndpoint -> skipping")
+				internal.Log("Discovery: No FederationListEndpoint -> skipping")
 				return
 			}
 
 			subordinates, err := fetchList(stmt.Metadata.FederationEntity.FederationListEndpoint)
 			if err != nil {
-				internal.Logf("Could not fetch subordinates: %s", err.Error())
+				internal.Logf("Discovery: Could not fetch subordinates: %s", err.Error())
 				return
 			}
 
@@ -92,12 +92,12 @@ func (r *collectorResult) processSubordinate(
 		func() {
 			entityConfig, err := GetEntityConfiguration(subordinateID)
 			if err != nil {
-				internal.Logf("Failed to get entity config for %s: %s", subordinateID, err.Error())
+				internal.Logf("Discovery: Failed to get entity config for %s: %s", subordinateID, err.Error())
 				return
 			}
 
 			if entityConfig.Metadata == nil {
-				internal.Log("No metadata present -> skipping")
+				internal.Log("Discovery: No metadata present -> skipping")
 				return
 			}
 

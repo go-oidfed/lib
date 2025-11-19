@@ -9,9 +9,9 @@ import (
 	"time"
 
 	"github.com/coreos/go-oidc/v3/oidc"
+	"github.com/go-oidfed/lib/internal"
 	"github.com/gofiber/fiber/v2"
 	"github.com/pkg/errors"
-	log "github.com/sirupsen/logrus"
 	"golang.org/x/oauth2"
 
 	"github.com/go-oidfed/lib/cache"
@@ -81,7 +81,7 @@ func (f FederationLeaf) GetExplicitRegistration(op string) (
 	var client OpenIDRelyingPartyMetadata
 	found, err := cache.Get(cache.Key(cache.KeyExplicitRegistration, op), &client)
 	if err != nil {
-		log.WithError(err).Error("error retrieving explicit registration from cache")
+		internal.WithError(err).Error("ExplicitRegistration: error retrieving explicit registration from cache")
 	}
 	if found {
 		return &client, nil, nil
@@ -98,7 +98,7 @@ func (f FederationLeaf) GetExplicitRegistration(op string) (
 		cache.Key(cache.KeyExplicitRegistration, op), client, time.Until(resp.ExpiresAt.Time.Add(-10*time.Second)),
 	)
 	if err != nil {
-		log.WithError(err).Error("error caching explicit registration")
+		internal.WithError(err).Error("ExplicitRegistration: error caching explicit registration")
 	}
 	return &client, nil, nil
 }

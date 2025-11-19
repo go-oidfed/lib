@@ -257,7 +257,7 @@ func (d *SimpleEntityCollector) collect(
 	req apimodel.EntityCollectionRequest,
 	authorities ...TrustAnchor,
 ) []*CollectedEntity {
-	internal.Logf("Discovering Entities for authorities: %+q", authorities)
+	internal.Logf("Discovery: Discovering Entities for authorities: %+q", authorities)
 
 	result := &collectorResult{
 		seen:       make(map[string]bool),
@@ -420,14 +420,14 @@ func (f EntityCollectionFilterVerifiedChains) Filter(e *CollectedEntity) bool {
 
 func fetchList(listEndpoint string) ([]string, error) {
 	if ids := subordinateListingCacheGet(listEndpoint); ids != nil {
-		internal.Log("Obtained listing response from cache")
+		internal.Log("Discovery: Obtained listing response from cache")
 		return ids, nil
 	}
 	ids, err := httpFetchList(listEndpoint)
 	if err != nil {
 		return nil, err
 	}
-	internal.Log("Obtained listing response from http")
+	internal.Log("Discovery: Obtained listing response from http")
 	subordinateListingCacheSet(listEndpoint, ids)
 	return ids, nil
 }
@@ -600,7 +600,7 @@ func (c SimpleRemoteEntityCollector) CollectEntities(req apimodel.EntityCollecti
 	for pagesFetched < maxPages {
 		params, err := query.Values(currReq)
 		if err != nil {
-			internal.Logf("error while creating query parameters for entity collection request: %s", err)
+			internal.Logf("Discovery: error while creating query parameters for entity collection request: %s", err)
 			return nil, &ErrorResponse{
 				Status: fiber.StatusInternalServerError,
 				Error:  ErrorServerError(err.Error()),
@@ -613,14 +613,14 @@ func (c SimpleRemoteEntityCollector) CollectEntities(req apimodel.EntityCollecti
 			&pageRes,
 		)
 		if err != nil {
-			internal.Logf("error while fetching entity collection endpoint: %s", err)
+			internal.Logf("Discovery: error while fetching entity collection endpoint: %s", err)
 			return nil, &ErrorResponse{
 				Status: fiber.StatusInternalServerError,
 				Error:  ErrorServerError(err.Error()),
 			}
 		}
 		if errRes != nil {
-			internal.Logf("error while fetching entity collection endpoint: %s", errRes.Err().Error())
+			internal.Logf("Discovery: error while fetching entity collection endpoint: %s", errRes.Err().Error())
 			return nil, &ErrorResponse{
 				Status: errRes.Status,
 				Error: &Error{
@@ -672,7 +672,7 @@ func (c SmartRemoteEntityCollector) CollectEntities(req apimodel.EntityCollectio
 	for _, tr := range trustAnchors {
 		entityConfig, err := GetEntityConfiguration(tr)
 		if err != nil {
-			internal.Logf("error while obtaining entity configuration: %v", err)
+			internal.Logf("Discovery: error while obtaining entity configuration: %v", err)
 			continue
 		}
 		var entityCollectionEndpoint string

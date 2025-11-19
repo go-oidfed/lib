@@ -219,7 +219,7 @@ func (SmartRemoteMetadataResolver) ResolveResponsePayload(req apimodel.ResolveRe
 	for _, tr := range req.TrustAnchor {
 		entityConfig, err := GetEntityConfiguration(tr)
 		if err != nil {
-			internal.Logf("error while obtaining entity configuration: %v", err)
+			internal.Logf("MetadataResolver: error while obtaining entity configuration: %v", err)
 			continue
 		}
 		var resolveEndpoint string
@@ -234,7 +234,7 @@ func (SmartRemoteMetadataResolver) ResolveResponsePayload(req apimodel.ResolveRe
 		}
 		res, err := remoteResolver.ResolveResponsePayload(req)
 		if err != nil {
-			internal.Logf("error while obtaining resolve response: %v", err)
+			internal.Logf("MetadataResolver: error while obtaining resolve response: %v", err)
 			continue
 		}
 		return res, nil
@@ -247,7 +247,7 @@ func (SmartRemoteMetadataResolver) ResolvePossible(req apimodel.ResolveRequest) 
 	for _, tr := range req.TrustAnchor {
 		entityConfig, err := GetEntityConfiguration(tr)
 		if err != nil {
-			internal.Logf("error while obtaining entity configuration: %v", err)
+			internal.Logf("MetadataResolver: error while obtaining entity configuration: %v", err)
 			continue
 		}
 		var resolveEndpoint string

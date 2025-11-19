@@ -506,21 +506,21 @@ func (t *trustTree) checkConstraints(constraints *ConstraintSpecification) bool 
 	if constraints == nil {
 		return true
 	}
-	internal.Logf("checking constraints %+v...", constraints)
+	internal.Logf("TrustResolver: checking constraints %+v...", constraints)
 	if constraints.MaxPathLength != nil && *constraints.MaxPathLength < t.depth {
-		internal.Log("max path len constraint failed")
+		internal.Log("TrustResolver: max path len constraint failed")
 		return false
 	}
-	internal.Log("max path len constraint succeeded")
+	internal.Log("TrustResolver: max path len constraint succeeded")
 	if naming := constraints.NamingConstraints; naming != nil {
-		internal.Logf("checking naming constraints %+v", naming)
+		internal.Logf("TrustResolver: checking naming constraints %+v", naming)
 		for _, id := range t.subordinateIDs.List() {
 			if slices.ContainsFunc(
 				naming.Excluded, func(e string) bool {
 					return matchNamingConstraint(e, id)
 				},
 			) {
-				internal.Log("naming constraint failed")
+				internal.Log("TrustResolver: naming constraint failed")
 				return false
 			}
 			if naming.Permitted == nil {
@@ -533,20 +533,20 @@ func (t *trustTree) checkConstraints(constraints *ConstraintSpecification) bool 
 			) {
 				continue
 			}
-			internal.Log("naming constraint failed")
+			internal.Log("TrustResolver: naming constraint failed")
 			return false
 		}
 	}
-	internal.Log("naming constraint succeeded")
+	internal.Log("TrustResolver: naming constraint succeeded")
 	if constraints.AllowedEntityTypes != nil {
 		allowed := strset.New(append(constraints.AllowedEntityTypes, "federation_entity")...)
 		forbidden := strset.Difference(t.includedEntityTypes, allowed)
 		if !forbidden.IsEmpty() {
-			internal.Log("entity type constraint failed")
+			internal.Log("TrustResolver: entity type constraint failed")
 			return false
 		}
 	}
-	internal.Log("entity types constraint succeeded")
+	internal.Log("TrustResolver: entity types constraint succeeded")
 	return true
 }
 
@@ -672,18 +672,18 @@ func getEntityStatementOrConfiguration(
 ) (*EntityStatement, error) {
 
 	if stmt := entityStmtCacheGet(subID, issID); stmt != nil {
-		internal.Log("Obtained entity statement from cache")
+		internal.Log("TrustResolver: Obtained entity statement from cache")
 		go func() {
 			remainingLifetime := time.Until(stmt.ExpiresAt.Time)
 			totalLifetime := stmt.ExpiresAt.Sub(stmt.IssuedAt.Time)
 			if remainingLifetime <= ResolverCacheGracePeriod && float64(remainingLifetime)/float64(totalLifetime) > ResolverCacheLifetimeElapsedGraceFactor {
-				internal.Log("Within grace period, refreshing entity statement")
+				internal.Log("TrustResolver: Within grace period, refreshing entity statement")
 				_, err := obtainAndSetEntityStatementOrConfiguration(
 					subID,
 					issID, obtainerFnc,
 				)
 				if err != nil {
-					internal.Log(err)
+					internal.Log("TrustResolver: ", err)
 				}
 			}
 		}()
@@ -700,7 +700,7 @@ func obtainAndSetEntityStatementOrConfiguration(
 		internal.Log(err)
 		return nil, err
 	}
-	internal.Log("Obtained entity statement from http")
+	internal.Log("TrustResolver: Obtained entity statement from http")
 	entityStmtCacheSet(subID, issID, stmt)
 	return stmt, nil
 }
@@ -709,7 +709,7 @@ func httpGetEntityConfiguration(
 	entityID string,
 ) (*EntityStatement, error) {
 	uri := strings.TrimSuffix(entityID, "/") + oidfedconst.FederationSuffix
-	internal.Logf("Obtaining entity configuration from %+q", uri)
+	internal.Logf("TrustResolver: Obtaining entity configuration from %+q", uri)
 	res, errRes, err := http.Get(uri, nil, nil)
 	if err != nil {
 		return nil, err
