@@ -84,7 +84,7 @@ func TestNegativeResolutionDoesNotPersist(t *testing.T) {
 		StartingEntity: rp.EntityID,
 	}
 	chains2 := resolver2.ResolveToValidChains()
-	if chains2 == nil || len(chains2) == 0 {
+	if len(chains2) == 0 {
 		t.Fatalf("expected chains on second attempt, got none")
 	}
 	// Basic sanity: ensure the chain ends at the TA we configured
