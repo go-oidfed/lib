@@ -5,7 +5,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/go-oidfed/lib/internal"
 	"github.com/gofiber/fiber/v2"
 	"github.com/pkg/errors"
 
