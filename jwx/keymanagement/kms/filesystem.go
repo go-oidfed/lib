@@ -10,7 +10,8 @@ import (
 
 	"github.com/lestrrat-go/jwx/v3/jwa"
 	"github.com/pkg/errors"
-	log "github.com/sirupsen/logrus"
+
+	log "github.com/go-oidfed/lib/internal"
 
 	"github.com/go-oidfed/lib/jwx"
 	"github.com/go-oidfed/lib/jwx/keymanagement/public"

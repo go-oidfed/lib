@@ -18,7 +18,8 @@ import (
 	"github.com/lestrrat-go/jwx/v3/jwa"
 	"github.com/lestrrat-go/jwx/v3/jwk"
 	"github.com/pkg/errors"
-	log "github.com/sirupsen/logrus"
+
+	log "github.com/go-oidfed/lib/internal"
 
 	"github.com/go-oidfed/lib/jwx"
 	"github.com/go-oidfed/lib/jwx/keymanagement/public"
@@ -715,7 +716,9 @@ func (kms *PKCS11KMS) rotationEvaluationForAlg(
 		}
 		// If there is already a future key, do not generate another; only shorten old exp
 		if earliestNbf, hasFuture, vErr := earliestFutureNbfForAlg(kms.PKs, alg, now); vErr == nil && hasFuture {
-			shortenExpirationUntilFuture(kms.PKs, algPKs, earliestNbf, kms.KeyRotation.Overlap.Duration(), "pkcs#11 KMS")
+			shortenExpirationUntilFuture(
+				kms.PKs, algPKs, earliestNbf, kms.KeyRotation.Overlap.Duration(), "pkcs#11 KMS",
+			)
 			wait := time.Until(earliestNbf)
 			if wait < minSleep {
 				wait = minSleep

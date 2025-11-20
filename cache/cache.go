@@ -2,7 +2,6 @@ package cache
 
 import (
 	"encoding/base64"
-	"log"
 	"strings"
 	"time"
 
@@ -31,7 +30,7 @@ type cacheWrapper struct {
 func newCacheWrapper(defaultExpiration time.Duration) cacheWrapper {
 	c := gocache.NewCache().WithDefaultTTL(defaultExpiration)
 	if err := c.StartJanitor(); err != nil {
-		log.Fatal(err) // skipcq: RVV-A0003
+		internal.WithError(err).Error("Cache: failed to start janitor; proceeding without background cleanup")
 	}
 	return cacheWrapper{
 		c,

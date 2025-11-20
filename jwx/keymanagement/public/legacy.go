@@ -11,8 +11,9 @@ import (
 
 	"github.com/lestrrat-go/jwx/v3/jwk"
 	"github.com/pkg/errors"
-	log "github.com/sirupsen/logrus"
 	"github.com/zachmann/go-utils/fileutils"
+
+	log "github.com/go-oidfed/lib/internal"
 
 	"github.com/go-oidfed/lib/jwx"
 	"github.com/go-oidfed/lib/unixtime"
