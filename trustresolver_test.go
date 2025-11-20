@@ -23,6 +23,8 @@ func setup() {
 func TestMain(m *testing.M) {
 	setup()
 	code := m.Run()
+	// Ensure httpmock is properly deactivated and registry reset after all tests
+	httpmock.DeactivateAndReset()
 	os.Exit(code)
 }
 

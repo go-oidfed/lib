@@ -46,7 +46,7 @@ func (c cacheWrapper) Get(key string, target any) (bool, error) {
 	}
 	entry, ok := entryV.([]byte)
 	if !ok {
-		internal.Log("invalid cache entry type")
+		internal.Log("Cache: invalid cache entry type")
 		return false, errors.New("invalid cache entry type")
 	}
 	return true, msgpack.Unmarshal(entry, target)

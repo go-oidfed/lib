@@ -29,7 +29,7 @@ type EntityStatement struct {
 func (e EntityStatement) Verify(keys jwx.JWKS) bool {
 	_, err := e.jwtMsg.VerifyWithSet(keys)
 	if err != nil {
-		internal.Log(err)
+		internal.Log("EntityStatement: ", err)
 	}
 	return err == nil
 }

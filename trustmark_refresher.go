@@ -54,12 +54,12 @@ func (c *EntityConfigurationTrustMarkConfig) Verify(
 		exp, _ := parsed.Expiration()
 		c.expiration = unixtime.Unixtime{Time: exp}
 		c.TrustMarkIssuer, _ = parsed.Issuer()
-		internal.Logf("Extracted trust mark issuer: %s", c.TrustMarkIssuer)
+		internal.Logf("TrustMarkRefresher: extracted trust mark issuer: %s", c.TrustMarkIssuer)
 		err = parsed.Get("trust_mark_type", &c.TrustMarkType)
 		if err != nil {
 			return errors.Wrap(err, "trustmark id not found in JWT")
 		}
-		internal.Logf("Extracted trust mark id: %s\n", c.TrustMarkType)
+		internal.Logf("TrustMarkRefresher: extracted trust mark id: %s", c.TrustMarkType)
 		return nil
 	}
 	c.Refresh = true

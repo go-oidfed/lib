@@ -77,6 +77,9 @@ func (r LocalMetadataResolver) ResolveResponsePayload(req apimodel.ResolveReques
 	if err != nil {
 		return
 	}
+	if len(chain) == 0 {
+		return res, errors.New("no trust chain returned")
+	}
 	res.TrustMarks = chain[0].TrustMarks.VerifiedFederation(&chain[len(chain)-1].EntityStatementPayload)
 	return
 }
@@ -111,7 +114,8 @@ const (
 func (r SimpleRemoteMetadataResolver) ResolveResponse(req apimodel.ResolveRequest) (
 	*ResolveResponse, int, error,
 ) {
-	var resolveStatus int
+	// Default to unknown until we positively parse a valid response
+	var resolveStatus = resolveStatusUnknown
 	params, err := query.Values(req)
 	if err != nil {
 		return nil, resolveStatus, errors.WithStack(err)
@@ -133,9 +137,13 @@ func (r SimpleRemoteMetadataResolver) ResolveResponse(req apimodel.ResolveReques
 		}
 		return nil, resolveStatus, nil
 	}
-	resolveStatus = resolveStatusValid
 	rres, err := ParseResolveResponse(res.Body())
-	return rres, resolveStatus, err
+	if err != nil {
+		// Keep status at unknown for parse/format errors
+		return nil, resolveStatus, err
+	}
+	resolveStatus = resolveStatusValid
+	return rres, resolveStatus, nil
 }
 
 // Resolve implements the MetadataResolver interface
@@ -191,7 +199,12 @@ func ParseResolveResponse(body []byte) (*ResolveResponse, error) {
 		return nil, errors.Errorf("response does not have '%s' JWT type", oidfedconst.JWTTypeResolveResponse)
 	}
 	var res ResolveResponse
-	if err = json.Unmarshal(r.Payload(), &res); err != nil {
+	payload := r.Payload()
+	// Guard against null payloads which would cause a nil deref when used by callers
+	if string(payload) == "null" {
+		return nil, errors.New("invalid resolve response: null payload")
+	}
+	if err = json.Unmarshal(payload, &res); err != nil {
 		return nil, err
 	}
 	return &res, err
@@ -219,7 +232,7 @@ func (SmartRemoteMetadataResolver) ResolveResponsePayload(req apimodel.ResolveRe
 	for _, tr := range req.TrustAnchor {
 		entityConfig, err := GetEntityConfiguration(tr)
 		if err != nil {
-			internal.Logf("error while obtaining entity configuration: %v", err)
+			internal.Logf("MetadataResolver: error while obtaining entity configuration: %v", err)
 			continue
 		}
 		var resolveEndpoint string
@@ -234,7 +247,7 @@ func (SmartRemoteMetadataResolver) ResolveResponsePayload(req apimodel.ResolveRe
 		}
 		res, err := remoteResolver.ResolveResponsePayload(req)
 		if err != nil {
-			internal.Logf("error while obtaining resolve response: %v", err)
+			internal.Logf("MetadataResolver: error while obtaining resolve response: %v", err)
 			continue
 		}
 		return res, nil
@@ -247,7 +260,7 @@ func (SmartRemoteMetadataResolver) ResolvePossible(req apimodel.ResolveRequest) 
 	for _, tr := range req.TrustAnchor {
 		entityConfig, err := GetEntityConfiguration(tr)
 		if err != nil {
-			internal.Logf("error while obtaining entity configuration: %v", err)
+			internal.Logf("MetadataResolver: error while obtaining entity configuration: %v", err)
 			continue
 		}
 		var resolveEndpoint string

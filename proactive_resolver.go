@@ -9,8 +9,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/go-oidfed/lib/internal"
 	"github.com/pkg/errors"
-	log "github.com/sirupsen/logrus"
 	"github.com/zachmann/go-utils/sliceutils"
 
 	"github.com/go-oidfed/lib/apimodel"
@@ -182,7 +182,7 @@ func (s ResolveStore) Prune(trustAnchor string, expected []ResolveResponseKey) e
 		full := filepath.Join(dir, name)
 		if _, ok := keep[full]; !ok {
 			if err = os.Remove(full); err != nil && !os.IsNotExist(err) {
-				log.WithError(err).WithField("file", full).Error("ProactiveResolver: prune remove error")
+				internal.WithError(err).WithField("file", full).Error("ProactiveResolver: prune remove error")
 			}
 		}
 	}
@@ -274,7 +274,7 @@ func (r *ProactiveResolver) process(req apimodel.ResolveRequest) {
 	// Resolve locally to compute payload and trust marks.
 	payload, err := DefaultMetadataResolver.ResolveResponsePayload(req)
 	if err != nil {
-		log.WithError(err).WithField("request", req).Error("ProactiveResolver: resolve error")
+		internal.WithError(err).WithField("request", req).Error("ProactiveResolver: resolve error")
 		return
 	}
 
@@ -290,7 +290,7 @@ func (r *ProactiveResolver) process(req apimodel.ResolveRequest) {
 		ResolveResponsePayload: payload,
 	}
 	if err = r.Store.WriteJSON(req.Subject, selectedTrustAnchor, req.EntityTypes, res); err != nil {
-		log.WithError(err).Error("ProactiveResolver: error writing json resolve response")
+		internal.WithError(err).Error("ProactiveResolver: error writing json resolve response")
 		return
 	}
 	if err = r.Store.WriteJWT(
@@ -306,7 +306,7 @@ func (r *ProactiveResolver) process(req apimodel.ResolveRequest) {
 			return jwtData, nil
 		},
 	); err != nil {
-		log.WithError(err).Error("ProactiveResolver: error writing jwt resolve response")
+		internal.WithError(err).Error("ProactiveResolver: error writing jwt resolve response")
 		return
 	}
 
@@ -363,7 +363,7 @@ func (r *ProactiveResolver) OnDiscoveredEntities(trustAnchor string, entities []
 	}
 	if r.Store != nil {
 		if err := r.Store.Prune(trustAnchor, expected); err != nil {
-			log.WithError(err).WithField("trust_anchor", trustAnchor).Error("ProactiveResolver: prune error")
+			internal.WithError(err).WithField("trust_anchor", trustAnchor).Error("ProactiveResolver: prune error")
 		}
 	}
 }
