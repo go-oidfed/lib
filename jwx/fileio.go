@@ -12,8 +12,8 @@ import (
 	"github.com/zachmann/go-utils/fileutils"
 )
 
-// readSignerFromFile loads the private key from the passed keyfile
-func readSignerFromFile(keyfile string, alg jwa.SignatureAlgorithm) (crypto.Signer, error) {
+// ReadSignerFromFile loads the private key from the passed keyfile
+func ReadSignerFromFile(keyfile string, alg jwa.SignatureAlgorithm) (crypto.Signer, error) {
 	keyFileContent, err := fileutils.ReadFile(keyfile)
 	if err != nil {
 		return nil, err
@@ -44,7 +44,7 @@ func readSignerFromFile(keyfile string, alg jwa.SignatureAlgorithm) (crypto.Sign
 	return sk, nil
 }
 
-func writeSignerToFile(sk crypto.Signer, filePath string) error {
+func WriteSignerToFile(sk crypto.Signer, filePath string) error {
 	pemData := exportPrivateKeyAsPem(sk)
 	err := errors.WithStack(os.WriteFile(filePath, pemData, 0600))
 	return err

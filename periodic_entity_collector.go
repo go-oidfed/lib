@@ -196,7 +196,7 @@ func (p *PeriodicEntityCollector) CollectEntities(req apimodel.EntityCollectionR
 		NextEntityID:       nextEntityID,
 	}
 	if err = cache.Set(cacheRequestKey, res, p.Interval); err != nil {
-		internal.Errorf("PeriodicEntityCollector cache set error: %v", err)
+		internal.WithError(err).Error("PeriodicEntityCollector cache set error")
 	}
 	return &res, nil
 }
@@ -227,7 +227,7 @@ func preparePaginatedResponses(
 		}
 		cacheRequestKey := cache.Key(periodicCacheSubsystem, cacheSubSubSystemRequests, reqHash)
 		if err = cache.Set(cacheRequestKey, res, interval); err != nil {
-			internal.Errorf("PeriodicEntityCollector cache set error: %v", err)
+			internal.WithError(err).Error("PeriodicEntityCollector cache set error")
 		}
 		entities = others
 	}
@@ -251,7 +251,7 @@ func (p *PeriodicEntityCollector) runOnce() {
 	defer p.cacheMutex.Unlock()
 
 	if err := cache.Clear(periodicCacheSubsystem); err != nil {
-		internal.Errorf("PeriodicEntityCollector cache clear error: %v", err)
+		internal.WithError(err).Error("PeriodicEntityCollector cache clear error")
 	}
 
 	// Worker pool pattern with a buffered semaphore channel.
@@ -287,7 +287,7 @@ func (p *PeriodicEntityCollector) runOnce() {
 				},
 				p.Interval,
 			); err != nil {
-				internal.Errorf("PeriodicEntityCollector cache set error: %v", err)
+				internal.WithError(err).Error("PeriodicEntityCollector cache set error")
 			}
 
 			// Notify handler for proactive resolve generation.
