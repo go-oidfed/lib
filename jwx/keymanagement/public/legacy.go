@@ -61,7 +61,7 @@ func (l *LegacyPublicKeyStorage) Load() error {
 }
 
 func (l *LegacyPublicKeyStorage) GetAll() (PublicKeyEntryList, error) {
-	return l.collectAll(false, false), nil
+	return l.collectAll(true, true), nil
 }
 
 func (l *LegacyPublicKeyStorage) GetRevoked() (PublicKeyEntryList, error) {
