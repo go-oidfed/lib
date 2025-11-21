@@ -28,29 +28,17 @@ func TestNegativeResolutionDoesNotPersist(t *testing.T) {
 	ta.RegisterSubordinate(ia)
 
 	// Override the IA's fetch endpoint to fail once, then succeed.
-	// First request returns a federation error JSON (non-2xx), second and later succeed.
-	failedOnce := false
 	httpmock.RegisterResponder(
 		"GET",
 		ia.FetchEndpoint,
 		func(req *http.Request) (*http.Response, error) {
-			if !failedOnce {
-				failedOnce = true
-				// Return an error response body that matches internal/http.HttpError
-				return httpmock.NewJsonResponse(
-					500, map[string]any{
-						"error":             "server_error",
-						"error_description": "transient failure",
-					},
-				)
-			}
-			// Success path: return a properly signed subordinate statement
-			sub := req.URL.Query().Get("sub")
-			jwt, err := ia.EntityStatementSigner.JWT(ia.SubordinateEntityStatementPayload(sub))
-			if err != nil {
-				return nil, err
-			}
-			return httpmock.NewBytesResponse(200, jwt), nil
+			// Return an error response body that matches internal/http.HttpError
+			return httpmock.NewJsonResponse(
+				500, map[string]any{
+					"error":             "server_error",
+					"error_description": "transient failure",
+				},
+			)
 		},
 	)
 
@@ -70,6 +58,19 @@ func TestNegativeResolutionDoesNotPersist(t *testing.T) {
 	if chains1 != nil {
 		t.Fatalf("expected no chains on first attempt, got %d", len(chains1))
 	}
+	httpmock.RegisterResponder(
+		"GET",
+		ia.FetchEndpoint,
+		func(req *http.Request) (*http.Response, error) {
+			// Success path: return a properly signed subordinate statement
+			sub := req.URL.Query().Get("sub")
+			jwt, err := ia.EntityStatementSigner.JWT(ia.SubordinateEntityStatementPayload(sub))
+			if err != nil {
+				return nil, err
+			}
+			return httpmock.NewBytesResponse(200, jwt), nil
+		},
+	)
 
 	// Second attempt with the same inputs must succeed and not be blocked by cache
 	// Use a fresh resolver instance with identical parameters to ensure we hit the
