@@ -28,12 +28,17 @@ type FederationEntity struct {
 	Extra            map[string]any
 }
 
+// RequestURIGenerator is a function that takes a request object and returns a request_uri at which the passed
+// request object will be available
+type RequestURIGenerator func([]byte) (string, error)
+
 // FederationLeaf is a type for a leaf entity and holds all relevant information about it; it can also be used to
 // create an EntityConfiguration about it or to start OIDC flows
 type FederationLeaf struct {
 	FederationEntity
-	TrustAnchors   TrustAnchors
-	oidcROProducer *RequestObjectProducer
+	TrustAnchors        TrustAnchors
+	oidcROProducer      *RequestObjectProducer
+	RequestURIGenerator RequestURIGenerator
 }
 
 // NewFederationEntity creates a new FederationEntity with the passed properties
