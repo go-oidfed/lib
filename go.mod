@@ -5,7 +5,7 @@ go 1.25.1
 require (
 	github.com/TwiN/gocache/v2 v2.4.0
 	github.com/adam-hanna/arrayOperations v1.0.1
-	github.com/coreos/go-oidc/v3 v3.16.0
+	github.com/coreos/go-oidc/v3 v3.17.0
 	github.com/go-resty/resty/v2 v2.17.0
 	github.com/gofiber/fiber/v2 v2.52.10
 	github.com/google/go-querystring v1.1.0
