@@ -10,9 +10,13 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/lestrrat-go/jwx/v3/jwa"
+	"github.com/lestrrat-go/jwx/v3/jws"
 	"github.com/pkg/errors"
 
+	"github.com/go-oidfed/lib/apimodel"
+	"github.com/go-oidfed/lib/internal"
 	"github.com/go-oidfed/lib/jwx"
+	"github.com/go-oidfed/lib/oidfedconst"
 )
 
 // OIDCErrorResponse is the error response of an oidc provider
@@ -65,7 +69,7 @@ func NewRequestObjectProducer(
 }
 
 // RequestObject generates a signed request object jwt from the passed requestValues
-func (rop RequestObjectProducer) RequestObject(requestValues map[string]any, alg ...string) (
+func (rop RequestObjectProducer) RequestObject(requestValues map[string]any, headers jws.Headers, alg ...string) (
 	[]byte, error,
 ) {
 	if requestValues == nil {
@@ -94,10 +98,10 @@ func (rop RequestObjectProducer) RequestObject(requestValues map[string]any, alg
 		return nil, errors.Wrap(err, "could not marshal request object into JWT")
 	}
 
-	return rop.signPayload(j, alg...)
+	return rop.signPayload(j, headers, alg...)
 }
 
-func (rop RequestObjectProducer) signPayload(data []byte, algs ...string) ([]byte, error) {
+func (rop RequestObjectProducer) signPayload(data []byte, headers jws.Headers, algs ...string) ([]byte, error) {
 	var signer crypto.Signer
 	var alg jwa.SignatureAlgorithm
 	if len(algs) == 0 {
@@ -108,7 +112,7 @@ func (rop RequestObjectProducer) signPayload(data []byte, algs ...string) ([]byt
 	if signer == nil {
 		return nil, errors.New("no compatible signing key")
 	}
-	return jwx.SignPayload(data, alg, signer, nil)
+	return jwx.SignPayload(data, alg, signer, headers)
 }
 
 // ClientAssertion creates a new signed client assertion jwt for the passed audience
@@ -132,17 +136,27 @@ func (rop RequestObjectProducer) ClientAssertion(aud string, alg ...string) ([]b
 		return nil, errors.Wrap(err, "could not marshal client assertion into JWT")
 	}
 
-	return rop.signPayload(j, alg...)
+	return rop.signPayload(j, nil, alg...)
 }
 
 // GetAuthorizationURL creates an authorization url
 func (f FederationLeaf) GetAuthorizationURL(
 	issuer, redirectURI, state, scope string, additionalParams url.Values,
 ) (string, error) {
-	opMetadata, err := f.ResolveOPMetadata(issuer)
+	resolved, err := DefaultMetadataResolver.ResolveResponsePayload(
+		apimodel.ResolveRequest{
+			Subject:     issuer,
+			TrustAnchor: f.TrustAnchors.EntityIDs(),
+			EntityTypes: []string{oidfedconst.EntityTypeOpenIDProvider},
+		},
+	)
 	if err != nil {
-		return "", err
+		return "", errors.Wrap(err, "get authorization url: could not resolve OP metadata")
 	}
+	if resolved.Metadata == nil {
+		return "", errors.New("get authorization url: OP metadata not found")
+	}
+	opMetadata := resolved.Metadata.OpenIDProvider
 	requestParams := map[string]any{}
 	for k, v := range additionalParams {
 		if len(v) == 1 {
@@ -157,18 +171,44 @@ func (f FederationLeaf) GetAuthorizationURL(
 	requestParams["response_type"] = "code"
 	requestParams["scope"] = scope
 
+	var headers jws.Headers
+	var heavyRequest bool
+	if f.RequestURIGenerator != nil && opMetadata.RequestURIParameterSupported && len(resolved.TrustChain) > 0 {
+		ownResolved, err := DefaultMetadataResolver.ResolveResponsePayload(
+			apimodel.ResolveRequest{
+				Subject:     f.EntityID,
+				TrustAnchor: []string{resolved.TrustAnchor},
+				EntityTypes: []string{oidfedconst.EntityTypeOpenIDRelyingParty},
+			},
+		)
+		if err != nil {
+			internal.WithError(err).Error("explicit client registration: could not resolve own trust chain")
+		} else if len(ownResolved.TrustChain) > 0 {
+			_ = headers.Set("trust_chain", ownResolved.TrustChain)
+			_ = headers.Set("peer_trust_chain", resolved.TrustChain)
+			heavyRequest = true
+		}
+	}
 	requestObject, err := f.oidcROProducer.RequestObject(
-		requestParams, opMetadata.RequestObjectSigningAlgValuesSupported...,
+		requestParams, headers, opMetadata.RequestObjectSigningAlgValuesSupported...,
 	)
 	if err != nil {
 		return "", errors.Wrap(err, "could not create request object")
 	}
 	u, err := url.Parse(opMetadata.AuthorizationEndpoint)
 	if err != nil {
-		return "", errors.WithStack(err)
+		return "", errors.Wrap(err, "could not parse authorization endpoint")
 	}
 	q := url.Values{}
-	q.Set("request", string(requestObject))
+	if heavyRequest {
+		requestURI, err := f.RequestURIGenerator(requestObject)
+		if err != nil {
+			return "", errors.Wrap(err, "could not generate request uri")
+		}
+		q.Set("request_uri", requestURI)
+	} else {
+		q.Set("request", string(requestObject))
+	}
 	q.Set("client_id", f.EntityID)
 	q.Set("response_type", "code")
 	q.Set("redirect_uri", redirectURI)
