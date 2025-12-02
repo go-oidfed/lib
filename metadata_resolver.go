@@ -45,9 +45,10 @@ func (LocalMetadataResolver) resolveResponsePayloadWithoutTrustMarks(
 	res ResolveResponsePayload, chain TrustChain, err error,
 ) {
 	tr := TrustResolver{
-		TrustAnchors:   NewTrustAnchorsFromEntityIDs(req.TrustAnchor...),
-		StartingEntity: req.Subject,
-		Types:          req.EntityTypes,
+		TrustAnchors:         NewTrustAnchorsFromEntityIDs(req.TrustAnchor...),
+		StartingEntity:       req.Subject,
+		Types:                req.EntityTypes,
+		TrustAnchorHintsMode: TrustAnchorHintsModePrefer,
 	}
 	chains := tr.ResolveToValidChains()
 	if len(chains) == 0 {
@@ -87,9 +88,10 @@ func (r LocalMetadataResolver) ResolveResponsePayload(req apimodel.ResolveReques
 // ResolvePossible implements the MetadataResolver interface
 func (LocalMetadataResolver) ResolvePossible(req apimodel.ResolveRequest) (bool, bool) {
 	tr := TrustResolver{
-		TrustAnchors:   NewTrustAnchorsFromEntityIDs(req.TrustAnchor...),
-		StartingEntity: req.Subject,
-		Types:          req.EntityTypes,
+		TrustAnchors:         NewTrustAnchorsFromEntityIDs(req.TrustAnchor...),
+		StartingEntity:       req.Subject,
+		Types:                req.EntityTypes,
+		TrustAnchorHintsMode: TrustAnchorHintsModeIgnore,
 	}
 	chains := tr.ResolveToValidChains()
 	valid := len(chains) > 0
@@ -229,7 +231,36 @@ func (r SmartRemoteMetadataResolver) Resolve(req apimodel.ResolveRequest) (*Meta
 func (SmartRemoteMetadataResolver) ResolveResponsePayload(req apimodel.ResolveRequest) (
 	ResolveResponsePayload, error,
 ) {
-	for _, tr := range req.TrustAnchor {
+	// Prefer trust anchors hinted by the starting entity; fall back to others.
+	// Default mode: Prefer
+	var ordered []string
+	if req.Subject != "" {
+		if starting, err := GetEntityConfiguration(req.Subject); err == nil && starting != nil {
+			hints := starting.TrustAnchorHints
+			if len(hints) > 0 {
+				hintSet := map[string]struct{}{}
+				for _, h := range hints {
+					hintSet[h] = struct{}{}
+				}
+				// intersection first, preserving req.TrustAnchor order
+				for _, id := range req.TrustAnchor {
+					if _, ok := hintSet[id]; ok {
+						ordered = append(ordered, id)
+					}
+				}
+				// then the remaining anchors not in hints
+				for _, id := range req.TrustAnchor {
+					if _, ok := hintSet[id]; !ok {
+						ordered = append(ordered, id)
+					}
+				}
+			}
+		}
+	}
+	if len(ordered) == 0 {
+		ordered = req.TrustAnchor
+	}
+	for _, tr := range ordered {
 		entityConfig, err := GetEntityConfiguration(tr)
 		if err != nil {
 			internal.Logf("MetadataResolver: error while obtaining entity configuration: %v", err)
@@ -257,7 +288,33 @@ func (SmartRemoteMetadataResolver) ResolveResponsePayload(req apimodel.ResolveRe
 
 // ResolvePossible implements the MetadataResolver interface
 func (SmartRemoteMetadataResolver) ResolvePossible(req apimodel.ResolveRequest) (bool, bool) {
-	for _, tr := range req.TrustAnchor {
+	// Prefer trust anchors hinted by the starting entity; fall back to others.
+	var ordered []string
+	if req.Subject != "" {
+		if starting, err := GetEntityConfiguration(req.Subject); err == nil && starting != nil {
+			hints := starting.TrustAnchorHints
+			if len(hints) > 0 {
+				hintSet := map[string]struct{}{}
+				for _, h := range hints {
+					hintSet[h] = struct{}{}
+				}
+				for _, id := range req.TrustAnchor {
+					if _, ok := hintSet[id]; ok {
+						ordered = append(ordered, id)
+					}
+				}
+				for _, id := range req.TrustAnchor {
+					if _, ok := hintSet[id]; !ok {
+						ordered = append(ordered, id)
+					}
+				}
+			}
+		}
+	}
+	if len(ordered) == 0 {
+		ordered = req.TrustAnchor
+	}
+	for _, tr := range ordered {
 		entityConfig, err := GetEntityConfiguration(tr)
 		if err != nil {
 			internal.Logf("MetadataResolver: error while obtaining entity configuration: %v", err)

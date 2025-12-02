@@ -44,7 +44,7 @@ func TestRequestObjectProducer_RequestObject(t *testing.T) {
 	for _, test := range tests {
 		t.Run(
 			test.name, func(t *testing.T) {
-				ro, err := rop.RequestObject(test.requestValues)
+				ro, err := rop.RequestObject(test.requestValues, nil)
 				if err != nil {
 					t.Error(err)
 					return

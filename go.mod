@@ -6,8 +6,8 @@ require (
 	github.com/ThalesGroup/crypto11 v1.2.6
 	github.com/TwiN/gocache/v2 v2.4.0
 	github.com/adam-hanna/arrayOperations v1.0.1
-	github.com/coreos/go-oidc/v3 v3.16.0
-	github.com/go-resty/resty/v2 v2.16.5
+	github.com/coreos/go-oidc/v3 v3.17.0
+	github.com/go-resty/resty/v2 v2.17.0
 	github.com/gofiber/fiber/v2 v2.52.10
 	github.com/google/go-querystring v1.1.0
 	github.com/google/uuid v1.6.0
@@ -16,7 +16,7 @@ require (
 	github.com/lithammer/fuzzysearch v1.1.8
 	github.com/luci/go-render v0.0.0-20160219211803-9a04cc21af0f
 	github.com/pkg/errors v0.9.1
-	github.com/redis/go-redis/v9 v9.17.0
+	github.com/redis/go-redis/v9 v9.17.2
 	github.com/scylladb/go-set v1.0.3-0.20200225121959-cc7b2070d91e
 	github.com/sirupsen/logrus v1.9.3
 	github.com/stretchr/testify v1.11.1

@@ -9,10 +9,13 @@ import (
 	"time"
 
 	"github.com/coreos/go-oidc/v3/oidc"
-	"github.com/go-oidfed/lib/internal"
 	"github.com/gofiber/fiber/v2"
+	"github.com/lestrrat-go/jwx/v3/jws"
 	"github.com/pkg/errors"
 	"golang.org/x/oauth2"
+
+	"github.com/go-oidfed/lib/apimodel"
+	"github.com/go-oidfed/lib/internal"
 
 	"github.com/go-oidfed/lib/cache"
 	"github.com/go-oidfed/lib/internal/http"
@@ -108,10 +111,20 @@ func (f FederationLeaf) GetExplicitRegistration(op string) (
 func (f FederationLeaf) DoExplicitClientRegistration(op string) (
 	*EntityStatementPayload, *http.HttpError, error,
 ) {
-	opMetadata, err := f.ResolveOPMetadata(op)
+	resolved, err := DefaultMetadataResolver.ResolveResponsePayload(
+		apimodel.ResolveRequest{
+			Subject:     op,
+			TrustAnchor: f.TrustAnchors.EntityIDs(),
+			EntityTypes: []string{oidfedconst.EntityTypeOpenIDProvider},
+		},
+	)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, errors.Wrap(err, "explicit client registration: could not resolve OP metadata")
 	}
+	if resolved.Metadata == nil {
+		return nil, nil, errors.New("explicit client registration: OP metadata not found")
+	}
+	opMetadata := resolved.Metadata.OpenIDProvider
 	if opMetadata == nil || opMetadata.FederationRegistrationEndpoint == "" {
 		return nil, nil, errors.New("op does not have a federation registration endpoint")
 	}
@@ -121,7 +134,23 @@ func (f FederationLeaf) DoExplicitClientRegistration(op string) (
 	}
 	AdjustRPMetadataToOP(entityConfigurationData.Metadata.RelyingParty, opMetadata)
 	entityConfigurationData.Audience = op
-	entityConfiguration, err := f.SignEntityStatement(*entityConfigurationData)
+	var headers jws.Headers
+	if len(resolved.TrustChain) > 0 {
+		ownResolved, err := DefaultMetadataResolver.ResolveResponsePayload(
+			apimodel.ResolveRequest{
+				Subject:     f.EntityID(),
+				TrustAnchor: []string{resolved.TrustAnchor},
+				EntityTypes: []string{oidfedconst.EntityTypeOpenIDRelyingParty},
+			},
+		)
+		if err != nil {
+			internal.WithError(err).Error("explicit client registration: could not resolve own trust chain")
+		} else if len(ownResolved.TrustChain) > 0 {
+			_ = headers.Set("trust_chain", ownResolved.TrustChain)
+			_ = headers.Set("peer_trust_chain", resolved.TrustChain)
+		}
+	}
+	entityConfiguration, err := f.SignEntityStatementWithHeaders(*entityConfigurationData, headers)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -140,8 +169,12 @@ func (f FederationLeaf) DoExplicitClientRegistration(op string) (
 	) {
 		return nil, nil, errors.New("explicit client registration: unexpected content type in response")
 	}
-
-	opEntityConfiguration, err := GetEntityConfiguration(op)
+	var opEntityConfiguration *EntityStatement
+	if len(resolved.TrustChain) > 0 {
+		opEntityConfiguration, err = ParseEntityStatement(resolved.TrustChain[0].RawJWT)
+	} else {
+		opEntityConfiguration, err = GetEntityConfiguration(op)
+	}
 	if err != nil {
 		return nil, nil, errors.Wrap(err, "could not get OP entity configuration")
 	}

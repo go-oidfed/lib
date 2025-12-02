@@ -34,6 +34,7 @@ type VersatileSigner interface {
 // JWTSigner is an interface that can give signed jwts
 type JWTSigner interface {
 	JWT(i any, alg ...jwa.SignatureAlgorithm) (jwt []byte, err error)
+	JWTWithHeaders(i any, headers jws.Headers, alg ...jwa.SignatureAlgorithm) (jwt []byte, err error)
 	JWKS() (JWKS, error)
 }
 
@@ -57,6 +58,13 @@ func NewGeneralJWTSigner(
 
 // JWT returns a signed jwt representation of the passed data with the passed header type
 func (s GeneralJWTSigner) JWT(i any, headerType string, algs ...string) (jwt []byte, err error) {
+	return s.JWTWithHeaders(i, nil, headerType, algs...)
+}
+
+// JWTWithHeaders returns a signed jwt representation of the passed data with the passed headers and the typ header
+func (s GeneralJWTSigner) JWTWithHeaders(i any, headers jws.Headers, headerType string, algs ...string) (
+	jwt []byte, err error,
+) {
 	var signer crypto.Signer
 	var alg jwa.SignatureAlgorithm
 	if len(algs) == 0 {
@@ -72,7 +80,7 @@ func (s GeneralJWTSigner) JWT(i any, headerType string, algs ...string) (jwt []b
 	if err != nil {
 		return
 	}
-	jwt, err = SignWithType(j, headerType, alg, signer)
+	jwt, err = SignWithType(j, headers, headerType, alg, signer)
 	return
 }
 
@@ -136,9 +144,22 @@ func (s ResolveResponseSigner) JWT(i any) (jwt []byte, err error) {
 	return s.GeneralJWTSigner.JWT(i, oidfedconst.JWTTypeResolveResponse)
 }
 
+// JWTWithHeaders implements the JWTSigner interface
+func (s ResolveResponseSigner) JWTWithHeaders(i any, headers jws.Headers) (jwt []byte, err error) {
+	return s.GeneralJWTSigner.JWTWithHeaders(i, headers, oidfedconst.JWTTypeResolveResponse)
+}
+
 // JWT implements the JWTSigner interface
 func (s TrustMarkDelegationSigner) JWT(i any) (jwt []byte, err error) {
 	return s.GeneralJWTSigner.JWT(i, oidfedconst.JWTTypeTrustMarkDelegation)
+}
+
+// JWTWithHeaders implements the JWTSigner interface
+func (s TrustMarkDelegationSigner) JWTWithHeaders(i any, headers jws.Headers) (
+	jwt []byte,
+	err error,
+) {
+	return s.GeneralJWTSigner.JWTWithHeaders(i, headers, oidfedconst.JWTTypeTrustMarkDelegation)
 }
 
 // JWT implements the JWTSigner interface
@@ -146,9 +167,19 @@ func (s TrustMarkSigner) JWT(i any) (jwt []byte, err error) {
 	return s.GeneralJWTSigner.JWT(i, oidfedconst.JWTTypeTrustMark)
 }
 
+// JWTWithHeaders implements the JWTSigner interface
+func (s TrustMarkSigner) JWTWithHeaders(i any, headers jws.Headers) (jwt []byte, err error) {
+	return s.GeneralJWTSigner.JWTWithHeaders(i, headers, oidfedconst.JWTTypeTrustMark)
+}
+
 // JWT implements the JWTSigner interface
 func (s EntityStatementSigner) JWT(i any) (jwt []byte, err error) {
 	return s.GeneralJWTSigner.JWT(i, oidfedconst.JWTTypeEntityStatement)
+}
+
+// JWTWithHeaders implements the JWTSigner interface
+func (s EntityStatementSigner) JWTWithHeaders(i any, headers jws.Headers) (jwt []byte, err error) {
+	return s.GeneralJWTSigner.JWTWithHeaders(i, headers, oidfedconst.JWTTypeEntityStatement)
 }
 
 // NewEntityStatementSigner creates a new EntityStatementSigner
@@ -196,8 +227,12 @@ func (s TypedJWTSigner) JWT(i any) (jwt []byte, err error) {
 
 // SignWithType creates a signed JWT of the passed type for the passed payload using the
 // passed crypto.Signer with the passed jwa.SignatureAlgorithm
-func SignWithType(payload []byte, typ string, signingAlg jwa.SignatureAlgorithm, key crypto.Signer) ([]byte, error) {
-	headers := jws.NewHeaders()
+func SignWithType(
+	payload []byte, headers jws.Headers, typ string, signingAlg jwa.SignatureAlgorithm, key crypto.Signer,
+) ([]byte, error) {
+	if headers == nil {
+		headers = jws.NewHeaders()
+	}
 	if err := headers.Set(jws.TypeKey, typ); err != nil {
 		return nil, err
 	}

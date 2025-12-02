@@ -55,7 +55,7 @@ that the list is not complete)
 | Trust Chain Building                                                                           | Yes     | When needed |
 | Trust Chain Verification                                                                       | Yes     | Yes         |
 | Applying Metadata Policies                                                                     | Yes     | Yes         |
-| Applying Metadata from Superiors                                                               | No      | No          |
+| Applying Metadata from Superiors                                                               | Yes     | Yes         |
 | Support for Custom Metadata Policy Operators                                                   | Yes     | Yes         |
 | Filter Trust Chains                                                                            | Yes     | Yes         |
 | Configure Trust Anchors                                                                        | Yes     | Yes         |
@@ -65,7 +65,7 @@ that the list is not complete)
 | IA Listing Endpoint                                                                            |         | Yes         |
 | Trust Mark Endpoint                                                                            |         | Yes         |
 | Trust Marked Entities Endpoint                                                                 |         | Yes         |
-| Trust Mark Status Endpoint                                                                     |         | Yes         |
+| Trust Mark Status Endpoint                                                                     |         | Outdated    |
 | Trust Mark Owner Delegation                                                                    | Yes     | Yes         |
 | Trust Mark JWT Verification                                                                    | Yes     | Yes         |
 | Trust Mark JWT Verification including Delegation                                               | Yes     | Yes         |
@@ -78,10 +78,10 @@ that the list is not complete)
 | Authorization Code Flow with Automatic Client Registration using oidc key from jwks            |         | Yes         |
 | Authorization Code Flow with Automatic Client Registration using oidc key from jwks_uri        |         | No          |
 | Authorization Code Flow with Automatic Client Registration using oidc key from signed_jwks_uri |         | No          |
-| Explicit Client Registration                                                                   | No      | No          |
+| Explicit Client Registration                                                                   | Yes     | Yes         |
 | Constraints                                                                                    | Yes     | Yes         |
-| Federation Historical Keys Endpoint                                                            | No      | No          |
-| Automatic Key Rollover                                                                         |         | No          |
+| Federation Historical Keys Endpoint                                                            | Yes     | Yes         |
+| Automatic Key Rollover                                                                         |         | Yes         |
 | Enrollment of Entities                                                                         |         | Yes         |
 | Configurable Checks for Enrollment                                                             |         | Yes         |
 | Custom Checks for Enrollment                                                                   |         | Yes         |

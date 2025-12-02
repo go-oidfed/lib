@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	go2 "github.com/adam-hanna/arrayOperations"
 	"github.com/pkg/errors"
 	"github.com/scylladb/go-set/strset"
 	"github.com/zachmann/go-utils/sliceutils"
@@ -18,6 +19,24 @@ import (
 	"github.com/go-oidfed/lib/internal/utils"
 	"github.com/go-oidfed/lib/oidfedconst"
 	"github.com/go-oidfed/lib/unixtime"
+)
+
+// TrustAnchorHintsMode controls how the resolver uses
+// the starting entity's trust_anchor_hints when selecting
+// trust anchors for resolution.
+//
+//   - Ignore: use configured trust anchors as-is.
+//   - Prefer: prefer intersection of configured trust anchors and hints;
+//     if intersection is empty, fall back to all configured anchors.
+//     Fallback to all configured anchors is handled by callers if
+//     intersection does not yield a successful resolve.
+//   - Require: use only the intersection of configured trust anchors and hints.
+type TrustAnchorHintsMode string
+
+const (
+	TrustAnchorHintsModeIgnore  TrustAnchorHintsMode = "ignore"
+	TrustAnchorHintsModePrefer  TrustAnchorHintsMode = "prefer"
+	TrustAnchorHintsModeRequire TrustAnchorHintsMode = "require"
 )
 
 // ResolverCacheGracePeriod is a grace period for the resolver.
@@ -141,10 +160,12 @@ func (m *JWSMessages) UnmarshalJSON(data []byte) error {
 
 // TrustResolver is type for resolving trust chains from a StartingEntity to one or multiple TrustAnchors
 type TrustResolver struct {
-	TrustAnchors   TrustAnchors
-	StartingEntity string
-	Types          []string
-	trustTree      trustTree
+	TrustAnchors         TrustAnchors
+	StartingEntity       string
+	Types                []string
+	trustTree            trustTree
+	TrustAnchorHintsMode TrustAnchorHintsMode
+	selectedAnchors      []string
 }
 
 func (r TrustResolver) hash() (string, error) {
@@ -156,10 +177,12 @@ func (r TrustResolver) hash() (string, error) {
 		StartingEntity string
 		TAs            []string
 		Types          []string
+		Mode           TrustAnchorHintsMode
 	}{
 		StartingEntity: r.StartingEntity,
 		TAs:            tas,
 		Types:          r.Types,
+		Mode:           r.TrustAnchorHintsMode,
 	}
 	return utils.HashStruct(forSerialization)
 }
@@ -167,6 +190,14 @@ func (r TrustResolver) hash() (string, error) {
 // ResolveToValidChains starts the trust chain resolution process, building an internal trust tree,
 // verifies the signatures, integrity, expirations, and metadata policies and returns all possible valid TrustChains
 func (r *TrustResolver) ResolveToValidChains() TrustChains {
+	if r.TrustAnchorHintsMode == TrustAnchorHintsModePrefer || r.TrustAnchorHintsMode == "" {
+		r.TrustAnchorHintsMode = TrustAnchorHintsModeRequire
+		chains := r.ResolveToValidChains()
+		if len(chains) > 0 {
+			return chains
+		}
+		r.TrustAnchorHintsMode = TrustAnchorHintsModeIgnore
+	}
 	chains := r.ResolveToValidChainsWithoutVerifyingMetadata()
 	if chains == nil {
 		return nil
@@ -179,6 +210,14 @@ func (r *TrustResolver) ResolveToValidChains() TrustChains {
 // verifies the signatures, integrity, expirations,
 // but not metadata policies and returns all possible valid TrustChains
 func (r *TrustResolver) ResolveToValidChainsWithoutVerifyingMetadata() TrustChains {
+	if r.TrustAnchorHintsMode == TrustAnchorHintsModePrefer || r.TrustAnchorHintsMode == "" {
+		r.TrustAnchorHintsMode = TrustAnchorHintsModeRequire
+		chains := r.ResolveToValidChainsWithoutVerifyingMetadata()
+		if len(chains) > 0 {
+			return chains
+		}
+		r.TrustAnchorHintsMode = TrustAnchorHintsModeIgnore
+	}
 	chains, set, err := r.cacheGetTrustChains()
 	if err != nil {
 		set = false
@@ -189,13 +228,13 @@ func (r *TrustResolver) ResolveToValidChainsWithoutVerifyingMetadata() TrustChai
 		return chains
 	}
 	internal.Log("TrustResolver: Trust chains cache miss; resolving trust tree and verifying signatures")
-	r.Resolve()
-	r.VerifySignatures()
-	return r.Chains()
+	r.resolve()
+	r.verifySignatures()
+	return r.chains()
 }
 
-// Resolve starts the trust chain resolution process, building an internal trust tree
-func (r *TrustResolver) Resolve() {
+// resolve starts the trust chain resolution process, building an internal trust tree
+func (r *TrustResolver) resolve() {
 	if found, err := r.cacheGetTrustTree(); err != nil {
 		internal.Log("TrustResolver: " + err.Error())
 	} else if found {
@@ -222,15 +261,67 @@ func (r *TrustResolver) Resolve() {
 		includedEntityTypes: strset.New(starting.Metadata.GuessEntityTypes()...),
 		subordinateIDs:      strset.New(starting.Subject),
 	}
-	r.trustTree.resolve(r.TrustAnchors.EntityIDs())
+	r.selectedAnchors = r.chooseAnchors(starting)
+	r.trustTree.resolve(r.selectedAnchors)
 	if err = r.cacheSetTrustTree(); err != nil {
 		internal.Log("TrustResolver: " + err.Error())
 	}
 }
 
-// VerifySignatures verifies the signatures of the internal trust tree
-func (r *TrustResolver) VerifySignatures() {
-	if !r.trustTree.verifySignatures(r.TrustAnchors) {
+// chooseAnchors selects which trust anchors to use based on the provided
+// starting entity configuration and the resolver's TrustAnchorHintsMode.
+// Default mode is Prefer when unset.
+func (r TrustResolver) chooseAnchors(starting *EntityStatement) []string {
+	configured := r.TrustAnchors.EntityIDs()
+	mode := r.TrustAnchorHintsMode
+	if mode == "" || mode == TrustAnchorHintsModePrefer {
+		internal.Error("internal error: TrustAnchorHintsMode not set or set to Prefer; should never happen")
+		return configured
+	}
+	hints := starting.TrustAnchorHints
+	if len(hints) == 0 || mode == TrustAnchorHintsModeIgnore {
+		return configured
+	}
+	intersection := go2.Intersect(hints, configured)
+	if mode == TrustAnchorHintsModeRequire {
+		return intersection
+	}
+	// Prefer mode: if intersection non-empty, use it; else use configured
+	if len(intersection) > 0 {
+		return intersection
+	}
+	return configured
+}
+
+// verifySignatures verifies the signatures of the internal trust tree
+func (r *TrustResolver) verifySignatures() {
+	// Determine anchors to use for signature verification in line with the
+	// chosen TrustAnchorHintsMode. Compute dynamically from current trust tree.
+	anchorsToUse := r.TrustAnchors
+	if r.trustTree.Entity != nil {
+		ids := r.chooseAnchors(r.trustTree.Entity)
+		if len(ids) > 0 {
+			// filter anchors to the chosen ids, preserving order from ids
+			idset := make(map[string]struct{}, len(ids))
+			for _, id := range ids {
+				idset[id] = struct{}{}
+			}
+			var filtered TrustAnchors
+			for _, id := range ids {
+				for _, ta := range r.TrustAnchors {
+					if ta.EntityID == id {
+						filtered = append(filtered, ta)
+						break
+					}
+				}
+			}
+			anchorsToUse = filtered
+		} else if r.TrustAnchorHintsMode == TrustAnchorHintsModeRequire {
+			// Require mode with empty intersection => no anchors
+			anchorsToUse = nil
+		}
+	}
+	if !r.trustTree.verifySignatures(anchorsToUse) {
 		internal.Log("TrustResolver: VerifySignatures: signature verification failed; clearing trust tree")
 		r.trustTree = trustTree{}
 	}
@@ -238,12 +329,15 @@ func (r *TrustResolver) VerifySignatures() {
 		internal.Log("TrustResolver: " + err.Error())
 	}
 	if r.trustTree.signaturesVerified {
-		internal.Logf("TrustResolver: VerifySignatures: signature verification succeeded; valid authorities at root: %d", len(r.trustTree.Authorities))
+		internal.Logf(
+			"TrustResolver: VerifySignatures: signature verification succeeded; valid authorities at root: %d",
+			len(r.trustTree.Authorities),
+		)
 	}
 }
 
-// Chains returns the TrustChains in the internal trust tree
-func (r TrustResolver) Chains() (chains TrustChains) {
+// chains returns the TrustChains in the internal trust tree
+func (r TrustResolver) chains() (chains TrustChains) {
 	chains, set, err := r.cacheGetTrustChains()
 	if err != nil {
 		internal.Log("TrustResolver: " + err.Error())
@@ -357,9 +451,15 @@ func (t *trustTree) resolveAuthorities(anchors []string) {
 		t.Authorities = make([]trustTree, len(t.Entity.AuthorityHints))
 	}
 
-	internal.Logf("TrustResolver: resolveAuthorities: %d authority hint(s) for entity %s at depth %d", len(t.Entity.AuthorityHints), t.Entity.Issuer, t.depth)
+	internal.Logf(
+		"TrustResolver: resolveAuthorities: %d authority hint(s) for entity %s at depth %d",
+		len(t.Entity.AuthorityHints), t.Entity.Issuer, t.depth,
+	)
 	for i, authorityID := range t.Entity.AuthorityHints {
-		internal.Logf("TrustResolver: resolveAuthorities: working on authority %s (hint %d/%d)", authorityID, i+1, len(t.Entity.AuthorityHints))
+		internal.Logf(
+			"TrustResolver: resolveAuthorities: working on authority %s (hint %d/%d)", authorityID, i+1,
+			len(t.Entity.AuthorityHints),
+		)
 		if t.subordinateIDs.Has(authorityID) {
 			internal.Logf(
 				"TrustResolver: resolveAuthorities: skipping authority %s due to loop prevention", authorityID,
@@ -374,7 +474,10 @@ func (t *trustTree) resolveAuthorities(anchors []string) {
 		}
 
 		t.Authorities[i] = authority
-		internal.Logf("TrustResolver: resolveAuthorities: successfully resolved authority %s; subtree depth %d with %d hint(s)", authorityID, authority.depth, len(authority.Entity.AuthorityHints))
+		internal.Logf(
+			"TrustResolver: resolveAuthorities: successfully resolved authority %s; subtree depth %d with %d hint(s)",
+			authorityID, authority.depth, len(authority.Entity.AuthorityHints),
+		)
 	}
 }
 
@@ -413,7 +516,10 @@ func (t *trustTree) resolveAuthority(authorityID string, anchors []string) (trus
 		}
 		return trustTree{}, errors.New("invalid authority statement")
 	}
-	internal.Logf("TrustResolver: resolveAuthority: authority statement valid for %s; fetch endpoint: %s", authorityID, authorityStmt.Metadata.FederationEntity.FederationFetchEndpoint)
+	internal.Logf(
+		"TrustResolver: resolveAuthority: authority statement valid for %s; fetch endpoint: %s", authorityID,
+		authorityStmt.Metadata.FederationEntity.FederationFetchEndpoint,
+	)
 
 	subordinateStmt, err := t.fetchAndValidateSubordinateStatement(authorityStmt, authorityID)
 	if err != nil {
@@ -424,7 +530,10 @@ func (t *trustTree) resolveAuthority(authorityID string, anchors []string) (trus
 		)
 		return trustTree{}, err
 	}
-	internal.Logf("TrustResolver: resolveAuthority: subordinate statement valid for authority %s and subordinate %s", authorityID, t.Entity.Issuer)
+	internal.Logf(
+		"TrustResolver: resolveAuthority: subordinate statement valid for authority %s and subordinate %s", authorityID,
+		t.Entity.Issuer,
+	)
 
 	if !t.checkConstraints(subordinateStmt.Constraints) {
 		internal.Logf(
@@ -434,13 +543,19 @@ func (t *trustTree) resolveAuthority(authorityID string, anchors []string) (trus
 		)
 		return trustTree{}, errors.New("constraints check failed")
 	}
-	internal.Logf("TrustResolver: resolveAuthority: constraints satisfied for authority %s and subordinate %s", authorityID, t.Entity.Issuer)
+	internal.Logf(
+		"TrustResolver: resolveAuthority: constraints satisfied for authority %s and subordinate %s", authorityID,
+		t.Entity.Issuer,
+	)
 
 	t.updateExpirationTimeFromSubordinate(subordinateStmt)
 	internal.Logf("TrustResolver: resolveAuthority: updated expiration to %v after subordinate stmt", t.expiresAt)
 
 	subtree := t.createAuthorityTrustTree(authorityStmt, subordinateStmt, authorityID, anchors)
-	internal.Logf("TrustResolver: resolveAuthority: created subtree for authority %s at depth %d (authorities: %d)", authorityID, subtree.depth, len(subtree.Authorities))
+	internal.Logf(
+		"TrustResolver: resolveAuthority: created subtree for authority %s at depth %d (authorities: %d)", authorityID,
+		subtree.depth, len(subtree.Authorities),
+	)
 	return subtree, nil
 }
 

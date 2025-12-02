@@ -3,6 +3,7 @@ package oidfed
 import (
 	"time"
 
+	"github.com/lestrrat-go/jwx/v3/jws"
 	"github.com/pkg/errors"
 
 	"github.com/go-oidfed/lib/apimodel"
@@ -22,14 +23,21 @@ type FederationEntity interface {
 	EntityConfigurationJWT() ([]byte, error)
 	// SignEntityStatement signs the provided entity configuration payload
 	SignEntityStatement(payload EntityStatementPayload) ([]byte, error)
+	// SignEntityStatementWithHeaders signs the provided entity configuration payload and adds the passed jws.Headers
+	SignEntityStatementWithHeaders(payload EntityStatementPayload, headers jws.Headers) ([]byte, error)
 }
+
+// RequestURIGenerator is a function that takes a request object and returns a request_uri at which the passed
+// request object will be available
+type RequestURIGenerator func([]byte) (string, error)
 
 // FederationLeaf is a type for a leaf entity and holds all relevant information about it; it can also be used to
 // create an EntityConfiguration about it or to start OIDC flows
 type FederationLeaf struct {
 	FederationEntity
-	TrustAnchors   TrustAnchors
-	oidcROProducer *RequestObjectProducer
+	TrustAnchors        TrustAnchors
+	oidcROProducer      *RequestObjectProducer
+	RequestURIGenerator RequestURIGenerator
 }
 
 // DynamicFederationEntity mirrors FederationEntity but exposes all properties
@@ -179,6 +187,13 @@ func (f DynamicFederationEntity) EntityConfigurationJWT() ([]byte, error) {
 
 // SignEntityStatement creates a signed JWT for the given EntityStatementPayload
 func (f DynamicFederationEntity) SignEntityStatement(payload EntityStatementPayload) ([]byte, error) {
+	return f.SignEntityStatementWithHeaders(payload, nil)
+}
+
+// SignEntityStatementWithHeaders creates a signed JWT for the given EntityStatementPayload and jws.Headers
+func (f DynamicFederationEntity) SignEntityStatementWithHeaders(
+	payload EntityStatementPayload, headers jws.Headers,
+) ([]byte, error) {
 	if f.EntityStatementSigner == nil {
 		return nil, errors.New("no signer function configured")
 	}
@@ -189,7 +204,7 @@ func (f DynamicFederationEntity) SignEntityStatement(payload EntityStatementPayl
 	if err != nil {
 		return nil, err
 	}
-	return signer.JWT(payload)
+	return signer.JWTWithHeaders(payload, headers)
 }
 
 // NewFederationEntity creates a new StaticFederationEntity with the passed properties
@@ -290,6 +305,15 @@ func (f StaticFederationEntity) EntityConfigurationJWT() ([]byte, error) {
 // used on TA/IA
 func (f StaticFederationEntity) SignEntityStatement(payload EntityStatementPayload) ([]byte, error) {
 	return f.EntityStatementSigner.JWT(payload)
+}
+
+// SignEntityStatementWithHeaders creates a signed JWT for the given
+// EntityStatementPayload; this function is intended to be
+// used on TA/IA
+func (f StaticFederationEntity) SignEntityStatementWithHeaders(
+	payload EntityStatementPayload, headers jws.Headers,
+) ([]byte, error) {
+	return f.EntityStatementSigner.JWTWithHeaders(payload, headers)
 }
 
 // RequestObjectProducer returns the entity's RequestObjectProducer
