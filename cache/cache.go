@@ -76,6 +76,9 @@ func (c cacheWrapper) Clear(prefix string) error {
 
 var cacheCache Cache
 
+// maxLifetime, when > 0, clamps all cache entry expirations to this maximum.
+var maxLifetime time.Duration
+
 func init() {
 	SetCache(newCacheWrapper(time.Hour))
 }
@@ -84,6 +87,10 @@ func init() {
 func SetCache(cache Cache) {
 	cacheCache = cache
 }
+
+// SetMaxLifetime sets a maximum lifetime for all cache entries.
+// If d <= 0, the limit is disabled.
+func SetMaxLifetime(d time.Duration) { maxLifetime = d }
 
 // Constants for keys for sub caches
 const (
@@ -110,6 +117,9 @@ func EntityStmtCacheKey(subID, issID string) string {
 
 // Set caches a value for the given key and duration in the cache
 func Set(key string, value any, duration time.Duration) error {
+	if maxLifetime > 0 && duration > maxLifetime {
+		duration = maxLifetime
+	}
 	return cacheCache.Set(key, value, duration)
 }
 
