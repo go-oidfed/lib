@@ -176,7 +176,7 @@ func (f FederationLeaf) GetAuthorizationURL(
 	if f.RequestURIGenerator != nil && opMetadata.RequestURIParameterSupported && len(resolved.TrustChain) > 0 {
 		ownResolved, err := DefaultMetadataResolver.ResolveResponsePayload(
 			apimodel.ResolveRequest{
-				Subject:     f.EntityID,
+				Subject:     f.EntityID(),
 				TrustAnchor: []string{resolved.TrustAnchor},
 				EntityTypes: []string{oidfedconst.EntityTypeOpenIDRelyingParty},
 			},
@@ -209,7 +209,7 @@ func (f FederationLeaf) GetAuthorizationURL(
 	} else {
 		q.Set("request", string(requestObject))
 	}
-	q.Set("client_id", f.EntityID)
+	q.Set("client_id", f.EntityID())
 	q.Set("response_type", "code")
 	q.Set("redirect_uri", redirectURI)
 	q.Set("scope", scope)
@@ -233,7 +233,7 @@ func (f FederationLeaf) CodeExchange(
 	params.Set("grant_type", "authorization_code")
 	params.Set("code", code)
 	params.Set("redirect_uri", redirectURI)
-	params.Set("client_id", f.EntityID)
+	params.Set("client_id", f.EntityID())
 
 	clientAssertion, err := f.oidcROProducer.ClientAssertion(
 		opMetadata.TokenEndpoint,

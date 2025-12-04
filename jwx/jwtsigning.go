@@ -28,14 +28,14 @@ type VersatileSigner interface {
 	// DefaultSigner returns a crypto.Signer and the corresponding jwa.SignatureAlgorithm
 	DefaultSigner() (crypto.Signer, jwa.SignatureAlgorithm)
 	// JWKS returns the jwks.JWKS containing all public keys of this VersatileSigner
-	JWKS() JWKS
+	JWKS() (JWKS, error)
 }
 
 // JWTSigner is an interface that can give signed jwts
 type JWTSigner interface {
-	JWT(i any) (jwt []byte, err error)
-	JWTWithHeaders(i any, headers jws.Headers) (jwt []byte, err error)
-	JWKS() JWKS
+	JWT(i any, alg ...jwa.SignatureAlgorithm) (jwt []byte, err error)
+	JWTWithHeaders(i any, headers jws.Headers, alg ...jwa.SignatureAlgorithm) (jwt []byte, err error)
+	JWKS() (JWKS, error)
 }
 
 // GeneralJWTSigner is a general jwt signer with no specific typ
@@ -85,7 +85,7 @@ func (s GeneralJWTSigner) JWTWithHeaders(i any, headers jws.Headers, headerType 
 }
 
 // JWKS returns the jwks.JWKS used with this signer
-func (s *GeneralJWTSigner) JWKS() JWKS {
+func (s *GeneralJWTSigner) JWKS() (JWKS, error) {
 	return s.signer.JWKS()
 }
 
@@ -244,18 +244,24 @@ func SignPayload(payload []byte, signingAlg jwa.SignatureAlgorithm, key crypto.S
 	[]byte,
 	error,
 ) {
-	k, err := jwk.Import(key)
-	if err != nil {
-		return nil, err
-	}
-	if err = jwk.AssignKeyID(k); err != nil {
-		return nil, err
+	type signerWithKID interface{ KID() string }
+	var keyID string
+	if s, ok := key.(signerWithKID); ok {
+		keyID = s.KID()
+	} else {
+		k, err := jwk.PublicKeyOf(key.Public())
+		if err != nil {
+			return nil, err
+		}
+		if err = jwk.AssignKeyID(k); err != nil {
+			return nil, err
+		}
+		keyID, _ = k.KeyID()
 	}
 	if headers == nil {
 		headers = jws.NewHeaders()
 	}
-	keyID, _ := k.KeyID()
-	if err = headers.Set(jws.KeyIDKey, keyID); err != nil {
+	if err := headers.Set(jws.KeyIDKey, keyID); err != nil {
 		return nil, err
 	}
 	return jws.Sign(payload, jws.WithKey(signingAlg, key, jws.WithProtectedHeaders(headers)))
