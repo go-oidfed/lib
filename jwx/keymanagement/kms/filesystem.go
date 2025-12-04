@@ -114,25 +114,32 @@ func (kms *FilesystemKMS) GetForAlgs(algs ...string) (
 		if len(algPKs) > 1 {
 			maxExp := unixtime.Now()
 			maxExpWithNbf := maxExp
+			noExpIndex := -1
 			maxExpIndex := -1
 			maxExpWithNbfIndex := -1
 			nbfTreshold := time.Now().Add(-kms.KeyRotation.Overlap.Duration() / 2)
 			for i, it := range algPKs {
-				if it.NotBefore.Before(nbfTreshold) && it.ExpiresAt.After(
+				if it.ExpiresAt == nil {
+					noExpIndex = i
+					continue
+				}
+				if it.NotBefore != nil && it.NotBefore.Before(nbfTreshold) && it.ExpiresAt.After(
 					maxExpWithNbf.Time,
 				) {
-					maxExpWithNbf = it.ExpiresAt
+					maxExpWithNbf = *it.ExpiresAt
 					maxExpWithNbfIndex = i
 
 				} else if maxExpIndex == -1 && it.ExpiresAt.After(maxExp.Time) {
-					maxExp = it.ExpiresAt
+					maxExp = *it.ExpiresAt
 					maxExpIndex = i
 				}
 			}
 			if maxExpWithNbfIndex != -1 {
 				pk = algPKs[maxExpWithNbfIndex]
-			} else {
+			} else if maxExpIndex != -1 {
 				pk = algPKs[maxExpIndex]
+			} else {
+				pk = algPKs[noExpIndex]
 			}
 		}
 		signer, ok := kms.signers[pk.KID]
@@ -241,9 +248,9 @@ func NewFilesystemKMSFromBasic(
 			now := unixtime.Now()
 			pke := public.PublicKeyEntry{
 				KID:       kid,
-				Key:       pk,
-				IssuedAt:  now,
-				NotBefore: now,
+				Key:       public.JWKKey{Key: pk},
+				IssuedAt:  &now,
+				NotBefore: &now,
 			}
 			if err = pks.Add(pke); err != nil {
 				return nil, err
@@ -267,27 +274,27 @@ func (kms *FilesystemKMS) generateNewSigner(
 		return nil, err
 	}
 	now := unixtime.Now()
-	var nbf unixtime.Unixtime
+	var nbf *unixtime.Unixtime
 	switch mode {
 	case nbfModeNow:
-		nbf = now
+		nbf = &now
 	case nbfModeNext:
 		lifetime, err := kms.KeyRotation.EntityConfigurationLifetimeFunc()
 		if err != nil {
 			return nil, errors.Wrap(err, "failed to get entity configuration lifetime")
 		}
-		nbf = unixtime.Unixtime{Time: now.Add(lifetime)}
+		nbf = &unixtime.Unixtime{Time: now.Add(lifetime)}
 	default:
 		return nil, errors.New("invalid nbf mode")
 	}
-	var exp unixtime.Unixtime
+	var exp *unixtime.Unixtime
 	if kms.KeyRotation.Enabled {
-		exp = unixtime.Unixtime{Time: nbf.Add(kms.KeyRotation.Interval.Duration())}
+		exp = &unixtime.Unixtime{Time: nbf.Add(kms.KeyRotation.Interval.Duration())}
 	}
 	pke := public.PublicKeyEntry{
 		KID:       kid,
-		Key:       pk,
-		IssuedAt:  now,
+		Key:       public.JWKKey{Key: pk},
+		IssuedAt:  &now,
 		NotBefore: nbf,
 		UpdateablePublicKeyMetadata: public.UpdateablePublicKeyMetadata{
 			ExpiresAt: exp,
@@ -328,7 +335,7 @@ func (kms *FilesystemKMS) rotateKeys(kids []string, revoked bool, reason string)
 			}
 		}
 		ks[i] = k
-		if !k.ExpiresAt.IsZero() && (latestExp.IsZero() || k.ExpiresAt.After(latestExp)) {
+		if k.ExpiresAt != nil && !k.ExpiresAt.IsZero() && (latestExp.IsZero() || k.ExpiresAt.After(latestExp)) {
 			latestExp = k.ExpiresAt.Time
 		}
 	}
@@ -354,13 +361,14 @@ func (kms *FilesystemKMS) rotateKeys(kids []string, revoked bool, reason string)
 			"new_kid": pk.KID,
 		},
 	).Info("FilesystemKMS: rotation: generated new key")
-	newExpForOldKey := unixtime.Unixtime{Time: pk.NotBefore.Add(kms.KeyRotation.Overlap.Duration())}
+	newExpForOldKey := &unixtime.Unixtime{Time: pk.NotBefore.Add(kms.KeyRotation.Overlap.Duration())}
 	for _, k := range ks {
 		if revoked {
-			k.RevokedAt = unixtime.Now()
+			now := unixtime.Now()
+			k.RevokedAt = &now
 			k.Reason = reason
 		}
-		if k.ExpiresAt.IsZero() || newExpForOldKey.Before(k.ExpiresAt.Time) || newExpForOldKey.After(k.ExpiresAt.Time) {
+		if k.ExpiresAt != nil && k.ExpiresAt.IsZero() || newExpForOldKey.Before(k.ExpiresAt.Time) || newExpForOldKey.After(k.ExpiresAt.Time) {
 			k.ExpiresAt = newExpForOldKey
 		}
 		if err = kms.PKs.Update(k.KID, k.UpdateablePublicKeyMetadata); err != nil {
@@ -376,6 +384,7 @@ func (kms *FilesystemKMS) rotateKeys(kids []string, revoked bool, reason string)
 	return nil
 }
 
+// RotateKey rotates a single key, optionally marking it revoked and recording a reason.
 func (kms *FilesystemKMS) RotateKey(kid string, revoked bool, reason string) error {
 	log.WithFields(
 		log.Fields{

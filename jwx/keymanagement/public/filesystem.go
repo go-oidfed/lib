@@ -70,7 +70,7 @@ func (fs *FilesystemPublicKeyStorage) GetRevoked() (PublicKeyEntryList, error) {
 	now := time.Now()
 	var out PublicKeyEntryList
 	for _, e := range fs.entries {
-		if !e.RevokedAt.IsZero() && e.RevokedAt.Before(now) {
+		if e.RevokedAt != nil && !e.RevokedAt.IsZero() && e.RevokedAt.Before(now) {
 			out = append(out, e)
 		}
 	}
@@ -84,7 +84,7 @@ func (fs *FilesystemPublicKeyStorage) GetExpired() (PublicKeyEntryList, error) {
 	now := time.Now()
 	var out PublicKeyEntryList
 	for _, e := range fs.entries {
-		if !e.ExpiresAt.IsZero() && e.ExpiresAt.Before(now) {
+		if e.ExpiresAt != nil && !e.ExpiresAt.IsZero() && e.ExpiresAt.Before(now) {
 			out = append(out, e)
 		}
 	}
@@ -98,9 +98,9 @@ func (fs *FilesystemPublicKeyStorage) GetHistorical() (PublicKeyEntryList, error
 	now := time.Now()
 	var out PublicKeyEntryList
 	for _, e := range fs.entries {
-		if !e.ExpiresAt.IsZero() && e.ExpiresAt.Before(now) {
+		if e.ExpiresAt != nil && !e.ExpiresAt.IsZero() && e.ExpiresAt.Before(now) {
 			out = append(out, e)
-		} else if !e.RevokedAt.IsZero() && e.RevokedAt.Before(now) {
+		} else if e.RevokedAt != nil && !e.RevokedAt.IsZero() && e.RevokedAt.Before(now) {
 			out = append(out, e)
 		}
 	}
@@ -115,13 +115,13 @@ func (fs *FilesystemPublicKeyStorage) GetActive() (PublicKeyEntryList, error) {
 	now := time.Now()
 	var out PublicKeyEntryList
 	for _, e := range fs.entries {
-		if !e.RevokedAt.IsZero() && e.RevokedAt.Before(now) {
+		if e.RevokedAt != nil && !e.RevokedAt.IsZero() && e.RevokedAt.Before(now) {
 			continue
 		}
-		if !e.NotBefore.IsZero() && now.Before(e.NotBefore.Time) {
+		if e.NotBefore != nil && !e.NotBefore.IsZero() && now.Before(e.NotBefore.Time) {
 			continue
 		}
-		if !e.ExpiresAt.IsZero() && e.ExpiresAt.Before(now) {
+		if e.ExpiresAt != nil && !e.ExpiresAt.IsZero() && e.ExpiresAt.Before(now) {
 			continue
 		}
 		out = append(out, e)
@@ -136,10 +136,10 @@ func (fs *FilesystemPublicKeyStorage) GetValid() (PublicKeyEntryList, error) {
 	now := time.Now()
 	var out PublicKeyEntryList
 	for _, e := range fs.entries {
-		if !e.RevokedAt.IsZero() && e.RevokedAt.Before(now) {
+		if e.RevokedAt != nil && !e.RevokedAt.IsZero() && e.RevokedAt.Before(now) {
 			continue
 		}
-		if !e.ExpiresAt.IsZero() && e.ExpiresAt.Before(now) {
+		if e.ExpiresAt != nil && !e.ExpiresAt.IsZero() && e.ExpiresAt.Before(now) {
 			continue
 		}
 		out = append(out, e)
@@ -226,7 +226,8 @@ func (fs *FilesystemPublicKeyStorage) Revoke(kid, reason string) error {
 	if k == nil {
 		return nil
 	}
-	k.RevokedAt = unixtime.Now()
+	now := unixtime.Now()
+	k.RevokedAt = &now
 	k.Reason = reason
 	return fs.Update(kid, k.UpdateablePublicKeyMetadata)
 
@@ -241,9 +242,9 @@ func (fs *FilesystemPublicKeyStorage) Get(kid string) (*PublicKeyEntry, error) {
 		return nil, nil
 	}
 	// Clone the jwk.Key to avoid external mutation
-	if e.Key != nil {
+	if e.Key.Key != nil {
 		if k, err := e.Key.Clone(); err == nil {
-			e.Key = k
+			e.Key.Key = k
 		}
 	}
 	return &e, nil
@@ -313,11 +314,17 @@ func NewFilesystemPublicKeyStorageFromLegacy(dir, typeID string) (*FilesystemPub
 			_ = k.Get("exp", &exp)
 			entry := PublicKeyEntry{
 				KID: kid,
-				Key: cloned,
+				Key: JWKKey{cloned},
 			}
-			entry.IssuedAt = iat
-			entry.NotBefore = nbf
-			entry.ExpiresAt = exp
+			if !iat.IsZero() && iat.Unix() != 0 {
+				entry.IssuedAt = &iat
+			}
+			if !nbf.IsZero() && nbf.Unix() != 0 {
+				entry.NotBefore = &nbf
+			}
+			if !exp.IsZero() && exp.Unix() != 0 {
+				entry.ExpiresAt = &exp
+			}
 			// Last write wins for duplicate kids
 			fs.entries[kid] = entry
 		}
@@ -353,16 +360,16 @@ func NewFilesystemPublicKeyStorageFromStorage(dir, typeID string, src PublicKeyS
 		return nil, err
 	}
 	for _, e := range list {
-		if e.KID == "" && e.Key != nil {
+		if e.KID == "" && e.Key.Key != nil {
 			var kid string
 			_ = e.Key.Get("kid", &kid)
 			e.KID = kid
 		}
-		if e.KID == "" || e.Key == nil {
+		if e.KID == "" || e.Key.Key == nil {
 			continue
 		}
 		if k, cerr := e.Key.Clone(); cerr == nil {
-			e.Key = k
+			e.Key.Key = k
 		} else {
 			continue
 		}

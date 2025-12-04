@@ -101,69 +101,46 @@ func (pks PublicKeyEntryList) ByAlg() map[jwa.SignatureAlgorithm]PublicKeyEntryL
 	return m
 }
 
-// PublicKeyEntry holds a public JWK alongside issuance, validity and revocation
-// metadata used to determine whether the key is usable.
-type PublicKeyEntry struct {
-	KID       string            `json:"kid"`
-	Key       jwk.Key           `json:"key"`
-	IssuedAt  unixtime.Unixtime `json:"iat,omitempty"`
-	NotBefore unixtime.Unixtime `json:"nbf,omitempty"`
-	UpdateablePublicKeyMetadata
+// JWKKey is a wrapper around jwk.Key that implements the json.Unmarshaler
+// interface, so that it can be used as a field in a PublicKeyEntry.
+type JWKKey struct {
+	jwk.Key
+}
+
+// MarshalJSON implements the json.Marshaler interface
+func (k JWKKey) MarshalJSON() ([]byte, error) {
+	return json.Marshal((k.Key))
 }
 
 // UnmarshalJSON implements the json.Unmarshaler interface
-func (pk *PublicKeyEntry) UnmarshalJSON(data []byte) error {
-	// Allow null to reset the entry
+func (k *JWKKey) UnmarshalJSON(data []byte) error {
 	if bytes.Equal(data, []byte("null")) {
-		*pk = PublicKeyEntry{}
 		return nil
 	}
-
-	// Use a helper struct that captures `key` as raw JSON for manual parsing
-	type alias struct {
-		KID       string            `json:"kid"`
-		Key       json.RawMessage   `json:"key"`
-		IssuedAt  unixtime.Unixtime `json:"iat,omitempty"`
-		NotBefore unixtime.Unixtime `json:"nbf,omitempty"`
-		UpdateablePublicKeyMetadata
+	key, err := jwk.ParseKey(data)
+	if err != nil {
+		return errors.Wrap(err, "failed to parse jwk")
 	}
-
-	var a alias
-	if err := json.Unmarshal(data, &a); err != nil {
-		return errors.WithStack(err)
-	}
-
-	var key jwk.Key
-	if len(a.Key) != 0 && !bytes.Equal(a.Key, []byte("null")) {
-		k, err := jwk.ParseKey(a.Key)
-		if err != nil {
-			return errors.WithStack(err)
-		}
-		key = k
-	}
-
-	// Populate the receiver
-	pk.KID = a.KID
-	pk.Key = key
-	pk.IssuedAt = a.IssuedAt
-	pk.NotBefore = a.NotBefore
-	pk.UpdateablePublicKeyMetadata = a.UpdateablePublicKeyMetadata
-
-	// If outer KID is missing, derive from the JWK if available
-	if pk.KID == "" && pk.Key != nil {
-		var kid string
-		_ = pk.Key.Get("kid", &kid)
-		pk.KID = kid
-	}
+	k.Key = key
 	return nil
+}
+
+// PublicKeyEntry holds a public JWK alongside issuance, validity and revocation
+// metadata used to determine whether the key is usable.
+type PublicKeyEntry struct {
+	KID       string             `gorm:"primaryKey;column:kid" json:"kid"`
+	Key       JWKKey             `gorm:"serializer:json" json:"key"`
+	IssuedAt  *unixtime.Unixtime `json:"iat,omitempty"`
+	NotBefore *unixtime.Unixtime `json:"nbf,omitempty"`
+	UpdateablePublicKeyMetadata
 }
 
 // UpdateablePublicKeyMetadata contains fields that can be updated after
 // creation, such as expiration and revocation information.
 type UpdateablePublicKeyMetadata struct {
-	ExpiresAt unixtime.Unixtime `json:"exp,omitempty"`
-	RevokedAt unixtime.Unixtime `json:"revoked_at,omitempty"`
-	Reason    string            `json:"reason,omitempty"`
+	ExpiresAt *unixtime.Unixtime `json:"exp,omitempty"`
+	RevokedAt *unixtime.Unixtime `json:"revoked_at,omitempty"`
+	Reason    string             `json:"reason,omitempty"`
 }
 
 // JWK returns a cloned jwk.Key annotated with standard JWT fields (iat, nbf,
@@ -173,30 +150,30 @@ func (pk PublicKeyEntry) JWK() (jwk.Key, error) {
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to clone key")
 	}
-	if iat := pk.IssuedAt; !iat.IsZero() {
+	if iat := pk.IssuedAt; iat != nil && !iat.IsZero() {
 		err = key.Set("iat", iat)
 		if err != nil {
 			return nil, errors.Wrap(err, "failed to set iat")
 		}
 	}
-	if nbf := pk.NotBefore; !nbf.IsZero() {
+	if nbf := pk.NotBefore; nbf != nil && !nbf.IsZero() {
 		err = key.Set("nbf", nbf)
 		if err != nil {
 			return nil, errors.Wrap(err, "failed to set nbf")
 		}
 	}
-	if exp := pk.ExpiresAt; !exp.IsZero() {
+	if exp := pk.ExpiresAt; exp != nil && !exp.IsZero() {
 		err = key.Set("exp", exp)
 		if err != nil {
 			return nil, errors.Wrap(err, "failed to set exp")
 		}
 	}
-	if rvk := pk.RevokedAt; !rvk.IsZero() && rvk.Unix() != 0 {
+	if rvk := pk.RevokedAt; rvk != nil && !rvk.IsZero() && rvk.Unix() != 0 {
 		revoked := struct {
 			RevokedAt unixtime.Unixtime `json:"revoked_at"`
 			Reason    string            `json:"reason,omitempty"`
 		}{
-			RevokedAt: rvk,
+			RevokedAt: *rvk,
 			Reason:    pk.Reason,
 		}
 		err = key.Set("revoked", revoked)

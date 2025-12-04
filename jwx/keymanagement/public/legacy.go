@@ -74,7 +74,7 @@ func (l *LegacyPublicKeyStorage) GetExpired() (PublicKeyEntryList, error) {
 	out := l.collectAll(false, true)
 	var expired PublicKeyEntryList
 	for _, e := range out {
-		if !e.ExpiresAt.IsZero() && e.ExpiresAt.Before(now) {
+		if e.ExpiresAt != nil && !e.ExpiresAt.IsZero() && e.ExpiresAt.Before(now) {
 			expired = append(expired, e)
 		}
 	}
@@ -86,7 +86,7 @@ func (l *LegacyPublicKeyStorage) GetHistorical() (PublicKeyEntryList, error) {
 	out := l.collectAll(false, true)
 	var hist PublicKeyEntryList
 	for _, e := range out {
-		if !e.ExpiresAt.IsZero() && e.ExpiresAt.Before(now) {
+		if e.ExpiresAt != nil && !e.ExpiresAt.IsZero() && e.ExpiresAt.Before(now) {
 			hist = append(hist, e)
 		}
 	}
@@ -98,10 +98,10 @@ func (l *LegacyPublicKeyStorage) GetActive() (PublicKeyEntryList, error) {
 	out := l.collectAll(false, false)
 	var active PublicKeyEntryList
 	for _, e := range out {
-		if !e.NotBefore.IsZero() && now.Before(e.NotBefore.Time) {
+		if e.NotBefore != nil && !e.NotBefore.IsZero() && now.Before(e.NotBefore.Time) {
 			continue
 		}
-		if !e.ExpiresAt.IsZero() && e.ExpiresAt.Before(now) {
+		if e.ExpiresAt != nil && !e.ExpiresAt.IsZero() && e.ExpiresAt.Before(now) {
 			continue
 		}
 		active = append(active, e)
@@ -115,7 +115,7 @@ func (l *LegacyPublicKeyStorage) GetValid() (PublicKeyEntryList, error) {
 	list := l.collectAll(true, false)
 	var valid PublicKeyEntryList
 	for _, e := range list {
-		if !e.ExpiresAt.IsZero() && e.ExpiresAt.Before(now) {
+		if e.ExpiresAt != nil && !e.ExpiresAt.IsZero() && e.ExpiresAt.Before(now) {
 			continue
 		}
 		valid = append(valid, e)
@@ -179,23 +179,23 @@ func (l *LegacyPublicKeyStorage) collectAll(includeNext, includeOlds bool) Publi
 			_ = k.Get("iat", &iatF)
 			_ = k.Get("nbf", &nbfF)
 			_ = k.Get("exp", &expF)
-			var iat, nbf, exp unixtime.Unixtime
+			var iat, nbf, exp *unixtime.Unixtime
 			if iatF != 0 {
 				sec, dec := math.Modf(iatF)
-				iat = unixtime.Unixtime{Time: time.Unix(int64(sec), int64(dec*(1e9)))}
+				iat = &unixtime.Unixtime{Time: time.Unix(int64(sec), int64(dec*(1e9)))}
 			}
 			if nbfF != 0 {
 				sec, dec := math.Modf(nbfF)
-				nbf = unixtime.Unixtime{Time: time.Unix(int64(sec), int64(dec*(1e9)))}
+				nbf = &unixtime.Unixtime{Time: time.Unix(int64(sec), int64(dec*(1e9)))}
 			}
 			if expF != 0 {
 				sec, dec := math.Modf(expF)
-				exp = unixtime.Unixtime{Time: time.Unix(int64(sec), int64(dec*(1e9)))}
+				exp = &unixtime.Unixtime{Time: time.Unix(int64(sec), int64(dec*(1e9)))}
 			}
 			out = append(
 				out, PublicKeyEntry{
 					KID:                         kid,
-					Key:                         cloned,
+					Key:                         JWKKey{cloned},
 					IssuedAt:                    iat,
 					NotBefore:                   nbf,
 					UpdateablePublicKeyMetadata: UpdateablePublicKeyMetadata{ExpiresAt: exp},
