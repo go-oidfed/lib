@@ -50,10 +50,10 @@ type KMSConfig struct {
 
 // KeyRotationConfig is a type holding configuration for key rollover / key rotation
 type KeyRotationConfig struct {
-	Enabled                         bool                          `yaml:"enabled"`
-	Interval                        duration.DurationOption       `yaml:"interval"`
-	Overlap                         duration.DurationOption       `yaml:"overlap"`
-	EntityConfigurationLifetimeFunc func() (time.Duration, error) `yaml:"-"`
+	Enabled                         bool                          `yaml:"enabled" json:"enabled"`
+	Interval                        duration.DurationOption       `yaml:"interval" json:"interval"`
+	Overlap                         duration.DurationOption       `yaml:"overlap" json:"overlap"`
+	EntityConfigurationLifetimeFunc func() (time.Duration, error) `yaml:"-" json:"-"`
 }
 
 type kmsAsVersatileSigner struct {
