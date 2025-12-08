@@ -50,6 +50,17 @@ type PublicKeyStorage interface {
 	Get(kid string) (*PublicKeyEntry, error)
 }
 
+// NotFoundError indicates that a requested key identifier was not found.
+// It is returned by storage operations when an entry expected to exist
+// (e.g., for update, revoke, delete, or get) cannot be located.
+type NotFoundError struct {
+	KID string
+}
+
+func (e NotFoundError) Error() string {
+	return "public key not found: " + e.KID
+}
+
 // PublicKeyEntryList is a list of PublicKeyEntry
 type PublicKeyEntryList []PublicKeyEntry
 

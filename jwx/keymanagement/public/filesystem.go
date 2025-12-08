@@ -194,7 +194,7 @@ func (fs *FilesystemPublicKeyStorage) Update(kid string, data UpdateablePublicKe
 	defer fs.mu.Unlock()
 	e, ok := fs.entries[kid]
 	if !ok {
-		return errors.Errorf("unknown kid '%s'", kid)
+		return NotFoundError{KID: kid}
 	}
 	e.UpdateablePublicKeyMetadata = data
 	fs.entries[kid] = e
@@ -213,6 +213,9 @@ func (fs *FilesystemPublicKeyStorage) Clear() error {
 func (fs *FilesystemPublicKeyStorage) Delete(kid string) error {
 	fs.mu.Lock()
 	defer fs.mu.Unlock()
+	if _, ok := fs.entries[kid]; !ok {
+		return NotFoundError{KID: kid}
+	}
 	delete(fs.entries, kid)
 	return fs.persist()
 }
@@ -224,7 +227,7 @@ func (fs *FilesystemPublicKeyStorage) Revoke(kid, reason string) error {
 		return err
 	}
 	if k == nil {
-		return nil
+		return NotFoundError{KID: kid}
 	}
 	now := unixtime.Now()
 	k.RevokedAt = &now
