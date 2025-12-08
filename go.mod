@@ -23,7 +23,7 @@ require (
 	github.com/zachmann/go-utils v0.0.0-20251110102534-86c6793a17ed
 	golang.org/x/crypto v0.45.0
 	golang.org/x/oauth2 v0.33.0
-	golang.org/x/text v0.31.0
+	golang.org/x/text v0.32.0
 	gopkg.in/yaml.v3 v3.0.1
 )
 
