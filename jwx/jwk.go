@@ -9,13 +9,10 @@ import (
 	"crypto/rsa"
 	"crypto/x509"
 	"encoding/pem"
-	"time"
 
 	"github.com/lestrrat-go/jwx/v3/jwa"
 	"github.com/lestrrat-go/jwx/v3/jwk"
 	"github.com/pkg/errors"
-
-	"github.com/go-oidfed/lib/unixtime"
 )
 
 // generatePrivateKey generates a cryptographic private key with the passed properties
@@ -94,58 +91,35 @@ func exportEDDSAPrivateKeyAsPem(privkey ed25519.PrivateKey) []byte {
 	return privkeyPem
 }
 
-type keyLifetimeConf struct {
-	NowIssued bool
-	Expires   bool
-	Lifetime  time.Duration
-	Nbf       *unixtime.Unixtime
-}
-
-func signerToPublicJWK(sk crypto.Signer, alg jwa.SignatureAlgorithm, lifetimeConf keyLifetimeConf) (jwk.Key, error) {
-	pk, err := jwk.PublicKeyOf(sk.Public())
+func SignerToPublicJWK(sk crypto.Signer, alg jwa.SignatureAlgorithm) (
+	pk jwk.Key, kid string, err error,
+) {
+	pk, err = jwk.PublicKeyOf(sk.Public())
 	if err != nil {
-		return nil, err
+		return
 	}
-	if err = jwk.AssignKeyID(pk); err != nil {
-		return nil, errors.WithStack(err)
+	if err = errors.WithStack(jwk.AssignKeyID(pk)); err != nil {
+		return
 	}
-	if err = pk.Set(jwk.KeyUsageKey, jwk.ForSignature); err != nil {
-		return nil, errors.WithStack(err)
+	kid, _ = pk.KeyID()
+	if err = errors.WithStack(pk.Set(jwk.KeyUsageKey, jwk.ForSignature)); err != nil {
+		return
 	}
-	if err = pk.Set(jwk.AlgorithmKey, alg); err != nil {
-		return nil, errors.WithStack(err)
+	if err = errors.WithStack(pk.Set(jwk.AlgorithmKey, alg)); err != nil {
+		return
 	}
-	now := unixtime.Now()
-	if lifetimeConf.NowIssued {
-		if err = pk.Set("iat", now); err != nil {
-			return nil, errors.WithStack(err)
-		}
-	}
-	if lifetimeConf.Expires {
-		exp := unixtime.Unixtime{Time: now.Add(lifetimeConf.Lifetime)}
-		if lifetimeConf.Nbf != nil && lifetimeConf.Nbf.After(now.Time) {
-			if err = errors.WithStack(pk.Set("nbf", lifetimeConf.Nbf)); err != nil {
-				return nil, err
-			}
-			exp = unixtime.Unixtime{Time: lifetimeConf.Nbf.Add(lifetimeConf.Lifetime)}
-		}
-		if err = errors.WithStack(pk.Set("exp", exp)); err != nil {
-			return nil, err
-		}
-	}
-	return pk, nil
+	return
 }
 
-// generatePrivateKey generates a cryptographic private key with the passed
+// GenerateKeyPair generates a cryptographic private key with the passed
 // properties and returns the corresponding public key as a jwk.Key
-func generateKeyPair(alg jwa.SignatureAlgorithm, rsaKeyLen int, lifetimeConf keyLifetimeConf) (
-	sk crypto.Signer, pk jwk.Key, err error,
+func GenerateKeyPair(alg jwa.SignatureAlgorithm, rsaKeyLen int) (
+	sk crypto.Signer, pk jwk.Key, kid string, err error,
 ) {
 	sk, err = generatePrivateKey(alg, rsaKeyLen)
 	if err != nil {
 		return
 	}
-	lifetimeConf.NowIssued = true
-	pk, err = signerToPublicJWK(sk, alg, lifetimeConf)
+	pk, kid, err = SignerToPublicJWK(sk, alg)
 	return
 }

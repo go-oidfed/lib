@@ -70,9 +70,13 @@ func newMockTrustMarkIssuer(entityID string, trustMarkSpecs []TrustMarkSpec) *mo
 			jwx.NewSingleKeyVersatileSigner(sk, jwa.ES512()),
 		), trustMarkSpecs,
 	)
+	jwks, err := tmi.JWKS()
+	if err != nil {
+		panic(err)
+	}
 	mock := &mockTMI{
 		TrustMarkIssuer: *tmi,
-		jwks:            tmi.JWKS(),
+		jwks:            jwks,
 	}
 	mockEntityConfiguration(mock.EntityID, mock)
 	return mock

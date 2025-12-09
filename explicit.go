@@ -128,14 +128,17 @@ func (f FederationLeaf) DoExplicitClientRegistration(op string) (
 	if opMetadata == nil || opMetadata.FederationRegistrationEndpoint == "" {
 		return nil, nil, errors.New("op does not have a federation registration endpoint")
 	}
-	entityConfigurationData := f.EntityConfigurationPayload()
+	entityConfigurationData, err := f.EntityConfigurationPayload()
+	if err != nil {
+		return nil, nil, errors.Wrap(err, "could not get entity configuration payload")
+	}
 	AdjustRPMetadataToOP(entityConfigurationData.Metadata.RelyingParty, opMetadata)
 	entityConfigurationData.Audience = op
 	var headers jws.Headers
 	if len(resolved.TrustChain) > 0 {
 		ownResolved, err := DefaultMetadataResolver.ResolveResponsePayload(
 			apimodel.ResolveRequest{
-				Subject:     f.EntityID,
+				Subject:     f.EntityID(),
 				TrustAnchor: []string{resolved.TrustAnchor},
 				EntityTypes: []string{oidfedconst.EntityTypeOpenIDRelyingParty},
 			},
@@ -147,7 +150,7 @@ func (f FederationLeaf) DoExplicitClientRegistration(op string) (
 			_ = headers.Set("peer_trust_chain", resolved.TrustChain)
 		}
 	}
-	entityConfiguration, err := f.EntityStatementSigner.JWTWithHeaders(entityConfigurationData, headers)
+	entityConfiguration, err := f.SignEntityStatementWithHeaders(*entityConfigurationData, headers)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -180,7 +183,7 @@ func (f FederationLeaf) DoExplicitClientRegistration(op string) (
 	if err != nil {
 		return nil, nil, errors.Wrap(err, "could not parse explicit registration response")
 	}
-	if res.Audience != f.EntityID {
+	if res.Audience != f.EntityID() {
 		return nil, nil,
 			errors.New("explicit client registration: OP returned unexpected audience")
 	}
