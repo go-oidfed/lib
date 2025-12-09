@@ -21,7 +21,7 @@ require (
 	github.com/sirupsen/logrus v1.9.3
 	github.com/stretchr/testify v1.11.1
 	github.com/vmihailenco/msgpack/v5 v5.4.1
-	github.com/zachmann/go-utils v0.0.0-20251110102534-86c6793a17ed
+	github.com/zachmann/go-utils v0.0.0-20251209145914-281844f501d3
 	golang.org/x/crypto v0.45.0
 	golang.org/x/oauth2 v0.33.0
 	golang.org/x/text v0.31.0

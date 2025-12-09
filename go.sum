@@ -124,6 +124,8 @@ github.com/vmihailenco/tagparser/v2 v2.0.0/go.mod h1:Wri+At7QHww0WTrCBeu4J6bNtoV
 github.com/yuin/goldmark v1.4.13/go.mod h1:6yULJ656Px+3vBD8DxQVa3kxgyrAnzto9xy5taEt/CY=
 github.com/zachmann/go-utils v0.0.0-20251110102534-86c6793a17ed h1:lxl0MWX0mcPJdYZA5s11nFIxOscYgT1tlM/b6pmKC4s=
 github.com/zachmann/go-utils v0.0.0-20251110102534-86c6793a17ed/go.mod h1:w6Li6qqJxdRzcX6bdgWM4JoDZlPV1KMp65P7yTratow=
+github.com/zachmann/go-utils v0.0.0-20251209145914-281844f501d3 h1:suX/ZmOUKA2CPNyQ6b5z9GlEYia+0zzik4Z+oMUHxpA=
+github.com/zachmann/go-utils v0.0.0-20251209145914-281844f501d3/go.mod h1:w6Li6qqJxdRzcX6bdgWM4JoDZlPV1KMp65P7yTratow=
 golang.org/x/crypto v0.0.0-20190308221718-c2843e01d9a2/go.mod h1:djNgcEr1/C05ACkg1iLfiJU5Ep61QUkGW8qpdssI0+w=
 golang.org/x/crypto v0.0.0-20210921155107-089bfa567519/go.mod h1:GvvjBRRGRdwPK5ydBHafDWAxML/pGHZbMvKqRZ5+Abc=
 golang.org/x/crypto v0.45.0 h1:jMBrvKuj23MTlT0bQEOBcAE0mjg8mK9RXFhRH6nyF3Q=
