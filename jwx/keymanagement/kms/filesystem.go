@@ -70,6 +70,94 @@ type FilesystemKMS struct {
 	rotationWG   sync.WaitGroup
 }
 
+// ChangeAlgs updates the set of configured signature algorithms.
+// It stops automatic rotation (if running), replaces the algorithms,
+// reloads/generates keys as needed via Load, and restarts rotation
+// if rotation is enabled. No-op when the set is unchanged.
+func (kms *FilesystemKMS) ChangeAlgs(algs []jwa.SignatureAlgorithm) error {
+	// Only act if the set of algs actually changes
+	if slices.Equal(kms.Algs, algs) {
+		return nil
+	}
+	if !kms.GenerateKeys {
+		return errors.New("changing algorithms dynamically (without a restart) is not supported when key generation is disabled")
+	}
+	kms.StopAutomaticRotation()
+	kms.Algs = algs
+	// Reload to reflect new alg set; generate if enabled
+	if err := kms.Load(); err != nil {
+		return err
+	}
+	if kms.KeyRotation.Enabled {
+		return kms.StartAutomaticRotation()
+	}
+	return nil
+}
+
+// ChangeGenerateKeys toggles whether the KMS is allowed to generate
+// missing private keys for the configured algorithms. When enabling,
+// it immediately calls Load to create any missing keys.
+func (kms *FilesystemKMS) ChangeGenerateKeys(generate bool) error {
+	if kms.GenerateKeys == generate {
+		return nil
+	}
+	kms.GenerateKeys = generate
+	// If enabling generation, ensure missing keys are created
+	if generate {
+		return kms.Load()
+	}
+	return nil
+}
+
+// ChangeRSAKeyLength sets the RSA key length to be used for
+// future key generation. Existing keys are unaffected.
+func (kms *FilesystemKMS) ChangeRSAKeyLength(length int) error {
+	if kms.RSAKeyLen == length {
+		return nil
+	}
+	kms.RSAKeyLen = length
+	return nil
+}
+
+// ChangeDefaultAlgorithm sets the default algorithm used when
+// selecting a signer without an explicit alg preference. The
+// algorithm must be part of the configured set.
+func (kms *FilesystemKMS) ChangeDefaultAlgorithm(alg jwa.SignatureAlgorithm) error {
+	if kms.DefaultAlg.String() == alg.String() {
+		return nil
+	}
+	if !slices.ContainsFunc(
+		kms.Algs,
+		func(a jwa.SignatureAlgorithm) bool { return a.String() == alg.String() },
+	) {
+		return errors.Errorf("algorithm '%s' not in configured algs '%v'", alg, kms.Algs)
+	}
+	kms.DefaultAlg = alg
+	return nil
+}
+
+// ChangeKeyRotationConfig updates the automatic rotation settings.
+// If effective values change, it stops any existing rotation loop
+// and (re)starts it based on the new configuration.
+func (kms *FilesystemKMS) ChangeKeyRotationConfig(config KeyRotationConfig) error {
+	// Only act if something meaningful changed
+	prev := kms.KeyRotation
+	kms.KeyRotation = config
+	same := prev.Enabled == config.Enabled &&
+		prev.Interval.Duration() == config.Interval.Duration() &&
+		prev.Overlap.Duration() == config.Overlap.Duration()
+	if same {
+		return nil
+	}
+	if prev.Enabled {
+		kms.StopAutomaticRotation()
+	}
+	if config.Enabled {
+		return kms.StartAutomaticRotation()
+	}
+	return nil
+}
+
 func (kms *FilesystemKMS) keyFilePath(kid string) string {
 	return fmt.Sprintf("%s/%s.pem", kms.Dir, kid)
 }

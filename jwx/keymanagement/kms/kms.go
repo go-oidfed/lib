@@ -36,6 +36,11 @@ type KeyManagementSystem interface {
 	RotateAllKeys(revoked bool, reason string) error
 	StartAutomaticRotation() error
 	StopAutomaticRotation()
+	ChangeGenerateKeys(generate bool) error
+	ChangeAlgs(algs []jwa.SignatureAlgorithm) error
+	ChangeDefaultAlgorithm(alg jwa.SignatureAlgorithm) error
+	ChangeRSAKeyLength(length int) error
+	ChangeKeyRotationConfig(config KeyRotationConfig) error
 }
 
 // KMSConfig contains base configuration for a KeyManagementSystem, including

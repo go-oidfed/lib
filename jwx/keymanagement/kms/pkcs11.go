@@ -81,6 +81,90 @@ type PKCS11KMS struct {
 	rotationWG   sync.WaitGroup
 }
 
+// ChangeAlgs updates the configured signature algorithms for the PKCS#11 KMS.
+// It stops automatic rotation (if running), replaces the algorithms, reloads
+// (and generates, if enabled) any missing keys via Load, and restarts rotation
+// if enabled. No-op when the set is unchanged.
+func (kms *PKCS11KMS) ChangeAlgs(algs []jwa.SignatureAlgorithm) error {
+	if slices.Equal(kms.Algs, algs) {
+		return nil
+	}
+	if !kms.GenerateKeys {
+		return errors.New("changing algorithms dynamically (without a restart) is not supported when key generation is disabled")
+	}
+	kms.StopAutomaticRotation()
+	kms.Algs = algs
+	if err := kms.Load(); err != nil {
+		return err
+	}
+	if kms.KeyRotation.Enabled {
+		return kms.StartAutomaticRotation()
+	}
+	return nil
+}
+
+// ChangeGenerateKeys toggles whether the KMS is allowed to generate
+// new HSM-backed private keys for configured algorithms. When enabling,
+// it immediately calls Load to create any missing keys.
+func (kms *PKCS11KMS) ChangeGenerateKeys(generate bool) error {
+	if kms.GenerateKeys == generate {
+		return nil
+	}
+	kms.GenerateKeys = generate
+	if generate {
+		return kms.Load()
+	}
+	return nil
+}
+
+// ChangeDefaultAlgorithm sets the default algorithm used when selecting a
+// signer without an explicit algorithm preference. The algorithm must be part
+// of the configured set.
+func (kms *PKCS11KMS) ChangeDefaultAlgorithm(alg jwa.SignatureAlgorithm) error {
+	if kms.DefaultAlg.String() == alg.String() {
+		return nil
+	}
+	if !slices.ContainsFunc(
+		kms.Algs,
+		func(a jwa.SignatureAlgorithm) bool { return a.String() == alg.String() },
+	) {
+		return errors.Errorf("algorithm '%s' not in configured algs '%v'", alg, kms.Algs)
+	}
+	kms.DefaultAlg = alg
+	return nil
+}
+
+// ChangeRSAKeyLength sets the RSA key length to be used for future HSM key
+// generation. Existing keys are unaffected.
+func (kms *PKCS11KMS) ChangeRSAKeyLength(length int) error {
+	if kms.RSAKeyLen == length {
+		return nil
+	}
+	kms.RSAKeyLen = length
+	return nil
+}
+
+// ChangeKeyRotationConfig updates the automatic rotation settings for the
+// PKCS#11 KMS. If effective values change, it stops any existing rotation loop
+// and (re)starts it based on the new configuration.
+func (kms *PKCS11KMS) ChangeKeyRotationConfig(config KeyRotationConfig) error {
+	prev := kms.KeyRotation
+	kms.KeyRotation = config
+	same := prev.Enabled == config.Enabled &&
+		prev.Interval.Duration() == config.Interval.Duration() &&
+		prev.Overlap.Duration() == config.Overlap.Duration()
+	if same {
+		return nil
+	}
+	if prev.Enabled {
+		kms.StopAutomaticRotation()
+	}
+	if config.Enabled {
+		return kms.StartAutomaticRotation()
+	}
+	return nil
+}
+
 // labeledSigner wraps a crypto.Signer and carries a stable KID (e.g., HSM label).
 type labeledSigner struct {
 	s   crypto.Signer
