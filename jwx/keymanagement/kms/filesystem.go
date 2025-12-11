@@ -635,6 +635,16 @@ func (kms *FilesystemKMS) rotationEvaluationForAlg(
 			log.WithError(lerr).Warn("FilesystemKMS: automatic rotation: failed to get lifetime; using 0")
 		}
 	}
+	currExp := current.ExpiresAt
+	if currExp == nil || currExp.IsZero() {
+		current.ExpiresAt = &unixtime.Unixtime{Time: now.Add(lifetime)}
+		if err := kms.PKs.Update(current.KID, current.UpdateablePublicKeyMetadata); err != nil {
+			log.WithError(err).Error("FilesystemKMS: automatic rotation: failed to update key expiration")
+			currExp = &unixtime.Unixtime{Time: now}
+		} else {
+			currExp = current.ExpiresAt
+		}
+	}
 	threshold := current.ExpiresAt.Time.Add(-kms.KeyRotation.Overlap.Duration()).Add(-lifetime)
 	if !threshold.After(now) {
 		kids := make([]string, len(algPKs))
