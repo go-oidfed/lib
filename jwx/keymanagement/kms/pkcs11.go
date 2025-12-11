@@ -620,7 +620,7 @@ func (kms *PKCS11KMS) rotateKeys(kids []string, revoked bool, reason string) err
 			k.Reason = reason
 		}
 		// Ensure continuous coverage by setting old expiration to new.nbf + overlap
-		if k.ExpiresAt != nil && k.ExpiresAt.IsZero() || newExpForOldKey.Before(k.ExpiresAt.Time) || newExpForOldKey.After(k.ExpiresAt.Time) {
+		if k.ExpiresAt == nil || k.ExpiresAt.IsZero() || newExpForOldKey.Before(k.ExpiresAt.Time) {
 			k.ExpiresAt = newExpForOldKey
 		}
 		if err = kms.PKs.Update(k.KID, k.UpdateablePublicKeyMetadata); err != nil {
