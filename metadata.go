@@ -315,9 +315,9 @@ func findDisplayName(elem reflect.Value, elemType reflect.Type) string {
 // findFallbackName searches for fallback name fields in a struct and returns the first non-empty one
 func findFallbackName(elem reflect.Value, elemType reflect.Type) string {
 	fallbackFields := []string{
-		"OrganizationName",
 		"ClientName",
 		"ResourceName",
+		"OrganizationName",
 	}
 
 	for j := 0; j < elem.NumField(); j++ {
