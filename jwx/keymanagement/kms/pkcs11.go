@@ -624,7 +624,7 @@ func (kms *PKCS11KMS) rotateKeys(kids []string, revoked bool, reason string) err
 			k.ExpiresAt = newExpForOldKey
 		}
 		if err = kms.PKs.Update(k.KID, k.UpdateablePublicKeyMetadata); err != nil {
-			return err
+			log.WithError(err).Error("pkcs#11 KMS: rotation: failed to update key")
 		}
 	}
 	log.WithFields(
@@ -722,12 +722,8 @@ func (kms *PKCS11KMS) StartAutomaticRotation() error {
 // interval and whether any rotation or seeding occurred (didRotate).
 func (kms *PKCS11KMS) rotationStep(now time.Time) (time.Duration, bool) {
 	// default sleep if we cannot compute anything meaningful
-	nextSleep := kms.KeyRotation.Overlap.Duration() / 2
-	// clamp to a minimum to avoid busy loops when overlap is zero
 	const minSleep = time.Second
-	if nextSleep <= 0 {
-		nextSleep = minSleep
-	}
+	nextSleep := max(kms.KeyRotation.Overlap.Duration()/2, minSleep)
 	didRotate := false
 
 	activePKs, err := kms.PKs.GetActive()
@@ -781,6 +777,7 @@ func (kms *PKCS11KMS) rotationEvaluationForAlg(
 			// ensure we don't spin; retry soon-ish
 			return minSleep, false
 		}
+		log.WithField("alg", alg.String()).Info("pkcs#11 KMS: automatic rotation: seeded new key for alg")
 		// re-evaluate immediately to include the new key in active set
 		return 0, true
 	}
@@ -788,7 +785,20 @@ func (kms *PKCS11KMS) rotationEvaluationForAlg(
 	// pick the key with latest expiration as the current signer for this alg
 	current := slices.MaxFunc(
 		algPKs, func(a, b public.PublicKeyEntry) int {
-			return cmp.Compare(a.ExpiresAt.Unix(), b.ExpiresAt.Unix())
+			// Safely compare expiration when one or both are nil.
+			// Treat nil (no expiration) as the earliest time to force rotation handling.
+			var au, bu int64
+			if a.ExpiresAt != nil {
+				au = a.ExpiresAt.UnixNano()
+			} else {
+				au = 0
+			}
+			if b.ExpiresAt != nil {
+				bu = b.ExpiresAt.UnixNano()
+			} else {
+				bu = 0
+			}
+			return cmp.Compare(au, bu)
 		},
 	)
 
@@ -803,15 +813,16 @@ func (kms *PKCS11KMS) rotationEvaluationForAlg(
 	}
 	currExp := current.ExpiresAt
 	if currExp == nil || currExp.IsZero() {
-		current.ExpiresAt = &unixtime.Unixtime{Time: now.Add(lifetime)}
+		current.UpdateablePublicKeyMetadata.ExpiresAt = &unixtime.Unixtime{Time: now.Add(lifetime)}
 		if err := kms.PKs.Update(current.KID, current.UpdateablePublicKeyMetadata); err != nil {
-			log.WithError(err).Error("FilesystemKMS: automatic rotation: failed to update key expiration")
+			log.WithError(err).Error("pkcs#11 KMS: automatic rotation: failed to update key expiration")
 			currExp = &unixtime.Unixtime{Time: now}
 		} else {
 			currExp = current.ExpiresAt
 		}
 	}
-	threshold := current.ExpiresAt.Time.Add(-kms.KeyRotation.Overlap.Duration()).Add(-lifetime)
+	// Use currExp (ensured non-nil) for threshold calculation
+	threshold := currExp.Time.Add(-kms.KeyRotation.Overlap.Duration()).Add(-lifetime)
 	if !threshold.After(now) {
 		kids := make([]string, len(algPKs))
 		for i, pk := range algPKs {
