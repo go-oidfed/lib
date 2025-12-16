@@ -215,16 +215,18 @@ func (kms *PKCS11KMS) ChangeAlgsAt(
 			return algorithm.String()
 		},
 	)
-	pendingAlgEqual := sliceutils.EqualSetsFunc(
-		algs, st.PendingAlgChange.Algs,
-		func(algorithm jwa.SignatureAlgorithm) string {
-			return algorithm.String()
-		},
-	)
+	evalPendingAlgEqual := func() bool {
+		return sliceutils.EqualSetsFunc(
+			algs, st.PendingAlgChange.Algs,
+			func(algorithm jwa.SignatureAlgorithm) string {
+				return algorithm.String()
+			},
+		)
+	}
 
 	// If there is already an identical pending change, no-op
 	if st.PendingAlgChange != nil &&
-		pendingAlgEqual &&
+		evalPendingAlgEqual() &&
 		st.PendingAlgChange.EffectiveAt.Equal(effectiveAt.Time) &&
 		st.PendingAlgChange.Overlap.Duration == overlap {
 		return nil
@@ -232,7 +234,7 @@ func (kms *PKCS11KMS) ChangeAlgsAt(
 	// If requested set equals current set and there's no differing pending change, do nothing
 	if algEqual {
 		if st.PendingAlgChange == nil || (st.PendingAlgChange != nil &&
-			pendingAlgEqual &&
+			evalPendingAlgEqual() &&
 			st.PendingAlgChange.EffectiveAt.Equal(effectiveAt.Time) &&
 			st.PendingAlgChange.Overlap.Duration == overlap) {
 			return nil
