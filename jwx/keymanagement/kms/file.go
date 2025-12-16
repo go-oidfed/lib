@@ -20,6 +20,16 @@ type SingleSigningKeyFile struct {
 	signer crypto.Signer
 }
 
+// GetDefaultAlg returns the configured algorithm.
+func (s *SingleSigningKeyFile) GetDefaultAlg() jwa.SignatureAlgorithm {
+	return s.Alg
+}
+
+// GetAlgs returns the configured algorithm.
+func (s *SingleSigningKeyFile) GetAlgs() []jwa.SignatureAlgorithm {
+	return []jwa.SignatureAlgorithm{s.Alg}
+}
+
 // Load loads the signer from the configured file path.
 func (s *SingleSigningKeyFile) Load() error {
 	signer, err := jwx.ReadSignerFromFile(s.Path, s.Alg)

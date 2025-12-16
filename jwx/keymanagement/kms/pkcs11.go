@@ -7,8 +7,11 @@ import (
 	"crypto/ed25519"
 	"crypto/elliptic"
 	"crypto/rsa"
+	"encoding/json"
 	"fmt"
 	"io"
+	"os"
+	"path/filepath"
 	"slices"
 	"sync"
 	"time"
@@ -18,6 +21,7 @@ import (
 	"github.com/lestrrat-go/jwx/v3/jwa"
 	"github.com/lestrrat-go/jwx/v3/jwk"
 	"github.com/pkg/errors"
+	"github.com/zachmann/go-utils/sliceutils"
 
 	log "github.com/go-oidfed/lib/internal"
 
@@ -47,6 +51,12 @@ type PKCS11KMSConfig struct {
 
 	// TypeID is a logical namespace for this KMS (used in labels if LabelPrefix is empty)
 	TypeID string
+
+	// StorageDir is a directory used to persist scheduling state
+	// (e.g., pending algorithm/default changes).
+	// When empty, it falls back to:
+	//  - a TypeID-based file in the working directory.
+	StorageDir string
 
 	// ModulePath is the path to the PKCS#11 module (crypto11.Config.Path)
 	ModulePath string
@@ -79,6 +89,26 @@ type PKCS11KMS struct {
 	// automatic rotation control
 	rotationStop chan struct{}
 	rotationWG   sync.WaitGroup
+}
+
+// GetPendingChanges returns the pending alg and default change, if any.
+func (kms *PKCS11KMS) GetPendingChanges() (*PendingAlgChange, *PendingDefaultChange) {
+	st, err := kms.loadScheduledState()
+	if err != nil {
+		log.WithError(err).Error("pkcs#11 KMS: failed to load scheduled state")
+		return nil, nil
+	}
+	return st.PendingAlgChange, st.PendingDefaultChange
+}
+
+// GetDefaultAlg returns the default algorithm
+func (kms *PKCS11KMS) GetDefaultAlg() jwa.SignatureAlgorithm {
+	return kms.DefaultAlg
+}
+
+// GetAlgs returns the configured algorithms
+func (kms *PKCS11KMS) GetAlgs() []jwa.SignatureAlgorithm {
+	return kms.Algs
 }
 
 // ChangeAlgs updates the configured signature algorithms for the PKCS#11 KMS.
@@ -163,6 +193,178 @@ func (kms *PKCS11KMS) ChangeKeyRotationConfig(config KeyRotationConfig) error {
 		return kms.StartAutomaticRotation()
 	}
 	return nil
+}
+
+// ChangeAlgsAt schedules a change of the algorithm set at a specific time.
+// It pre-generates future-dated keys for the new algorithms and shortens the
+// expiration of old algorithms to effectiveAt + overlap.
+func (kms *PKCS11KMS) ChangeAlgsAt(
+	algs []jwa.SignatureAlgorithm, effectiveAt unixtime.Unixtime, overlap time.Duration,
+) error {
+	if len(algs) == 0 {
+		return errors.New("algs must not be empty")
+	}
+	// Load current pending state to decide if there is anything to change
+	st, err := kms.loadScheduledState()
+	if err != nil {
+		return err
+	}
+
+	algEqual := sliceutils.EqualSetsFunc(
+		algs, kms.Algs, func(algorithm jwa.SignatureAlgorithm) string {
+			return algorithm.String()
+		},
+	)
+	pendingAlgEqual := sliceutils.EqualSetsFunc(
+		algs, st.PendingAlgChange.Algs,
+		func(algorithm jwa.SignatureAlgorithm) string {
+			return algorithm.String()
+		},
+	)
+
+	// If there is already an identical pending change, no-op
+	if st.PendingAlgChange != nil &&
+		pendingAlgEqual &&
+		st.PendingAlgChange.EffectiveAt.Equal(effectiveAt.Time) &&
+		st.PendingAlgChange.Overlap.Duration == overlap {
+		return nil
+	}
+	// If requested set equals current set and there's no differing pending change, do nothing
+	if algEqual {
+		if st.PendingAlgChange == nil || (st.PendingAlgChange != nil &&
+			pendingAlgEqual &&
+			st.PendingAlgChange.EffectiveAt.Equal(effectiveAt.Time) &&
+			st.PendingAlgChange.Overlap.Duration == overlap) {
+			return nil
+		}
+	}
+
+	if !kms.GenerateKeys {
+		return errors.New("scheduling alg changes requires key generation to be enabled")
+	}
+	// Pre-generate future keys for new algs
+	for _, alg := range algs {
+		if err = kms.ensureFutureKey(alg, effectiveAt.Time); err != nil {
+			return err
+		}
+	}
+	// Extend expiration for old algs not present in new set
+	active, err := kms.PKs.GetActive()
+	if err != nil {
+		return err
+	}
+	newSet := make(map[string]struct{})
+	for _, a := range algs {
+		newSet[a.String()] = struct{}{}
+	}
+	targetExp := &unixtime.Unixtime{Time: effectiveAt.Add(overlap)}
+	byAlg := active.ByAlg()
+	for alg, list := range byAlg {
+		if _, ok := newSet[alg.String()]; ok {
+			continue
+		}
+		for _, k := range list {
+			if k.ExpiresAt == nil || k.ExpiresAt.IsZero() || targetExp.Before(k.ExpiresAt.Time) {
+				k.ExpiresAt = targetExp
+				if err = kms.PKs.Update(k.KID, k.UpdateablePublicKeyMetadata); err != nil {
+					log.WithError(err).Error("pkcs#11 KMS: schedule algs: failed to update old key exp")
+				}
+			}
+		}
+	}
+	// Persist schedule
+	st.PendingAlgChange = &PendingAlgChange{
+		Algs:        algs,
+		EffectiveAt: effectiveAt,
+		Overlap:     unixtime.DurationInSeconds{Duration: overlap},
+	}
+	if err = kms.saveScheduledState(st); err != nil {
+		return err
+	}
+	return nil
+}
+
+// ChangeDefaultAlgorithmAt schedules a change of the default algorithm at a
+// specific time. Before the switch, it ensures a future-dated key for the
+// target algorithm exists (nbf >= effectiveAt).
+func (kms *PKCS11KMS) ChangeDefaultAlgorithmAt(alg jwa.SignatureAlgorithm, effectiveAt unixtime.Unixtime) error {
+	if alg.String() == "" {
+		return errors.New("invalid algorithm")
+	}
+	// Early no-op if nothing would change or identical pending exists
+	st, err := kms.loadScheduledState()
+	if err != nil {
+		return err
+	}
+	if st.PendingDefaultChange != nil &&
+		st.PendingDefaultChange.Alg.String() == alg.String() &&
+		st.PendingDefaultChange.EffectiveAt.Equal(effectiveAt.Time) {
+		return nil
+	}
+	if kms.DefaultAlg.String() == alg.String() {
+		if st.PendingDefaultChange == nil || (st.PendingDefaultChange != nil &&
+			st.PendingDefaultChange.Alg.String() == alg.String() &&
+			st.PendingDefaultChange.EffectiveAt.Equal(effectiveAt.Time)) {
+			return nil
+		}
+	}
+	if !kms.GenerateKeys {
+		return errors.New("scheduling default algorithm change requires key generation to be enabled")
+	}
+	if err := kms.ensureFutureKey(alg, effectiveAt.Time); err != nil {
+		return err
+	}
+	st.PendingDefaultChange = &PendingDefaultChange{
+		Alg:         alg,
+		EffectiveAt: effectiveAt,
+	}
+	if err = kms.saveScheduledState(st); err != nil {
+		return err
+	}
+	return nil
+}
+
+// scheduled state helpers (persisted JSON next to filesystem PK storage when available)
+func (kms *PKCS11KMS) stateFilePath() string {
+	if kms.StorageDir != "" {
+		return filepath.Join(kms.StorageDir, "kms_state.json")
+	}
+	base := "kms_state.json"
+	if kms.TypeID != "" {
+		base = fmt.Sprintf("kms_state_%s.json", kms.TypeID)
+	}
+	return base
+}
+
+func (kms *PKCS11KMS) loadScheduledState() (scheduledState, error) {
+	var st scheduledState
+	f := kms.stateFilePath()
+	b, err := os.ReadFile(f)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return st, nil
+		}
+		return st, err
+	}
+	if len(b) == 0 {
+		return st, nil
+	}
+	if err := json.Unmarshal(b, &st); err != nil {
+		return st, err
+	}
+	return st, nil
+}
+
+func (kms *PKCS11KMS) saveScheduledState(st scheduledState) error {
+	b, err := json.MarshalIndent(st, "", "  ")
+	if err != nil {
+		return err
+	}
+	p := kms.stateFilePath()
+	if err := os.MkdirAll(filepath.Dir(p), 0o700); err != nil {
+		return err
+	}
+	return os.WriteFile(p, b, 0o600)
 }
 
 // labeledSigner wraps a crypto.Signer and carries a stable KID (e.g., HSM label).
@@ -510,6 +712,9 @@ func (kms *PKCS11KMS) generateNewSigner(
 			return nil, errors.Wrap(err, "failed to get entity configuration lifetime")
 		}
 		nbf = &unixtime.Unixtime{Time: now.Add(lifetime)}
+	case nbfModeAt:
+		// Should not hit here; use generateNewSignerAt to pass explicit time.
+		return nil, errors.New("nbfModeAt requires explicit time; use generateNewSignerAt")
 	default:
 		return nil, errors.New("invalid nbf mode")
 	}
@@ -535,6 +740,77 @@ func (kms *PKCS11KMS) generateNewSigner(
 		kid: label,
 	}
 	return &pke, nil
+}
+
+// generateNewSignerAt creates a new key pair inside the HSM with a specific NotBefore
+// and registers its public part in PublicKeyStorage.
+func (kms *PKCS11KMS) generateNewSignerAt(
+	alg jwa.SignatureAlgorithm,
+	nbfAt time.Time,
+) (*public.PublicKeyEntry, error) {
+	if kms.ctx == nil {
+		return nil, errors.New("pkcs11 kms: context not initialized")
+	}
+	u, err := uuid.NewV7()
+	if err != nil {
+		return nil, errors.Wrap(err, "could not generate uuid")
+	}
+	kid := u.String()
+	label := kms.keyLabel(kid)
+	signer, err := kms.generateKeyInHSM(alg, kid, label)
+	if err != nil {
+		return nil, err
+	}
+	pk, _, err := jwx.SignerToPublicJWK(signer, alg)
+	if err != nil {
+		return nil, err
+	}
+	_ = pk.Set(jwk.KeyIDKey, label)
+	now := unixtime.Now()
+	nbf := &unixtime.Unixtime{Time: nbfAt}
+	var exp *unixtime.Unixtime
+	if kms.KeyRotation.Enabled {
+		exp = &unixtime.Unixtime{Time: nbf.Add(kms.KeyRotation.Interval.Duration())}
+	}
+	pke := public.PublicKeyEntry{
+		KID:       label,
+		Key:       public.JWKKey{Key: pk},
+		IssuedAt:  &now,
+		NotBefore: nbf,
+		UpdateablePublicKeyMetadata: public.UpdateablePublicKeyMetadata{
+			ExpiresAt: exp,
+		},
+	}
+	if err = kms.PKs.Add(pke); err != nil {
+		return nil, err
+	}
+	kms.signers[label] = &labeledSigner{
+		s:   signer,
+		kid: label,
+	}
+	return &pke, nil
+}
+
+// ensureFutureKey ensures there exists at least one non-revoked key for the
+// given alg with NotBefore >= effectiveAt. If not, it generates one.
+func (kms *PKCS11KMS) ensureFutureKey(alg jwa.SignatureAlgorithm, effectiveAt time.Time) error {
+	valid, err := kms.PKs.GetValid()
+	if err != nil {
+		return err
+	}
+	for _, pk := range valid {
+		a, _ := pk.Key.Algorithm()
+		if as, ok := a.(jwa.SignatureAlgorithm); ok && as.String() == alg.String() {
+			if pk.RevokedAt != nil && !pk.RevokedAt.IsZero() && pk.RevokedAt.Before(time.Now()) {
+				continue
+			}
+			if pk.NotBefore != nil && !pk.NotBefore.IsZero() && !pk.NotBefore.Before(effectiveAt) {
+				return nil
+			}
+		}
+	}
+	_, err = kms.generateNewSignerAt(alg, effectiveAt)
+	return err
 }
 
 func (kms *PKCS11KMS) generateKeyInHSM(alg jwa.SignatureAlgorithm, kid, label string) (crypto.Signer, error) {
@@ -741,6 +1017,59 @@ func (kms *PKCS11KMS) rotationStep(now time.Time) (time.Duration, bool) {
 		if sleepCandidate > 0 && sleepCandidate < nextSleep {
 			nextSleep = sleepCandidate
 		}
+	}
+
+	// Consider scheduled changes
+	if st, err := kms.loadScheduledState(); err == nil {
+		// Helper to apply alg change
+		applyAlg := func(p *PendingAlgChange) bool {
+			if p == nil {
+				return false
+			}
+			if !now.Before(p.EffectiveAt.Time) {
+				kms.Algs = p.Algs
+				if err := kms.Load(); err != nil {
+					log.WithError(err).Error("pkcs#11 KMS: scheduled alg change: load failed")
+				}
+				st.PendingAlgChange = nil
+				if err := kms.saveScheduledState(st); err != nil {
+					log.WithError(err).Error("pkcs#11 KMS: scheduled alg change: save state failed")
+				}
+				return true
+			}
+			wait := time.Until(p.EffectiveAt.Time)
+			if wait > 0 && wait < nextSleep {
+				nextSleep = wait
+			}
+			return false
+		}
+		// Helper to apply default change
+		applyDef := func(p *PendingDefaultChange) bool {
+			if p == nil {
+				return false
+			}
+			if !now.Before(p.EffectiveAt.Time) {
+				kms.DefaultAlg = p.Alg
+				st.PendingDefaultChange = nil
+				if err := kms.saveScheduledState(st); err != nil {
+					log.WithError(err).Error("pkcs#11 KMS: scheduled default change: save state failed")
+				}
+				return true
+			}
+			wait := time.Until(p.EffectiveAt.Time)
+			if wait > 0 && wait < nextSleep {
+				nextSleep = wait
+			}
+			return false
+		}
+		if applyAlg(st.PendingAlgChange) {
+			didRotate = true
+		}
+		if applyDef(st.PendingDefaultChange) {
+			didRotate = true
+		}
+	} else {
+		log.WithError(err).Error("pkcs#11 KMS: scheduled state load failed")
 	}
 
 	return nextSleep, didRotate

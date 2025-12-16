@@ -20,6 +20,14 @@ type LegacyFilesystemKMS struct {
 	signers map[string]crypto.Signer // kid -> signer
 }
 
+func (l *LegacyFilesystemKMS) GetDefaultAlg() jwa.SignatureAlgorithm {
+	return l.Algs[0]
+}
+
+func (l *LegacyFilesystemKMS) GetAlgs() []jwa.SignatureAlgorithm {
+	return l.Algs
+}
+
 func (l *LegacyFilesystemKMS) legacyKeyFilePath(alg jwa.SignatureAlgorithm) string {
 	return fmt.Sprintf("%s/%s_%s.pem", l.Dir, l.TypeID, alg.String())
 }

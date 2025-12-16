@@ -18,6 +18,9 @@ type nbfMode int
 const (
 	nbfModeNow nbfMode = iota
 	nbfModeNext
+	// nbfModeAt is used internally when a specific NotBefore timestamp
+	// should be set for a newly generated key.
+	nbfModeAt
 )
 
 // BasicKeyManagementSystem provides methods to load keys and retrieve
@@ -26,6 +29,8 @@ type BasicKeyManagementSystem interface {
 	Load() error
 	GetForAlgs(algs ...string) (crypto.Signer, jwa.SignatureAlgorithm)
 	GetDefault() (crypto.Signer, jwa.SignatureAlgorithm)
+	GetAlgs() []jwa.SignatureAlgorithm
+	GetDefaultAlg() jwa.SignatureAlgorithm
 }
 
 // KeyManagementSystem extends BasicKeyManagementSystem with rotation and
@@ -41,6 +46,15 @@ type KeyManagementSystem interface {
 	ChangeDefaultAlgorithm(alg jwa.SignatureAlgorithm) error
 	ChangeRSAKeyLength(length int) error
 	ChangeKeyRotationConfig(config KeyRotationConfig) error
+	// ChangeAlgsAt schedules an algorithm set change to take effect
+	// at the given point in time. Until then, existing algorithms
+	// remain active. Old algorithms will be kept valid until
+	// effectiveAt + overlap.
+	ChangeAlgsAt(algs []jwa.SignatureAlgorithm, effectiveAt unixtime.Unixtime, overlap time.Duration) error
+	// ChangeDefaultAlgorithmAt schedules a change of DefaultAlg to take
+	// effect at the given time.
+	ChangeDefaultAlgorithmAt(alg jwa.SignatureAlgorithm, effectiveAt unixtime.Unixtime) error
+	GetPendingChanges() (*PendingAlgChange, *PendingDefaultChange)
 }
 
 // KMSConfig contains base configuration for a KeyManagementSystem, including
@@ -154,4 +168,24 @@ func shortenExpirationUntilFuture(
 			}
 		}
 	}
+}
+
+// PendingAlgChange describes a scheduled algorithm set change.
+type PendingAlgChange struct {
+	Algs        []jwa.SignatureAlgorithm   `json:"algs"`
+	EffectiveAt unixtime.Unixtime          `json:"effective_at"`
+	Overlap     unixtime.DurationInSeconds `json:"overlap"`
+}
+
+// PendingDefaultChange describes a scheduled default algorithm change.
+type PendingDefaultChange struct {
+	Alg         jwa.SignatureAlgorithm `json:"alg"`
+	EffectiveAt unixtime.Unixtime      `json:"effective_at"`
+}
+
+// scheduledState holds pending, time-based configuration changes to be applied
+// by the rotation loop. Persisted as JSON next to keys to survive restarts.
+type scheduledState struct {
+	PendingAlgChange     *PendingAlgChange     `json:"pending_alg_change,omitempty"`
+	PendingDefaultChange *PendingDefaultChange `json:"pending_default_change,omitempty"`
 }

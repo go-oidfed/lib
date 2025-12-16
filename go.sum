@@ -126,6 +126,8 @@ github.com/zachmann/go-utils v0.0.0-20251110102534-86c6793a17ed h1:lxl0MWX0mcPJd
 github.com/zachmann/go-utils v0.0.0-20251110102534-86c6793a17ed/go.mod h1:w6Li6qqJxdRzcX6bdgWM4JoDZlPV1KMp65P7yTratow=
 github.com/zachmann/go-utils v0.0.0-20251209145914-281844f501d3 h1:suX/ZmOUKA2CPNyQ6b5z9GlEYia+0zzik4Z+oMUHxpA=
 github.com/zachmann/go-utils v0.0.0-20251209145914-281844f501d3/go.mod h1:w6Li6qqJxdRzcX6bdgWM4JoDZlPV1KMp65P7yTratow=
+github.com/zachmann/go-utils v0.0.0-20251216114849-644d11a9d23e h1:JN+JobnZWX82VZmePlmTIfWO1Z3aLjmt5C9elXsKTbg=
+github.com/zachmann/go-utils v0.0.0-20251216114849-644d11a9d23e/go.mod h1:w6Li6qqJxdRzcX6bdgWM4JoDZlPV1KMp65P7yTratow=
 golang.org/x/crypto v0.0.0-20190308221718-c2843e01d9a2/go.mod h1:djNgcEr1/C05ACkg1iLfiJU5Ep61QUkGW8qpdssI0+w=
 golang.org/x/crypto v0.0.0-20210921155107-089bfa567519/go.mod h1:GvvjBRRGRdwPK5ydBHafDWAxML/pGHZbMvKqRZ5+Abc=
 golang.org/x/crypto v0.45.0 h1:jMBrvKuj23MTlT0bQEOBcAE0mjg8mK9RXFhRH6nyF3Q=
