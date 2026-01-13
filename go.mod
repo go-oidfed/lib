@@ -8,7 +8,7 @@ require (
 	github.com/coreos/go-oidc/v3 v3.17.0
 	github.com/go-resty/resty/v2 v2.17.0
 	github.com/gofiber/fiber/v2 v2.52.10
-	github.com/google/go-querystring v1.1.0
+	github.com/google/go-querystring v1.2.0
 	github.com/google/uuid v1.6.0
 	github.com/jarcoal/httpmock v1.4.1
 	github.com/lestrrat-go/jwx/v3 v3.0.13
