@@ -92,6 +92,7 @@ func (f DynamicFederationEntity) EntityConfigurationPayload() (*EntityStatementP
 	if lifetime <= 0 {
 		lifetime = defaultEntityConfigurationLifetime
 	}
+	exp := unixtime.Unixtime{Time: now.Add(lifetime)}
 
 	signer := (*jwx.EntityStatementSigner)(nil)
 	if f.EntityStatementSigner != nil {
@@ -113,6 +114,9 @@ func (f DynamicFederationEntity) EntityConfigurationPayload() (*EntityStatementP
 			if err != nil {
 				internal.Log(err.Error())
 				continue
+			}
+			if tmc.expiration.Before(exp.Time) {
+				exp = tmc.expiration
 			}
 			tms = append(
 				tms, TrustMarkInfo{
@@ -159,12 +163,18 @@ func (f DynamicFederationEntity) EntityConfigurationPayload() (*EntityStatementP
 			return nil, err
 		}
 	}
+	if jwks.Set != nil {
+		jwksExp := jwks.MaximalExpirationTime()
+		if jwksExp.Before(exp.Time) {
+			exp = jwksExp
+		}
+	}
 
 	return &EntityStatementPayload{
 		Issuer:             f.ID,
 		Subject:            f.ID,
 		IssuedAt:           unixtime.Unixtime{Time: now},
-		ExpiresAt:          unixtime.Unixtime{Time: now.Add(lifetime)},
+		ExpiresAt:          exp,
 		JWKS:               jwks,
 		AuthorityHints:     authorityHints,
 		Metadata:           metadata,
