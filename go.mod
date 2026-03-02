@@ -6,7 +6,7 @@ require (
 	github.com/TwiN/gocache/v2 v2.4.0
 	github.com/adam-hanna/arrayOperations v1.0.1
 	github.com/coreos/go-oidc/v3 v3.17.0
-	github.com/go-resty/resty/v2 v2.17.1
+	github.com/go-resty/resty/v2 v2.17.2
 	github.com/gofiber/fiber/v2 v2.52.12
 	github.com/google/go-querystring v1.2.0
 	github.com/google/uuid v1.6.0
