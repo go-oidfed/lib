@@ -110,20 +110,15 @@ func (f DynamicFederationEntity) EntityConfigurationPayload() (*EntityStatementP
 		}
 		tms = make([]TrustMarkInfo, 0, len(trustMarkConfigs))
 		for _, tmc := range trustMarkConfigs {
-			tm, err := tmc.TrustMarkJWT()
+			tmInfo, err := tmc.TrustMarkInfo()
 			if err != nil {
 				internal.Log(err.Error())
 				continue
 			}
-			if tmc.expiration.Before(exp.Time) {
-				exp = tmc.expiration
+			if tmc.Expiration().Before(exp.Time) {
+				exp = tmc.Expiration()
 			}
-			tms = append(
-				tms, TrustMarkInfo{
-					TrustMarkType: tmc.TrustMarkType,
-					TrustMarkJWT:  tm,
-				},
-			)
+			tms = append(tms, tmInfo)
 		}
 	}
 

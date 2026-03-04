@@ -88,6 +88,38 @@ func (c *EntityConfigurationTrustMarkConfig) Verify(
 	return nil
 }
 
+// Expiration returns the expiration time of the current trust mark JWT.
+// This is used to potentially shorten the entity configuration lifetime.
+// This method is safe for concurrent use.
+func (c *EntityConfigurationTrustMarkConfig) Expiration() unixtime.Unixtime {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.expiration
+}
+
+// TrustMarkInfo returns a TrustMarkInfo for inclusion in the entity configuration.
+// If this is a self-issued trust mark with IncludeExtraClaimsInInfo set, the Extra field
+// will contain the additional claims from the SelfIssuanceSpec.
+// This method is safe for concurrent use.
+func (c *EntityConfigurationTrustMarkConfig) TrustMarkInfo() (TrustMarkInfo, error) {
+	jwt, err := c.TrustMarkJWT()
+	if err != nil {
+		return TrustMarkInfo{}, err
+	}
+
+	info := TrustMarkInfo{
+		TrustMarkType: c.TrustMarkType,
+		TrustMarkJWT:  jwt,
+	}
+
+	// Include extra claims if this is a self-issued trust mark with IncludeExtraClaimsInInfo
+	if c.SelfIssuanceSpec != nil && c.SelfIssuanceSpec.IncludeExtraClaimsInInfo {
+		info.Extra = c.SelfIssuanceSpec.TrustMarkSpec.Extra
+	}
+
+	return info, nil
+}
+
 // TrustMarkJWT returns a trust mark jwt for the linked trust mark,
 // if needed the trust mark is refreshed using the trust mark issuer's trust mark endpoint.
 // This method is safe for concurrent use.
