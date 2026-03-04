@@ -19,20 +19,19 @@ import (
 // EntityConfigurationTrustMarkConfig is a type for specifying the configuration of a TrustMark that should be
 // included in an EntityConfiguration
 type EntityConfigurationTrustMarkConfig struct {
-	TrustMarkType        string                  `yaml:"trust_mark_type"`
-	TrustMarkIssuer      string                  `yaml:"trust_mark_issuer"`
-	SelfIssued           bool                    `yaml:"self_issued"`
-	SelfIssuanceSpec     TrustMarkSpec           `yaml:"self_issuance_spec"`
-	JWT                  string                  `yaml:"trust_mark_jwt"`
-	Refresh              bool                    `yaml:"refresh"`
-	MinLifetime          duration.DurationOption `yaml:"min_lifetime"`
-	RefreshGracePeriod   duration.DurationOption `yaml:"refresh_grace_period"`
-	RefreshRateLimit     duration.DurationOption `yaml:"refresh_rate_limit"`
+	TrustMarkType        string                   `yaml:"trust_mark_type"`
+	TrustMarkIssuer      string                   `yaml:"trust_mark_issuer"`
+	SelfIssuanceSpec     *SelfIssuedTrustMarkSpec `yaml:"self_issuance_spec"`
+	JWT                  string                   `yaml:"trust_mark_jwt"`
+	Refresh              bool                     `yaml:"refresh"`
+	MinLifetime          duration.DurationOption  `yaml:"min_lifetime"`
+	RefreshGracePeriod   duration.DurationOption  `yaml:"refresh_grace_period"`
+	RefreshRateLimit     duration.DurationOption  `yaml:"refresh_rate_limit"`
 	expiration           unixtime.Unixtime
 	lastTried            unixtime.Unixtime
 	sub                  string
 	ownTrustMarkEndpoint string
-	ownTrustMarkIssuer   *TrustMarkIssuer
+	ownTrustMarkIssuer   *SelfIssuedTrustMarkIssuer
 	mu                   sync.RWMutex
 	refreshing           atomic.Bool
 	consecutiveFailures  int
@@ -72,11 +71,11 @@ func (c *EntityConfigurationTrustMarkConfig) Verify(
 		return nil
 	}
 	c.Refresh = true
-	if c.SelfIssued {
+	if c.SelfIssuanceSpec != nil {
 		c.SelfIssuanceSpec.TrustMarkType = c.TrustMarkType
-		c.ownTrustMarkIssuer = NewTrustMarkIssuer(
+		c.ownTrustMarkIssuer = NewSelfIssuedTrustMarkIssuer(
 			sub, ownTrustMarkSigner,
-			[]TrustMarkSpec{c.SelfIssuanceSpec},
+			[]SelfIssuedTrustMarkSpec{*c.SelfIssuanceSpec},
 		)
 		if c.TrustMarkType == "" {
 			return errors.New("trust_mark_type must be provided for self-issued trust marks")
@@ -163,7 +162,7 @@ func (c *EntityConfigurationTrustMarkConfig) refresh() error {
 	var newExpiration unixtime.Unixtime
 	var err error
 
-	if c.SelfIssued {
+	if c.SelfIssuanceSpec != nil {
 		newJWT, newExpiration, err = c.refreshSelfIssued()
 	} else {
 		newJWT, newExpiration, err = c.refreshExternal()

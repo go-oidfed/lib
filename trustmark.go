@@ -386,13 +386,12 @@ type TrustMarkIssuer struct {
 
 // TrustMarkSpec describes a TrustMark for a TrustMarkIssuer
 type TrustMarkSpec struct {
-	TrustMarkType            string                  `json:"trust_mark_type" yaml:"trust_mark_type"`
-	Lifetime                 duration.DurationOption `json:"lifetime" yaml:"lifetime"`
-	Ref                      string                  `json:"ref" yaml:"ref"`
-	LogoURI                  string                  `json:"logo_uri" yaml:"logo_uri"`
-	Extra                    map[string]any          `json:"-" yaml:"-"`
-	IncludeExtraClaimsInInfo bool                    `json:"include_extra_claims_in_info" yaml:"include_extra_claims_in_info"`
-	DelegationJWT            string                  `json:"delegation_jwt" yaml:"delegation_jwt"`
+	TrustMarkType string                  `json:"trust_mark_type" yaml:"trust_mark_type"`
+	Lifetime      duration.DurationOption `json:"lifetime" yaml:"lifetime"`
+	Ref           string                  `json:"ref" yaml:"ref"`
+	LogoURI       string                  `json:"logo_uri" yaml:"logo_uri"`
+	Extra         map[string]any          `json:"-" yaml:"-"`
+	DelegationJWT string                  `json:"delegation_jwt" yaml:"delegation_jwt"`
 }
 
 // MarshalJSON implements the json.Marshaler interface
@@ -472,18 +471,14 @@ func (tmi *TrustMarkIssuer) TrustMarkTypes() []string {
 	return trustMarkTypes
 }
 
-// IssueTrustMark issues a TrustMarkInfo for the passed trust mark id and subject; optionally  a custom lifetime can
-// be passed
-func (tmi TrustMarkIssuer) IssueTrustMark(trustMarkType, sub string, lifetime ...time.Duration) (
-	*TrustMarkInfo, error,
-) {
-	spec, ok := tmi.trustMarks[trustMarkType]
-	if !ok {
-		return nil, errors.Errorf("unknown trustmark '%s'", trustMarkType)
-	}
+// buildTrustMark is a shared helper that builds and signs a TrustMark from a spec.
+// It returns the TrustMark, the signed JWT, and any error.
+func buildTrustMark(
+	entityID, sub string, spec TrustMarkSpec, signer *jwx.TrustMarkSigner, lifetime ...time.Duration,
+) (*TrustMark, []byte, error) {
 	now := time.Now()
 	tm := &TrustMark{
-		Issuer:        tmi.EntityID,
+		Issuer:        entityID,
 		Subject:       sub,
 		TrustMarkType: spec.TrustMarkType,
 		IssuedAt:      unixtime.Unixtime{Time: now},
@@ -499,7 +494,83 @@ func (tmi TrustMarkIssuer) IssueTrustMark(trustMarkType, sub string, lifetime ..
 	if lf != 0 {
 		tm.ExpiresAt = &unixtime.Unixtime{Time: now.Add(lf)}
 	}
-	jwt, err := tmi.TrustMarkSigner.JWT(tm)
+	jwt, err := signer.JWT(tm)
+	if err != nil {
+		return nil, nil, err
+	}
+	return tm, jwt, nil
+}
+
+// IssueTrustMark issues a trust mark JWT for the passed trust mark type and subject; optionally a custom lifetime can
+// be passed. Returns the signed JWT string and expiration time.
+func (tmi TrustMarkIssuer) IssueTrustMark(trustMarkType, sub string, lifetime ...time.Duration) (
+	string, *unixtime.Unixtime, error,
+) {
+	spec, ok := tmi.trustMarks[trustMarkType]
+	if !ok {
+		return "", nil, errors.Errorf("unknown trustmark '%s'", trustMarkType)
+	}
+	tm, jwt, err := buildTrustMark(tmi.EntityID, sub, spec, tmi.TrustMarkSigner, lifetime...)
+	if err != nil {
+		return "", nil, err
+	}
+	return string(jwt), tm.ExpiresAt, nil
+}
+
+// SelfIssuedTrustMarkSpec describes a TrustMark for a SelfIssuedTrustMarkIssuer.
+// It extends TrustMarkSpec with self-issuance specific options.
+type SelfIssuedTrustMarkSpec struct {
+	TrustMarkSpec            `yaml:",inline"`
+	IncludeExtraClaimsInInfo bool `json:"include_extra_claims_in_info" yaml:"include_extra_claims_in_info"`
+}
+
+// SelfIssuedTrustMarkIssuer is an entity that can issue TrustMarkInfo for itself.
+// Unlike TrustMarkIssuer, it returns a full TrustMarkInfo including metadata.
+type SelfIssuedTrustMarkIssuer struct {
+	EntityID string
+	*jwx.TrustMarkSigner
+	trustMarks map[string]SelfIssuedTrustMarkSpec
+}
+
+// NewSelfIssuedTrustMarkIssuer creates a new SelfIssuedTrustMarkIssuer
+func NewSelfIssuedTrustMarkIssuer(
+	entityID string, signer *jwx.TrustMarkSigner, trustMarkSpecs []SelfIssuedTrustMarkSpec,
+) *SelfIssuedTrustMarkIssuer {
+	trustMarks := make(map[string]SelfIssuedTrustMarkSpec, len(trustMarkSpecs))
+	for _, tms := range trustMarkSpecs {
+		trustMarks[tms.TrustMarkType] = tms
+	}
+	return &SelfIssuedTrustMarkIssuer{
+		EntityID:        entityID,
+		TrustMarkSigner: signer,
+		trustMarks:      trustMarks,
+	}
+}
+
+// AddTrustMark adds a SelfIssuedTrustMarkSpec to the SelfIssuedTrustMarkIssuer enabling it to issue the TrustMarkInfo
+func (tmi *SelfIssuedTrustMarkIssuer) AddTrustMark(spec SelfIssuedTrustMarkSpec) {
+	tmi.trustMarks[spec.TrustMarkType] = spec
+}
+
+// TrustMarkTypes returns a slice of the trust mark types for which this SelfIssuedTrustMarkIssuer can issue TrustMarks
+func (tmi *SelfIssuedTrustMarkIssuer) TrustMarkTypes() []string {
+	trustMarkTypes := make([]string, 0, len(tmi.trustMarks))
+	for id := range tmi.trustMarks {
+		trustMarkTypes = append(trustMarkTypes, id)
+	}
+	return trustMarkTypes
+}
+
+// IssueTrustMark issues a TrustMarkInfo for the passed trust mark type and subject; optionally a custom lifetime can
+// be passed. Returns the full TrustMarkInfo including metadata.
+func (tmi SelfIssuedTrustMarkIssuer) IssueTrustMark(trustMarkType, sub string, lifetime ...time.Duration) (
+	*TrustMarkInfo, error,
+) {
+	spec, ok := tmi.trustMarks[trustMarkType]
+	if !ok {
+		return nil, errors.Errorf("unknown trustmark '%s'", trustMarkType)
+	}
+	tm, jwt, err := buildTrustMark(tmi.EntityID, sub, spec.TrustMarkSpec, tmi.TrustMarkSigner, lifetime...)
 	if err != nil {
 		return nil, err
 	}
