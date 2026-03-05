@@ -3,6 +3,7 @@ package oidfed
 import (
 	"encoding/json"
 	"slices"
+	"sync"
 	"time"
 
 	"github.com/pkg/errors"
@@ -377,11 +378,87 @@ func (djwt DelegationJWT) VerifyExternal(jwks jwx.JWKS) error {
 	return errors.Wrap(err, "verify delegation jwt")
 }
 
+// TrustMarkSpecProvider provides TrustMarkSpecs dynamically.
+// Implementations can fetch specs from config, database, or other sources.
+// Implementations MUST be safe for concurrent use.
+type TrustMarkSpecProvider interface {
+	// GetTrustMarkSpec returns the TrustMarkSpec for the given trust mark type.
+	// Returns nil if the trust mark type is not found.
+	GetTrustMarkSpec(trustMarkType string) *TrustMarkSpec
+
+	// TrustMarkTypes returns all available trust mark types.
+	TrustMarkTypes() []string
+}
+
+// MapTrustMarkSpecProvider is a TrustMarkSpecProvider backed by an in-memory map.
+// It is safe for concurrent use.
+type MapTrustMarkSpecProvider struct {
+	mu    sync.RWMutex
+	specs map[string]TrustMarkSpec
+}
+
+// NewMapTrustMarkSpecProvider creates a new MapTrustMarkSpecProvider.
+func NewMapTrustMarkSpecProvider(specs []TrustMarkSpec) *MapTrustMarkSpecProvider {
+	m := make(map[string]TrustMarkSpec, len(specs))
+	for _, s := range specs {
+		m[s.TrustMarkType] = s
+	}
+	return &MapTrustMarkSpecProvider{specs: m}
+}
+
+// GetTrustMarkSpec returns the TrustMarkSpec for the given trust mark type.
+func (p *MapTrustMarkSpecProvider) GetTrustMarkSpec(trustMarkType string) *TrustMarkSpec {
+	p.mu.RLock()
+	defer p.mu.RUnlock()
+	spec, ok := p.specs[trustMarkType]
+	if !ok {
+		return nil
+	}
+	return &spec
+}
+
+// TrustMarkTypes returns all available trust mark types.
+func (p *MapTrustMarkSpecProvider) TrustMarkTypes() []string {
+	p.mu.RLock()
+	defer p.mu.RUnlock()
+	types := make([]string, 0, len(p.specs))
+	for t := range p.specs {
+		types = append(types, t)
+	}
+	return types
+}
+
+// AddTrustMark adds or updates a TrustMarkSpec.
+func (p *MapTrustMarkSpecProvider) AddTrustMark(spec TrustMarkSpec) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.specs[spec.TrustMarkType] = spec
+}
+
+// RemoveTrustMark removes a TrustMarkSpec by type.
+func (p *MapTrustMarkSpecProvider) RemoveTrustMark(trustMarkType string) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	delete(p.specs, trustMarkType)
+}
+
+// IssueTrustMarkOptions contains options for issuing a trust mark.
+type IssueTrustMarkOptions struct {
+	// Lifetime overrides the spec's lifetime if set (> 0).
+	Lifetime time.Duration
+	// SubjectClaims are additional claims specific to this subject.
+	// These are merged with (and override) the spec's Extra claims.
+	SubjectClaims map[string]any
+}
+
 // TrustMarkIssuer is an entity that can issue TrustMarkInfo
 type TrustMarkIssuer struct {
 	EntityID string
 	*jwx.TrustMarkSigner
-	trustMarks map[string]TrustMarkSpec
+
+	mu         sync.RWMutex
+	provider   TrustMarkSpecProvider
+	trustMarks map[string]TrustMarkSpec // Used when no provider is set
 }
 
 // TrustMarkSpec describes a TrustMark for a TrustMarkIssuer
@@ -454,16 +531,73 @@ func NewTrustMarkIssuer(
 		EntityID:        entityID,
 		TrustMarkSigner: signer,
 		trustMarks:      trustMarks,
+		// provider is nil by default, uses trustMarks map
 	}
 }
 
-// AddTrustMark adds a TrustMarkSpec to the TrustMarkIssuer enabling it to issue the TrustMarkInfo
+// SetProvider sets a custom TrustMarkSpecProvider for dynamic spec lookup.
+// When a provider is set, it takes precedence over the static in-memory map.
+func (tmi *TrustMarkIssuer) SetProvider(provider TrustMarkSpecProvider) {
+	tmi.mu.Lock()
+	defer tmi.mu.Unlock()
+	tmi.provider = provider
+}
+
+// getSpec retrieves a TrustMarkSpec.
+// If a provider is configured, it is used exclusively.
+// Otherwise, the legacy in-memory map is used.
+func (tmi *TrustMarkIssuer) getSpec(trustMarkType string) *TrustMarkSpec {
+	tmi.mu.RLock()
+	defer tmi.mu.RUnlock()
+
+	// If provider is configured, use it exclusively
+	if tmi.provider != nil {
+		return tmi.provider.GetTrustMarkSpec(trustMarkType)
+	}
+
+	// Fallback to legacy in-memory map
+	spec, ok := tmi.trustMarks[trustMarkType]
+	if ok {
+		return &spec
+	}
+	return nil
+}
+
+// HasTrustMarkType checks if a trust mark type is available for issuance.
+func (tmi *TrustMarkIssuer) HasTrustMarkType(trustMarkType string) bool {
+	return tmi.getSpec(trustMarkType) != nil
+}
+
+// AddTrustMark adds a TrustMarkSpec to the in-memory map.
+// Note: If a provider is configured, this has no effect on issuance.
 func (tmi *TrustMarkIssuer) AddTrustMark(spec TrustMarkSpec) {
+	tmi.mu.Lock()
+	defer tmi.mu.Unlock()
+	if tmi.trustMarks == nil {
+		tmi.trustMarks = make(map[string]TrustMarkSpec)
+	}
 	tmi.trustMarks[spec.TrustMarkType] = spec
 }
 
-// TrustMarkTypes returns a slice of the trust mark ids for which this TrustMarKIssuer can issue TrustMarks
+// RemoveTrustMark removes a TrustMarkSpec from the in-memory map.
+// Note: If a provider is configured, this has no effect on issuance.
+func (tmi *TrustMarkIssuer) RemoveTrustMark(trustMarkType string) {
+	tmi.mu.Lock()
+	defer tmi.mu.Unlock()
+	delete(tmi.trustMarks, trustMarkType)
+}
+
+// TrustMarkTypes returns a slice of the trust mark ids for which this TrustMarkIssuer can issue TrustMarks
 func (tmi *TrustMarkIssuer) TrustMarkTypes() []string {
+	tmi.mu.RLock()
+	defer tmi.mu.RUnlock()
+
+	// If provider is configured, use it exclusively
+	if tmi.provider != nil {
+		return tmi.provider.TrustMarkTypes()
+	}
+
+	// Fallback to legacy in-memory map
 	trustMarkTypes := make([]string, 0, len(tmi.trustMarks))
 	for id := range tmi.trustMarks {
 		trustMarkTypes = append(trustMarkTypes, id)
@@ -501,20 +635,50 @@ func buildTrustMark(
 	return tm, jwt, nil
 }
 
-// IssueTrustMark issues a trust mark JWT for the passed trust mark type and subject; optionally a custom lifetime can
-// be passed. Returns the signed JWT string and expiration time.
-func (tmi TrustMarkIssuer) IssueTrustMark(trustMarkType, sub string, lifetime ...time.Duration) (
-	string, *unixtime.Unixtime, error,
-) {
-	spec, ok := tmi.trustMarks[trustMarkType]
-	if !ok {
+// IssueTrustMarkWithOptions issues a trust mark with additional options.
+// If SubjectClaims is non-nil (even if empty), it is used exclusively.
+// If SubjectClaims is nil, the spec's Extra claims are used.
+func (tmi *TrustMarkIssuer) IssueTrustMarkWithOptions(
+	trustMarkType, sub string,
+	opts IssueTrustMarkOptions,
+) (string, *unixtime.Unixtime, error) {
+	spec := tmi.getSpec(trustMarkType)
+	if spec == nil {
 		return "", nil, errors.Errorf("unknown trustmark '%s'", trustMarkType)
 	}
-	tm, jwt, err := buildTrustMark(tmi.EntityID, sub, spec, tmi.TrustMarkSigner, lifetime...)
+
+	// Create a copy of spec
+	specWithClaims := *spec
+
+	// If subject claims are provided (non-nil), use them exclusively
+	// If subject claims are nil, use the spec's Extra claims
+	if opts.SubjectClaims != nil {
+		specWithClaims.Extra = opts.SubjectClaims
+	}
+	// else: specWithClaims.Extra = spec.Extra (already copied)
+
+	var lifetime []time.Duration
+	if opts.Lifetime > 0 {
+		lifetime = []time.Duration{opts.Lifetime}
+	}
+
+	tm, jwt, err := buildTrustMark(tmi.EntityID, sub, specWithClaims, tmi.TrustMarkSigner, lifetime...)
 	if err != nil {
 		return "", nil, err
 	}
 	return string(jwt), tm.ExpiresAt, nil
+}
+
+// IssueTrustMark issues a trust mark JWT for the passed trust mark type and subject; optionally a custom lifetime can
+// be passed. Returns the signed JWT string and expiration time.
+func (tmi *TrustMarkIssuer) IssueTrustMark(trustMarkType, sub string, lifetime ...time.Duration) (
+	string, *unixtime.Unixtime, error,
+) {
+	opts := IssueTrustMarkOptions{}
+	if len(lifetime) > 0 {
+		opts.Lifetime = lifetime[0]
+	}
+	return tmi.IssueTrustMarkWithOptions(trustMarkType, sub, opts)
 }
 
 // SelfIssuedTrustMarkSpec describes a TrustMark for a SelfIssuedTrustMarkIssuer.
