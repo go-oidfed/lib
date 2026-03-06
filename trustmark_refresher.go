@@ -2,6 +2,8 @@ package oidfed
 
 import (
 	"net/url"
+	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/lestrrat-go/jwx/v3/jwt"
@@ -17,19 +19,22 @@ import (
 // EntityConfigurationTrustMarkConfig is a type for specifying the configuration of a TrustMark that should be
 // included in an EntityConfiguration
 type EntityConfigurationTrustMarkConfig struct {
-	TrustMarkType        string                  `yaml:"trust_mark_type"`
-	TrustMarkIssuer      string                  `yaml:"trust_mark_issuer"`
-	SelfIssued           bool                    `yaml:"self_issued"`
-	SelfIssuanceSpec     TrustMarkSpec           `yaml:"self_issuance_spec"`
-	JWT                  string                  `yaml:"trust_mark_jwt"`
-	Refresh              bool                    `yaml:"refresh"`
-	MinLifetime          duration.DurationOption `yaml:"min_lifetime"`
-	RefreshGracePeriod   duration.DurationOption `yaml:"refresh_grace_period"`
+	TrustMarkType        string                   `yaml:"trust_mark_type"`
+	TrustMarkIssuer      string                   `yaml:"trust_mark_issuer"`
+	SelfIssuanceSpec     *SelfIssuedTrustMarkSpec `yaml:"self_issuance_spec"`
+	JWT                  string                   `yaml:"trust_mark_jwt"`
+	Refresh              bool                     `yaml:"refresh"`
+	MinLifetime          duration.DurationOption  `yaml:"min_lifetime"`
+	RefreshGracePeriod   duration.DurationOption  `yaml:"refresh_grace_period"`
+	RefreshRateLimit     duration.DurationOption  `yaml:"refresh_rate_limit"`
 	expiration           unixtime.Unixtime
 	lastTried            unixtime.Unixtime
 	sub                  string
 	ownTrustMarkEndpoint string
-	ownTrustMarkIssuer   *TrustMarkIssuer
+	ownTrustMarkIssuer   *SelfIssuedTrustMarkIssuer
+	mu                   sync.RWMutex
+	refreshing           atomic.Bool
+	consecutiveFailures  int
 }
 
 // Verify verifies that the EntityConfigurationTrustMarkConfig is correct and also extracts trust mark id and issuer
@@ -44,6 +49,9 @@ func (c *EntityConfigurationTrustMarkConfig) Verify(
 	}
 	if c.RefreshGracePeriod == 0 {
 		c.RefreshGracePeriod = duration.DurationOption(time.Hour)
+	}
+	if c.RefreshRateLimit == 0 {
+		c.RefreshRateLimit = duration.DurationOption(time.Minute)
 	}
 
 	if c.JWT != "" {
@@ -63,11 +71,11 @@ func (c *EntityConfigurationTrustMarkConfig) Verify(
 		return nil
 	}
 	c.Refresh = true
-	if c.SelfIssued {
+	if c.SelfIssuanceSpec != nil {
 		c.SelfIssuanceSpec.TrustMarkType = c.TrustMarkType
-		c.ownTrustMarkIssuer = NewTrustMarkIssuer(
+		c.ownTrustMarkIssuer = NewSelfIssuedTrustMarkIssuer(
 			sub, ownTrustMarkSigner,
-			[]TrustMarkSpec{c.SelfIssuanceSpec},
+			[]SelfIssuedTrustMarkSpec{*c.SelfIssuanceSpec},
 		)
 		if c.TrustMarkType == "" {
 			return errors.New("trust_mark_type must be provided for self-issued trust marks")
@@ -80,55 +88,160 @@ func (c *EntityConfigurationTrustMarkConfig) Verify(
 	return nil
 }
 
-// TrustMarkJWT returns a trust mark jwt for the linked trust mark,
-// if needed the trust mark is refreshed using the trust mark issuer's trust mark endpoint
-func (c *EntityConfigurationTrustMarkConfig) TrustMarkJWT() (string, error) {
-	if !c.Refresh {
-		return c.JWT, nil
-	}
-	if c.JWT != "" && unixtime.Until(c.expiration) > c.MinLifetime.Duration() {
-		if unixtime.Until(c.expiration) < c.RefreshGracePeriod.Duration() {
-			go c.refresh()
-		}
-		return c.JWT, nil
-	}
-	err := c.refresh()
-	return c.JWT, err
+// Expiration returns the expiration time of the current trust mark JWT.
+// This is used to potentially shorten the entity configuration lifetime.
+// This method is safe for concurrent use.
+func (c *EntityConfigurationTrustMarkConfig) Expiration() unixtime.Unixtime {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.expiration
 }
 
-// refresh refreshes the trust mark at the trust mark issuer's trust mark endpoint
-func (c *EntityConfigurationTrustMarkConfig) refresh() error {
-	if time.Since(c.lastTried.Time) < time.Minute {
-		// Only try once a minute to obtain a new trust mark
-		return errors.New("only trying to refresh trust mark once a minute")
-	}
-	c.lastTried = unixtime.Now()
-	if c.SelfIssued {
-		tmi, err := c.ownTrustMarkIssuer.IssueTrustMark(c.TrustMarkType, c.sub)
-		if err != nil {
-			return err
-		}
-		c.JWT = tmi.TrustMarkJWT
-		exp := tmi.trustmark.ExpiresAt
-		if exp != nil {
-			c.expiration = *exp
-		} else {
-			c.expiration = unixtime.Unixtime{}
-		}
-		return nil
+// TrustMarkInfo returns a TrustMarkInfo for inclusion in the entity configuration.
+// If this is a self-issued trust mark with IncludeExtraClaimsInInfo set, the Extra field
+// will contain the additional claims from the SelfIssuanceSpec.
+// This method is safe for concurrent use.
+func (c *EntityConfigurationTrustMarkConfig) TrustMarkInfo() (TrustMarkInfo, error) {
+	jwt, err := c.TrustMarkJWT()
+	if err != nil {
+		return TrustMarkInfo{}, err
 	}
 
+	info := TrustMarkInfo{
+		TrustMarkType: c.TrustMarkType,
+		TrustMarkJWT:  jwt,
+	}
+
+	// Include extra claims if this is a self-issued trust mark with IncludeExtraClaimsInInfo
+	if c.SelfIssuanceSpec != nil && c.SelfIssuanceSpec.IncludeExtraClaimsInInfo {
+		info.Extra = c.SelfIssuanceSpec.TrustMarkSpec.Extra
+	}
+
+	return info, nil
+}
+
+// TrustMarkJWT returns a trust mark jwt for the linked trust mark,
+// if needed the trust mark is refreshed using the trust mark issuer's trust mark endpoint.
+// This method is safe for concurrent use.
+func (c *EntityConfigurationTrustMarkConfig) TrustMarkJWT() (string, error) {
+	// Read current state with read lock
+	c.mu.RLock()
+	refresh := c.Refresh
+	currentJWT := c.JWT
+	expiration := c.expiration
+	c.mu.RUnlock()
+
+	if !refresh {
+		return currentJWT, nil
+	}
+	if currentJWT != "" && unixtime.Until(expiration) > c.MinLifetime.Duration() {
+		if unixtime.Until(expiration) < c.RefreshGracePeriod.Duration() {
+			// Use atomic CAS to prevent multiple concurrent background refreshes
+			if c.refreshing.CompareAndSwap(false, true) {
+				go func() {
+					defer c.refreshing.Store(false)
+					if err := c.refresh(); err != nil {
+						internal.WithError(err).Warn("TrustMarkRefresher: background refresh failed")
+					}
+				}()
+			}
+		}
+		return currentJWT, nil
+	}
+	err := c.refresh()
+
+	// Read the updated JWT after refresh
+	c.mu.RLock()
+	currentJWT = c.JWT
+	c.mu.RUnlock()
+
+	return currentJWT, err
+}
+
+// refresh refreshes the trust mark at the trust mark issuer's trust mark endpoint.
+// It implements rate limiting with exponential backoff on consecutive failures.
+func (c *EntityConfigurationTrustMarkConfig) refresh() error {
+	// Calculate backoff duration with exponential increase
+	c.mu.RLock()
+	baseDelay := c.RefreshRateLimit.Duration()
+	failures := c.consecutiveFailures
+	lastTried := c.lastTried
+	c.mu.RUnlock()
+
+	// Exponential backoff: base * 2^failures, capped at 1 hour
+	backoffDelay := baseDelay
+	if failures > 0 {
+		backoffDelay = baseDelay * time.Duration(1<<min(failures, 6)) // Cap at 2^6 = 64x
+		if backoffDelay > time.Hour {
+			backoffDelay = time.Hour
+		}
+	}
+
+	if time.Since(lastTried.Time) < backoffDelay {
+		return errors.Errorf(
+			"rate limited: next refresh allowed in %v",
+			backoffDelay-time.Since(lastTried.Time),
+		)
+	}
+
+	// Update lastTried timestamp
+	c.mu.Lock()
+	c.lastTried = unixtime.Now()
+	c.mu.Unlock()
+
+	// Perform the actual refresh
+	var newJWT string
+	var newExpiration unixtime.Unixtime
+	var err error
+
+	if c.SelfIssuanceSpec != nil {
+		newJWT, newExpiration, err = c.refreshSelfIssued()
+	} else {
+		newJWT, newExpiration, err = c.refreshExternal()
+	}
+
+	// Update state with write lock
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	if err != nil {
+		c.consecutiveFailures++
+		return err
+	}
+
+	// Success - update JWT and reset backoff
+	c.JWT = newJWT
+	c.expiration = newExpiration
+	c.consecutiveFailures = 0
+	return nil
+}
+
+// refreshSelfIssued handles self-issued trust mark refresh
+func (c *EntityConfigurationTrustMarkConfig) refreshSelfIssued() (string, unixtime.Unixtime, error) {
+	tmi, err := c.ownTrustMarkIssuer.IssueTrustMark(c.TrustMarkType, c.sub)
+	if err != nil {
+		return "", unixtime.Unixtime{}, err
+	}
+	exp := unixtime.Unixtime{}
+	if tmi.trustmark.ExpiresAt != nil {
+		exp = *tmi.trustmark.ExpiresAt
+	}
+	return tmi.TrustMarkJWT, exp, nil
+}
+
+// refreshExternal handles external trust mark issuer refresh
+func (c *EntityConfigurationTrustMarkConfig) refreshExternal() (string, unixtime.Unixtime, error) {
 	var endpoint string
 	if c.TrustMarkIssuer == c.sub {
 		endpoint = c.ownTrustMarkEndpoint
 	} else {
 		tmi, err := GetEntityConfiguration(c.TrustMarkIssuer)
 		if err != nil {
-			return err
+			return "", unixtime.Unixtime{}, err
 		}
 		if tmi.Metadata == nil || tmi.Metadata.FederationEntity == nil || tmi.Metadata.
 			FederationEntity.FederationTrustMarkEndpoint == "" {
-			return errors.New("could not obtain trust mark endpoint of trust mark issuer")
+			return "", unixtime.Unixtime{}, errors.New("could not obtain trust mark endpoint of trust mark issuer")
 		}
 		endpoint = tmi.Metadata.FederationEntity.FederationTrustMarkEndpoint
 	}
@@ -137,20 +250,18 @@ func (c *EntityConfigurationTrustMarkConfig) refresh() error {
 	params.Add("sub", c.sub)
 	res, errRes, err := http.Get(endpoint, params, nil)
 	if err != nil {
-		return err
+		return "", unixtime.Unixtime{}, err
 	}
 	if errRes != nil {
-		return errRes.Err()
+		return "", unixtime.Unixtime{}, errRes.Err()
 	}
 	tm, err := ParseTrustMark(res.Body())
 	if err != nil {
-		return err
+		return "", unixtime.Unixtime{}, err
 	}
-	c.JWT = string(tm.jwtMsg.RawJWT)
+	exp := unixtime.Unixtime{}
 	if tm.ExpiresAt != nil {
-		c.expiration = *tm.ExpiresAt
-	} else {
-		c.expiration = unixtime.Unixtime{}
+		exp = *tm.ExpiresAt
 	}
-	return nil
+	return string(tm.jwtMsg.RawJWT), exp, nil
 }
