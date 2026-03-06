@@ -64,8 +64,21 @@ type PKCS11KMSConfig struct {
 	TokenLabel string
 	// TokenSerial selects the token by serial (crypto11.Config.TokenSerial)
 	TokenSerial string
+	// SlotNumber selects the token by slot number (crypto11.Config.SlotNumber)
+	SlotNumber *int
 	// Pin is the user PIN for the token (crypto11.Config.Pin)
 	Pin string
+
+	// MaxSessions is the maximum number of concurrent sessions to open.
+	// If zero, crypto11.DefaultMaxSessions is used. Otherwise, the value must be at least 2.
+	MaxSessions int
+	// UserType identifies the user type logging in. If zero, crypto11.DefaultUserType is used.
+	UserType int
+	// LoginNotSupported should be set to true for tokens that do not support logging in.
+	LoginNotSupported bool
+	// PoolWaitTimeout is the maximum time to wait for a session from the pool.
+	// Zero means wait indefinitely.
+	PoolWaitTimeout time.Duration
 
 	// Optional prefix for object labels inside HSM
 	LabelPrefix string
@@ -481,10 +494,15 @@ func (kms *PKCS11KMS) Load() error {
 	}
 	if kms.ctx == nil {
 		cfg := &crypto11.Config{
-			Path:        kms.ModulePath,
-			TokenLabel:  kms.TokenLabel,
-			TokenSerial: kms.TokenSerial,
-			Pin:         kms.Pin,
+			Path:              kms.ModulePath,
+			TokenLabel:        kms.TokenLabel,
+			TokenSerial:       kms.TokenSerial,
+			SlotNumber:        kms.SlotNumber,
+			Pin:               kms.Pin,
+			MaxSessions:       kms.MaxSessions,
+			UserType:          kms.UserType,
+			LoginNotSupported: kms.LoginNotSupported,
+			PoolWaitTimeout:   kms.PoolWaitTimeout,
 		}
 		ctx, err := crypto11.Configure(cfg)
 		if err != nil {
