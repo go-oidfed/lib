@@ -115,8 +115,8 @@ func (f DynamicFederationEntity) EntityConfigurationPayload() (*EntityStatementP
 				internal.Log(err.Error())
 				continue
 			}
-			if tmc.Expiration().Before(exp.Time) {
-				exp = tmc.Expiration()
+			if tmcExp := tmc.Expiration(); !tmcExp.IsZero() && tmcExp.Before(exp.Time) {
+				exp = tmcExp
 			}
 			tms = append(tms, tmInfo)
 		}
@@ -159,8 +159,7 @@ func (f DynamicFederationEntity) EntityConfigurationPayload() (*EntityStatementP
 		}
 	}
 	if jwks.Set != nil {
-		jwksExp := jwks.MaximalExpirationTime()
-		if jwksExp.Before(exp.Time) {
+		if jwksExp := jwks.MaximalExpirationTime(); !jwksExp.IsZero() && jwksExp.Before(exp.Time) {
 			exp = jwksExp
 		}
 	}
