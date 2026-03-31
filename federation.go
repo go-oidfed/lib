@@ -46,6 +46,7 @@ type DynamicFederationEntity struct {
 	ID                    string
 	Metadata              func() (*Metadata, error)
 	AuthorityHints        func() ([]string, error)
+	TrustAnchorHints      func() ([]string, error)
 	ConfigurationLifetime func() (time.Duration, error)
 	EntityStatementSigner func() (*jwx.EntityStatementSigner, error)
 	TrustMarks            func() ([]*EntityConfigurationTrustMarkConfig, error)
@@ -77,6 +78,14 @@ func (f DynamicFederationEntity) EntityConfigurationPayload() (*EntityStatementP
 	var authorityHints []string
 	if f.AuthorityHints != nil {
 		authorityHints, err = f.AuthorityHints()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	var trustAnchorHints []string
+	if f.TrustAnchorHints != nil {
+		trustAnchorHints, err = f.TrustAnchorHints()
 		if err != nil {
 			return nil, err
 		}
@@ -171,6 +180,7 @@ func (f DynamicFederationEntity) EntityConfigurationPayload() (*EntityStatementP
 		ExpiresAt:          exp,
 		JWKS:               jwks,
 		AuthorityHints:     authorityHints,
+		TrustAnchorHints:   trustAnchorHints,
 		Metadata:           metadata,
 		TrustMarks:         tms,
 		TrustMarkIssuers:   trustMarkIssuers,
@@ -213,7 +223,7 @@ func (f DynamicFederationEntity) SignEntityStatementWithHeaders(
 
 // NewFederationEntity creates a new StaticFederationEntity with the passed properties
 func NewFederationEntity(
-	entityID string, authorityHints []string, metadata *Metadata,
+	entityID string, authorityHints, trustAnchorHints []string, metadata *Metadata,
 	signer *jwx.EntityStatementSigner, configurationLifetime time.Duration, extra map[string]any,
 ) (*StaticFederationEntity, error) {
 	if configurationLifetime <= 0 {
@@ -223,6 +233,7 @@ func NewFederationEntity(
 		ID:                    entityID,
 		Metadata:              metadata,
 		AuthorityHints:        authorityHints,
+		TrustAnchorHints:      trustAnchorHints,
 		EntityStatementSigner: signer,
 		ConfigurationLifetime: configurationLifetime,
 		Extra:                 extra,
@@ -236,7 +247,8 @@ func NewFederationLeaf(
 	oidcSigner jwx.VersatileSigner, extra map[string]any,
 ) (*FederationLeaf, error) {
 	fed, err := NewFederationEntity(
-		entityID, authorityHints, metadata, signer, configurationLifetime, extra,
+		entityID, authorityHints, trustAnchors.EntityIDs(), metadata, signer,
+		configurationLifetime, extra,
 	)
 	if err != nil {
 		return nil, err
@@ -255,6 +267,7 @@ type StaticFederationEntity struct {
 	ID                    string
 	Metadata              *Metadata
 	AuthorityHints        []string
+	TrustAnchorHints      []string
 	ConfigurationLifetime time.Duration
 	*jwx.EntityStatementSigner
 	TrustMarks       []*EntityConfigurationTrustMarkConfig
@@ -279,6 +292,9 @@ func (f StaticFederationEntity) EntityConfigurationPayload() (*EntityStatementPa
 		},
 		AuthorityHints: func() ([]string, error) {
 			return f.AuthorityHints, nil
+		},
+		TrustAnchorHints: func() ([]string, error) {
+			return f.TrustAnchorHints, nil
 		},
 		ConfigurationLifetime: func() (time.Duration, error) { return f.ConfigurationLifetime, nil },
 		EntityStatementSigner: func() (*jwx.EntityStatementSigner, error) {
