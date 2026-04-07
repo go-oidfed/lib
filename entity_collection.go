@@ -206,6 +206,12 @@ func processUIClaims(
 		"logo_uri",
 		"policy_uri",
 		"information_uri",
+		"organization_name",
+		"organization_uri",
+	}
+	sliceClaims := []string{
+		"contacts",
+		"keywords",
 	}
 
 	for _, claim := range uiInfoClaims {
@@ -221,14 +227,15 @@ func processUIClaims(
 			)
 		}
 	}
-
-	if len(req.UIClaims) == 0 || slices.Contains(req.UIClaims, "keywords") {
-		entityConfig.Metadata.IterateStringSliceClaim(
-			"keywords",
-			func(entityType string, value []string) {
-				_ = entity.setUIInfoField(entityType, "keywords", value)
-			},
-		)
+	for _, claim := range sliceClaims {
+		if len(req.UIClaims) == 0 || slices.Contains(req.UIClaims, claim) {
+			entityConfig.Metadata.IterateStringSliceClaim(
+				claim,
+				func(entityType string, value []string) {
+					_ = entity.setUIInfoField(entityType, claim, value)
+				},
+			)
+		}
 	}
 }
 

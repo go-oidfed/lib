@@ -1,6 +1,7 @@
 package unixtime
 
 import (
+	"database/sql/driver"
 	"encoding/json"
 	"math"
 	"time"
@@ -12,6 +13,29 @@ import (
 // Unixtime is a type for handling unix timestamps
 type Unixtime struct {
 	time.Time
+}
+
+// Scan implements the sql.Scanner interface.
+func (u *Unixtime) Scan(src any) error {
+	if src == nil {
+		u.Time = time.Time{}
+		return nil
+	}
+	t, ok := src.(time.Time)
+	if !ok {
+		return errors.Errorf("cannot scan Unixtime from %T (expected time.Time)", src)
+	}
+	u.Time = t
+	return nil
+}
+
+// Value implements the driver.Valuer interface.
+func (u Unixtime) Value() (driver.Value, error) {
+	// Delegate to time.Time driver handling; use NULL for zero value.
+	if u.IsZero() {
+		return nil, nil
+	}
+	return u.Time, nil
 }
 
 // UnmarshalJSON implements the json.Unmarshaler interface.

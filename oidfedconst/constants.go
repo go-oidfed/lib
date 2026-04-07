@@ -12,12 +12,14 @@ const (
 	ContentTypeTrustMarkDelegation          = "application/trust-mark-delegation+jwt"
 	ContentTypeJWKS                         = "application/jwk-set+jwt"
 	ContentTypeExplicitRegistrationResponse = "application/explicit-registration-response+jwt"
+	ContentTypeTrustMarkStatusResponse      = "application/trust-mark-status-response+jwt"
 	JWTTypeEntityStatement                  = "entity-statement+jwt"
 	JWTTypeTrustMarkDelegation              = "trust-mark-delegation+jwt"
 	JWTTypeTrustMark                        = "trust-mark+jwt"
 	JWTTypeResolveResponse                  = "resolve-response+jwt"
 	JWTTypeJWKS                             = "jwk-set+jwt"
 	JWTTypeExplicitRegistrationResponse     = "explicit-registration-response+jwt"
+	JWTTypeTrustMarkStatusResponse          = "trust-mark-status-response+jwt"
 )
 
 // Constants for entity types

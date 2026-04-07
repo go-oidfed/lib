@@ -11,54 +11,70 @@ import (
 )
 
 var tmi1 = newMockTrustMarkIssuer(
-	"https://tmi.example.org", []TrustMarkSpec{
+	"https://tmi.example.org", []SelfIssuedTrustMarkSpec{
 		{
-			TrustMarkType: "https://trustmarks.org/tm1",
-			Lifetime:      duration.DurationOption(time.Hour),
+			TrustMarkSpec: TrustMarkSpec{
+				TrustMarkType: "https://trustmarks.org/tm1",
+				Lifetime:      duration.DurationOption(time.Hour),
+			},
 		},
 		{
-			TrustMarkType: "https://trustmarks.org/tm2",
-			Lifetime:      duration.DurationOption(time.Hour),
-			Ref:           "https://trustmarks.org/tm2/info",
-			LogoURI:       "https://trustmarks.org/tm2/logo",
+			TrustMarkSpec: TrustMarkSpec{
+				TrustMarkType: "https://trustmarks.org/tm2",
+				Lifetime:      duration.DurationOption(time.Hour),
+				Ref:           "https://trustmarks.org/tm2/info",
+				LogoURI:       "https://trustmarks.org/tm2/logo",
+			},
 		},
 		{
-			TrustMarkType: "https://trustmarks.org/tm3",
-			Lifetime:      duration.DurationOption(time.Hour),
+			TrustMarkSpec: TrustMarkSpec{
+				TrustMarkType: "https://trustmarks.org/tm3",
+				Lifetime:      duration.DurationOption(time.Hour),
+			},
 		},
 		{
-			TrustMarkType: "https://trustmarks.org/tm4",
-			Lifetime:      duration.DurationOption(time.Hour),
+			TrustMarkSpec: TrustMarkSpec{
+				TrustMarkType: "https://trustmarks.org/tm4",
+				Lifetime:      duration.DurationOption(time.Hour),
+			},
 		},
 		{
-			TrustMarkType: "https://trustmarks.org/tm-delegated",
-			Lifetime:      duration.DurationOption(time.Hour),
+			TrustMarkSpec: TrustMarkSpec{
+				TrustMarkType: "https://trustmarks.org/tm-delegated",
+				Lifetime:      duration.DurationOption(time.Hour),
+			},
 		},
 	},
 )
 var tmi2 = newMockTrustMarkIssuer(
-	"https://tmi2.example.com", []TrustMarkSpec{
+	"https://tmi2.example.com", []SelfIssuedTrustMarkSpec{
 		{
-			TrustMarkType: "https://trustmarks.org/tm1",
-			Ref:           "https://trustmarks.org/tm1/info",
-			LogoURI:       "https://trustmarks.org/tm1/logo",
-			Extra: map[string]any{
-				"foo": "bar",
+			TrustMarkSpec: TrustMarkSpec{
+				TrustMarkType: "https://trustmarks.org/tm1",
+				Ref:           "https://trustmarks.org/tm1/info",
+				LogoURI:       "https://trustmarks.org/tm1/logo",
+				Extra: map[string]any{
+					"foo": "bar",
+				},
 			},
 			IncludeExtraClaimsInInfo: false,
 		},
 		{
-			TrustMarkType: "https://trustmarks.org/tm2",
-			Ref:           "https://trustmarks.org/tm2/info",
-			LogoURI:       "https://trustmarks.org/tm2/logo",
-			Extra: map[string]any{
-				"foo": "bar",
+			TrustMarkSpec: TrustMarkSpec{
+				TrustMarkType: "https://trustmarks.org/tm2",
+				Ref:           "https://trustmarks.org/tm2/info",
+				LogoURI:       "https://trustmarks.org/tm2/logo",
+				Extra: map[string]any{
+					"foo": "bar",
+				},
 			},
 			IncludeExtraClaimsInInfo: true,
 		},
 		{
-			TrustMarkType: "https://trustmarks.org/tm-delegated",
-			Lifetime:      duration.DurationOption(time.Hour),
+			TrustMarkSpec: TrustMarkSpec{
+				TrustMarkType: "https://trustmarks.org/tm-delegated",
+				Lifetime:      duration.DurationOption(time.Hour),
+			},
 		},
 	},
 )
@@ -84,16 +100,18 @@ var tmo = newMockTrustMarkOwner(
 	},
 )
 
+var tmoJWKS, _ = tmo.JWKS()
+
 var taWithTmo = newMockAuthority(
 	"https://trustmark.ta.com", EntityStatementPayload{
 		TrustMarkOwners: map[string]TrustMarkOwnerSpec{
 			"https://trustmarks.org/tm-delegated": {
 				ID:   "https://tmo.example.eu",
-				JWKS: tmo.JWKS(),
+				JWKS: tmoJWKS,
 			},
 			"https://trustmarks.org/test": {
 				ID:   "https://tmo.example.eu",
-				JWKS: tmo.JWKS(),
+				JWKS: tmoJWKS,
 			},
 			"https://trustmarks.org/other": {
 				ID:   "https://other.owner.org",
@@ -123,13 +141,13 @@ func init() {
 	if err != nil {
 		panic(err)
 	}
-	tmi1.AddTrustMark(
-		TrustMarkSpec{
-			TrustMarkType: "https://trustmarks.org/test",
-			Lifetime:      duration.DurationOption(time.Hour),
-			DelegationJWT: string(delegation),
-		},
-	)
+	spec := TrustMarkSpec{
+		TrustMarkType: "https://trustmarks.org/test",
+		Lifetime:      duration.DurationOption(time.Hour),
+		DelegationJWT: string(delegation),
+	}
+	tmi1.TrustMarkIssuer.AddTrustMark(spec)
+	tmi1.SelfIssuedTrustMarkIssuer.AddTrustMark(SelfIssuedTrustMarkSpec{TrustMarkSpec: spec})
 
 	taWithTmo.RegisterSubordinate(tmi1)
 	taWithTmo.RegisterSubordinate(tmi2)
@@ -223,7 +241,12 @@ func TestTrustMarkOwner_DelegationJWT(t *testing.T) {
 						return
 					}
 				}
-				if err = delegation.VerifyExternal(tmo.JWKS()); err != nil {
+				jwks, err := tmo.JWKS()
+				if err != nil {
+					t.Errorf("could not get JWKS: %v", err)
+					return
+				}
+				if err = delegation.VerifyExternal(jwks); err != nil {
 					t.Errorf("error verifying issued delegation jwt: %v", err)
 					return
 				}
@@ -238,9 +261,9 @@ func TestDelegationJWT_VerifyExternal(t *testing.T) {
 		[]byte(`{"keys":[{"alg":"ES512","crv":"P-521","kid":"bjQ4ZO1kfWr-cxi-_tU9bKTWwG6XoUwnSW6M5food_U","kty":"EC","use":"sig","x":"AKj5_1MgsEFKCSNN4UyDqQP2wanr9ZD1Q1eBUGJ1BJej8MTQnRkDPRY_35Ctae8bxoj2fxZMufXnWAuVxERelwzL","y":"AObqfUE1k0YIlO1qe-5D8CcTWxZn6OIXC3s_cPrug69sM580aCtug7vEdaBcfNY8RGTwUV1hMxqvOTsQsROrrXG2"}]}`),
 		&correctJWKS,
 	); err != nil {
-		t.Error(err)
+		panic(err)
 	}
-	wrongKey := tmo.JWKS()
+	wrongKey := tmoJWKS
 	tests := []struct {
 		name        string
 		jwks        jwx.JWKS
@@ -346,11 +369,11 @@ func TestDelegationJWT_VerifyFederation(t *testing.T) {
 	}
 }
 
-func TestTrustMarkIssuer_IssueAndVerifyTrustMark(t *testing.T) {
+func TestSelfIssuedTrustMarkIssuer_IssueAndVerifyTrustMark(t *testing.T) {
 	tests := []struct {
 		name              string
 		trustMarkType     string
-		tmi               *TrustMarkIssuer
+		tmi               *SelfIssuedTrustMarkIssuer
 		requestedLifetime time.Duration
 		requestLifetime   bool
 		expectedLifetime  time.Duration
@@ -361,7 +384,7 @@ func TestTrustMarkIssuer_IssueAndVerifyTrustMark(t *testing.T) {
 		{
 			name:              "normal tm1",
 			trustMarkType:     "https://trustmarks.org/tm1",
-			tmi:               &tmi1.TrustMarkIssuer,
+			tmi:               &tmi1.SelfIssuedTrustMarkIssuer,
 			expectedLifetime:  time.Hour,
 			ta:                taWithTmo.EntityStatementPayload(),
 			errExpectedIssue:  false,
@@ -370,7 +393,7 @@ func TestTrustMarkIssuer_IssueAndVerifyTrustMark(t *testing.T) {
 		{
 			name:              "custom lifetime tm1",
 			trustMarkType:     "https://trustmarks.org/tm1",
-			tmi:               &tmi1.TrustMarkIssuer,
+			tmi:               &tmi1.SelfIssuedTrustMarkIssuer,
 			requestLifetime:   true,
 			requestedLifetime: 2 * time.Hour,
 			expectedLifetime:  2 * time.Hour,
@@ -381,7 +404,7 @@ func TestTrustMarkIssuer_IssueAndVerifyTrustMark(t *testing.T) {
 		{
 			name:              "unknown tm",
 			trustMarkType:     "https://trustmarks.org/unknown",
-			tmi:               &tmi1.TrustMarkIssuer,
+			tmi:               &tmi1.SelfIssuedTrustMarkIssuer,
 			ta:                taWithTmo.EntityStatementPayload(),
 			errExpectedIssue:  true,
 			errExpectedVerify: false,
@@ -389,7 +412,7 @@ func TestTrustMarkIssuer_IssueAndVerifyTrustMark(t *testing.T) {
 		{
 			name:              "tm3 not in TA",
 			trustMarkType:     "https://trustmarks.org/tm3",
-			tmi:               &tmi1.TrustMarkIssuer,
+			tmi:               &tmi1.SelfIssuedTrustMarkIssuer,
 			expectedLifetime:  time.Hour,
 			ta:                taWithTmo.EntityStatementPayload(),
 			errExpectedIssue:  false,
@@ -398,7 +421,7 @@ func TestTrustMarkIssuer_IssueAndVerifyTrustMark(t *testing.T) {
 		{
 			name:              "tm4 tmi not in TA",
 			trustMarkType:     "https://trustmarks.org/tm4",
-			tmi:               &tmi1.TrustMarkIssuer,
+			tmi:               &tmi1.SelfIssuedTrustMarkIssuer,
 			expectedLifetime:  time.Hour,
 			ta:                taWithTmo.EntityStatementPayload(),
 			errExpectedIssue:  false,
@@ -407,7 +430,7 @@ func TestTrustMarkIssuer_IssueAndVerifyTrustMark(t *testing.T) {
 		{
 			name:              "delegation no delegation jwt",
 			trustMarkType:     "https://trustmarks.org/tm-delegated",
-			tmi:               &tmi1.TrustMarkIssuer,
+			tmi:               &tmi1.SelfIssuedTrustMarkIssuer,
 			expectedLifetime:  time.Hour,
 			ta:                taWithTmo.EntityStatementPayload(),
 			errExpectedIssue:  false,
@@ -416,7 +439,7 @@ func TestTrustMarkIssuer_IssueAndVerifyTrustMark(t *testing.T) {
 		{
 			name:              "delegation ok",
 			trustMarkType:     "https://trustmarks.org/test",
-			tmi:               &tmi1.TrustMarkIssuer,
+			tmi:               &tmi1.SelfIssuedTrustMarkIssuer,
 			expectedLifetime:  time.Hour,
 			ta:                taWithTmo.EntityStatementPayload(),
 			errExpectedIssue:  false,
@@ -425,7 +448,7 @@ func TestTrustMarkIssuer_IssueAndVerifyTrustMark(t *testing.T) {
 		{
 			name:              "delegation tmi not in ta",
 			trustMarkType:     "https://trustmarks.org/tm-delegated",
-			tmi:               &tmi2.TrustMarkIssuer,
+			tmi:               &tmi2.SelfIssuedTrustMarkIssuer,
 			expectedLifetime:  time.Hour,
 			ta:                taWithTmo.EntityStatementPayload(),
 			errExpectedIssue:  false,

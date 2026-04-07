@@ -107,3 +107,10 @@ func WithField(key string, value any) *logrus.Entry { // skipcq: RVV-B0001
 func WithFields(fields logrus.Fields) *logrus.Entry { // skipcq: RVV-B0001
 	return logger.WithFields(fields)
 }
+
+// Fields is an alias exported to allow callers to construct structured fields
+// without importing logrus directly when using the internal logger helpers.
+// This keeps compatibility with existing call sites like
+// `log.WithFields(log.Fields{...})` even after switching imports to this
+// package.
+type Fields = logrus.Fields

@@ -15,6 +15,7 @@ import (
 )
 
 func setup() {
+	httpmock.Activate()
 	httpmock.ActivateNonDefault(http.Do().GetClient())
 	internal.EnableDebugLogging()
 	// cache.UseRedisCache(&redis.Options{Addr: "localhost:6379"})

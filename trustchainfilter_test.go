@@ -18,6 +18,8 @@ var op1 = newMockOP(
 	"https://op1.example.com",
 	&OpenIDProviderMetadata{
 		ClientRegistrationTypesSupported: []string{oidfedconst.ClientRegistrationTypeAutomatic},
+		AuthorizationEndpoint:            "https://op1.example.com/authorize",
+		TokenEndpoint:                    "https://op1.example.com/token",
 		ScopesSupported: []string{
 			"openid",
 			"profile",
