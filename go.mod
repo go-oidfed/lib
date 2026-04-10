@@ -3,7 +3,7 @@ module github.com/go-oidfed/lib
 go 1.25.1
 
 require (
-	github.com/ThalesGroup/crypto11 v1.2.6
+	github.com/ThalesGroup/crypto11 v1.6.0
 	github.com/TwiN/gocache/v2 v2.4.0
 	github.com/adam-hanna/arrayOperations v1.0.1
 	github.com/coreos/go-oidc/v3 v3.18.0
