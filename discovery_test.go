@@ -65,16 +65,16 @@ func TestSimpleOPCollector_CollectEntities(t *testing.T) {
 				if res == nil {
 					t.Fatalf("ops is nil")
 				}
-				if len(res.FederationEntities) != len(test.expectedOPs) {
+				if len(res.Entities) != len(test.expectedOPs) {
 					t.Errorf("discovered OPs does not match expected OPs")
 					t.Errorf("Expected: %+v", test.expectedOPs)
 					t.Error("Discovered:")
-					for _, op := range res.FederationEntities {
+					for _, op := range res.Entities {
 						t.Error(op.EntityID)
 					}
 					t.FailNow()
 				}
-				for _, op := range res.FederationEntities {
+				for _, op := range res.Entities {
 					if !sliceutils.SliceContains(op.EntityID, test.expectedOPs) {
 						t.Errorf("discovered OPs does not match expected OPs")
 						t.Errorf("discovered: %+v", op.EntityID)
@@ -107,7 +107,7 @@ func TestSimpleRemoteEntityCollector_AggregatesRemotePagination(t *testing.T) {
 			switch from {
 			case "":
 				res = EntityCollectionResponse{
-					FederationEntities: []*CollectedEntity{
+					Entities: []*CollectedEntity{
 						all[0],
 						all[1],
 					},
@@ -115,7 +115,7 @@ func TestSimpleRemoteEntityCollector_AggregatesRemotePagination(t *testing.T) {
 				}
 			case all[2].EntityID:
 				res = EntityCollectionResponse{
-					FederationEntities: []*CollectedEntity{
+					Entities: []*CollectedEntity{
 						all[2],
 						all[3],
 					},
@@ -123,10 +123,10 @@ func TestSimpleRemoteEntityCollector_AggregatesRemotePagination(t *testing.T) {
 				}
 			case all[4].EntityID:
 				res = EntityCollectionResponse{
-					FederationEntities: []*CollectedEntity{all[4]},
+					Entities: []*CollectedEntity{all[4]},
 				}
 			default:
-				res = EntityCollectionResponse{FederationEntities: nil}
+				res = EntityCollectionResponse{Entities: nil}
 			}
 			return httpmock.NewJsonResponse(200, res)
 		},
@@ -142,13 +142,13 @@ func TestSimpleRemoteEntityCollector_AggregatesRemotePagination(t *testing.T) {
 	if res == nil {
 		t.Fatalf("response is nil")
 	}
-	if len(res.FederationEntities) != len(all) {
-		t.Fatalf("expected %d entities, got %d", len(all), len(res.FederationEntities))
+	if len(res.Entities) != len(all) {
+		t.Fatalf("expected %d entities, got %d", len(all), len(res.Entities))
 	}
 	if res.Next != "" {
 		t.Fatalf("expected no pagination in final response, got next_entity_id=%q", res.Next)
 	}
-	for i, e := range res.FederationEntities {
+	for i, e := range res.Entities {
 		if e.EntityID != all[i].EntityID {
 			t.Fatalf("entity order mismatch at %d: expected %q got %q", i, all[i].EntityID, e.EntityID)
 		}
@@ -162,8 +162,8 @@ func TestSimpleRemoteEntityCollector_AggregatesRemotePagination(t *testing.T) {
 	if res2 == nil {
 		t.Fatalf("response is nil (limit)")
 	}
-	if len(res2.FederationEntities) != len(all) {
-		t.Fatalf("expected %d entities with limit, got %d", len(all), len(res2.FederationEntities))
+	if len(res2.Entities) != len(all) {
+		t.Fatalf("expected %d entities with limit, got %d", len(all), len(res2.Entities))
 	}
 	if res2.Next != "" {
 		t.Fatalf("expected no pagination in final response (limit), got next_entity_id=%q", res2.Next)
@@ -259,16 +259,16 @@ func TestFilterableVerifiedChainsEntityCollector_CollectEntities(t *testing.T) {
 					}
 					t.Fatalf("ops is nil")
 				}
-				if len(res.FederationEntities) != len(test.expectedOPs) {
+				if len(res.Entities) != len(test.expectedOPs) {
 					t.Errorf("discovered OPs does not match expected OPs")
 					t.Errorf("Expected: %+v", test.expectedOPs)
 					t.Error("Discovered:")
-					for _, op := range res.FederationEntities {
+					for _, op := range res.Entities {
 						t.Error(op.EntityID)
 					}
 					t.FailNow()
 				}
-				for _, op := range res.FederationEntities {
+				for _, op := range res.Entities {
 					if !sliceutils.SliceContains(op.EntityID, test.expectedOPs) {
 						t.Errorf("discovered OPs does not match expected OPs")
 						t.Errorf("discovered: %+v", op.EntityID)

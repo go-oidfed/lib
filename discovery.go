@@ -30,10 +30,10 @@ const defaultSubordinateListingCacheTime = time.Hour
 // EntityCollectionResponse is a type describing the response of an entity
 // collection request
 type EntityCollectionResponse struct {
-	FederationEntities []*CollectedEntity `json:"federation_entities"`
-	Next               string             `json:"next,omitempty"`
-	LastUpdated        *unixtime.Unixtime `json:"last_updated,omitempty"`
-	Extra              map[string]any     `json:"-"`
+	Entities    []*CollectedEntity `json:"entities"`
+	Next        string             `json:"next,omitempty"`
+	LastUpdated *unixtime.Unixtime `json:"last_updated,omitempty"`
+	Extra       map[string]any     `json:"-"`
 }
 
 // CollectedEntity is a type describing a single collected entity
@@ -247,7 +247,7 @@ func (d *SimpleEntityCollector) CollectEntities(req apimodel.EntityCollectionReq
 	d.visitedEntities = newMutexedStrSet()
 	entities := d.collect(req, NewTrustAnchorsFromEntityIDs(req.TrustAnchor)...)
 	return &EntityCollectionResponse{
-		FederationEntities: entities,
+		Entities: entities,
 	}, nil
 }
 
@@ -368,7 +368,7 @@ func (d *filterableVerifiedChainsEntityCollector) CollectEntities(req apimodel.E
 		return nil, errRes
 	}
 	var filteredEntities []*CollectedEntity
-	for _, e := range res.FederationEntities {
+	for _, e := range res.Entities {
 		var approved bool
 		for _, f := range d.Filters {
 			if approved = f.Filter(e); !approved {
@@ -379,7 +379,7 @@ func (d *filterableVerifiedChainsEntityCollector) CollectEntities(req apimodel.E
 			filteredEntities = append(filteredEntities, e)
 		}
 	}
-	res.FederationEntities = filteredEntities
+	res.Entities = filteredEntities
 	return res, nil
 }
 
@@ -634,8 +634,8 @@ func (c SimpleRemoteEntityCollector) CollectEntities(req apimodel.EntityCollecti
 		lastUpdated = pageRes.LastUpdated
 
 		// Append all fetched entities from this page
-		if len(pageRes.FederationEntities) > 0 {
-			combined = append(combined, pageRes.FederationEntities...)
+		if len(pageRes.Entities) > 0 {
+			combined = append(combined, pageRes.Entities...)
 		}
 
 		if pageRes.Next == "" {
@@ -646,8 +646,8 @@ func (c SimpleRemoteEntityCollector) CollectEntities(req apimodel.EntityCollecti
 	}
 
 	return &EntityCollectionResponse{
-		FederationEntities: combined,
-		LastUpdated:        lastUpdated,
+		Entities:    combined,
+		LastUpdated: lastUpdated,
 	}, nil
 }
 

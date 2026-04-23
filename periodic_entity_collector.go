@@ -191,9 +191,9 @@ func (p *PeriodicEntityCollector) CollectEntities(req apimodel.EntityCollectionR
 		go preparePaginatedResponses(req, others, &cc.LastUpdated, p.Interval)
 	}
 	res = EntityCollectionResponse{
-		FederationEntities: entities,
-		LastUpdated:        &cc.LastUpdated,
-		Next:               nextEntityID,
+		Entities:    entities,
+		LastUpdated: &cc.LastUpdated,
+		Next:        nextEntityID,
 	}
 	if err = cache.Set(cacheRequestKey, res, p.Interval); err != nil {
 		internal.WithError(err).Error("PeriodicEntityCollector cache set error")
@@ -216,9 +216,9 @@ func preparePaginatedResponses(
 			nextEntityID = others[0].EntityID
 		}
 		res := EntityCollectionResponse{
-			FederationEntities: entities,
-			LastUpdated:        lastUpdated,
-			Next:               nextEntityID,
+			Entities:    entities,
+			LastUpdated: lastUpdated,
+			Next:        nextEntityID,
 		}
 		req.From = entities[0].EntityID
 		reqHash, err := utils.HashStruct(req)
@@ -277,12 +277,12 @@ func (p *PeriodicEntityCollector) runOnce() {
 				return
 			}
 			if p.SortEntitiesComparisonFunc != nil {
-				slices.SortFunc(res.FederationEntities, p.SortEntitiesComparisonFunc)
+				slices.SortFunc(res.Entities, p.SortEntitiesComparisonFunc)
 			}
 			if err := cache.Set(
 				cache.Key(periodicCacheSubsystem, cacheSubSubSystemAll, trustAnchor),
 				cachedCollection{
-					Entities:    res.FederationEntities,
+					Entities:    res.Entities,
 					LastUpdated: unixtime.Now(),
 				},
 				p.Interval,
@@ -291,8 +291,8 @@ func (p *PeriodicEntityCollector) runOnce() {
 			}
 
 			// Notify handler for proactive resolve generation.
-			if p.Handler != nil && len(res.FederationEntities) > 0 {
-				p.Handler.OnDiscoveredEntities(trustAnchor, res.FederationEntities)
+			if p.Handler != nil && len(res.Entities) > 0 {
+				p.Handler.OnDiscoveredEntities(trustAnchor, res.Entities)
 			}
 		}(ta)
 	}
