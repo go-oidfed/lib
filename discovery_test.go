@@ -102,7 +102,7 @@ func TestSimpleRemoteEntityCollector_AggregatesRemotePagination(t *testing.T) {
 	// Paginated responder handling three pages
 	httpmock.RegisterResponder(
 		"GET", endpoint, func(req *http.Request) (*http.Response, error) {
-			from := req.URL.Query().Get("from_entity_id")
+			from := req.URL.Query().Get("from")
 			var res EntityCollectionResponse
 			switch from {
 			case "":
