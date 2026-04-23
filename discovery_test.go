@@ -111,7 +111,7 @@ func TestSimpleRemoteEntityCollector_AggregatesRemotePagination(t *testing.T) {
 						all[0],
 						all[1],
 					},
-					NextEntityID: all[2].EntityID,
+					Next: all[2].EntityID,
 				}
 			case all[2].EntityID:
 				res = EntityCollectionResponse{
@@ -119,7 +119,7 @@ func TestSimpleRemoteEntityCollector_AggregatesRemotePagination(t *testing.T) {
 						all[2],
 						all[3],
 					},
-					NextEntityID: all[4].EntityID,
+					Next: all[4].EntityID,
 				}
 			case all[4].EntityID:
 				res = EntityCollectionResponse{
@@ -145,8 +145,8 @@ func TestSimpleRemoteEntityCollector_AggregatesRemotePagination(t *testing.T) {
 	if len(res.FederationEntities) != len(all) {
 		t.Fatalf("expected %d entities, got %d", len(all), len(res.FederationEntities))
 	}
-	if res.NextEntityID != "" {
-		t.Fatalf("expected no pagination in final response, got next_entity_id=%q", res.NextEntityID)
+	if res.Next != "" {
+		t.Fatalf("expected no pagination in final response, got next_entity_id=%q", res.Next)
 	}
 	for i, e := range res.FederationEntities {
 		if e.EntityID != all[i].EntityID {
@@ -165,8 +165,8 @@ func TestSimpleRemoteEntityCollector_AggregatesRemotePagination(t *testing.T) {
 	if len(res2.FederationEntities) != len(all) {
 		t.Fatalf("expected %d entities with limit, got %d", len(all), len(res2.FederationEntities))
 	}
-	if res2.NextEntityID != "" {
-		t.Fatalf("expected no pagination in final response (limit), got next_entity_id=%q", res2.NextEntityID)
+	if res2.Next != "" {
+		t.Fatalf("expected no pagination in final response (limit), got next_entity_id=%q", res2.Next)
 	}
 }
 

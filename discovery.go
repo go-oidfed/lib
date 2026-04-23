@@ -31,7 +31,7 @@ const defaultSubordinateListingCacheTime = time.Hour
 // collection request
 type EntityCollectionResponse struct {
 	FederationEntities []*CollectedEntity `json:"federation_entities"`
-	NextEntityID       string             `json:"next_entity_id,omitempty"`
+	Next               string             `json:"next,omitempty"`
 	LastUpdated        *unixtime.Unixtime `json:"last_updated,omitempty"`
 	Extra              map[string]any     `json:"-"`
 }
@@ -638,11 +638,11 @@ func (c SimpleRemoteEntityCollector) CollectEntities(req apimodel.EntityCollecti
 			combined = append(combined, pageRes.FederationEntities...)
 		}
 
-		if pageRes.NextEntityID == "" {
+		if pageRes.Next == "" {
 			break
 		}
 		// Advance to next page
-		currReq.FromEntityID = pageRes.NextEntityID
+		currReq.From = pageRes.Next
 	}
 
 	return &EntityCollectionResponse{

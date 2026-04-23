@@ -5,7 +5,7 @@ package apimodel
 // trust mark types, and UI claims. It also supports filtering UI claims by
 // language tags according to BCP47 (RFC5646).
 type EntityCollectionRequest struct {
-	FromEntityID   string   `json:"from_entity_id" form:"from_entity_id" query:"from_entity_id" url:"from_entity_id"`
+	From           string   `json:"from" form:"from" query:"from" url:"from"`
 	Limit          int      `json:"limit" form:"limit" query:"limit" url:"limit"`
 	EntityTypes    []string `json:"entity_type" form:"entity_type" query:"entity_type" url:"entity_type"`
 	TrustMarkTypes []string `json:"trust_mark_type" form:"trust_mark_type" query:"trust_mark_type" url:"trust_mark_type"`

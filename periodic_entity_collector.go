@@ -171,9 +171,9 @@ func (p *PeriodicEntityCollector) CollectEntities(req apimodel.EntityCollectionR
 		}
 	}
 	entities := FilterAndTrimEntities(cc.Entities, req)
-	if req.FromEntityID != "" {
+	if req.From != "" {
 		n, found := slices.BinarySearchFunc(
-			entities, &CollectedEntity{EntityID: req.FromEntityID}, p.SortEntitiesComparisonFunc,
+			entities, &CollectedEntity{EntityID: req.From}, p.SortEntitiesComparisonFunc,
 		)
 		if !found {
 			return nil, &ErrorResponse{
@@ -193,7 +193,7 @@ func (p *PeriodicEntityCollector) CollectEntities(req apimodel.EntityCollectionR
 	res = EntityCollectionResponse{
 		FederationEntities: entities,
 		LastUpdated:        &cc.LastUpdated,
-		NextEntityID:       nextEntityID,
+		Next:               nextEntityID,
 	}
 	if err = cache.Set(cacheRequestKey, res, p.Interval); err != nil {
 		internal.WithError(err).Error("PeriodicEntityCollector cache set error")
@@ -218,9 +218,9 @@ func preparePaginatedResponses(
 		res := EntityCollectionResponse{
 			FederationEntities: entities,
 			LastUpdated:        lastUpdated,
-			NextEntityID:       nextEntityID,
+			Next:               nextEntityID,
 		}
-		req.FromEntityID = entities[0].EntityID
+		req.From = entities[0].EntityID
 		reqHash, err := utils.HashStruct(req)
 		if err != nil {
 			internal.WithError(err).Error("PeriodicEntityCollector: error while hashing request")
