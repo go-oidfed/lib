@@ -16,6 +16,5 @@ type EntityCollectionRequest struct {
 	// LanguageTags specifies the preferred language tags according to BCP47 (RFC5646)
 	// If provided, UI claims will be filtered to include only these languages
 	// If not provided, all available languages will be included in the response
-	// Multiple values can be provided in order of preference
-	LanguageTags []string `json:"language_tags" form:"language_tags" query:"language_tags" url:"language_tags"`
+	LanguageTags []string `json:"language_tag" form:"language_tag" query:"language_tag" url:"language_tag"`
 }
