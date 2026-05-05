@@ -597,7 +597,18 @@ func applyPolicy(metadata any, policy MetadataPolicy, ownTag string) (any, error
 			continue
 		}
 		f := reflect.Indirect(v).Field(i)
-		value, err := p.ApplyTo(f.Interface(), wasSet[t.Field(i).Name], fmt.Sprintf("%s.%s", ownTag, j))
+		fieldValue := f.Interface()
+		valueSet := wasSet[t.Field(i).Name]
+
+		// Special handling for Scope: convert space-delimited string to []string before applying policy
+		if t.Field(i).Name == "Scope" {
+			if scopeStr, ok := fieldValue.(string); ok && scopeStr != "" {
+				fieldValue = strings.Fields(scopeStr)
+				valueSet = true // Mark as set since we have a non-empty scope value
+			}
+		}
+
+		value, err := p.ApplyTo(fieldValue, valueSet, fmt.Sprintf("%s.%s", ownTag, j))
 		if err != nil {
 			return nil, err
 		}
