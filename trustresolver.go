@@ -235,12 +235,6 @@ func (r *TrustResolver) ResolveToValidChainsWithoutVerifyingMetadata() TrustChai
 
 // resolve starts the trust chain resolution process, building an internal trust tree
 func (r *TrustResolver) resolve() {
-	if found, err := r.cacheGetTrustTree(); err != nil {
-		internal.Log("TrustResolver: " + err.Error())
-	} else if found {
-		internal.Log("TrustResolver: Obtained trust tree from cache")
-		return
-	}
 	if r.StartingEntity == "" {
 		internal.Log("TrustResolver: Resolve: no StartingEntity provided; aborting")
 		return
@@ -263,9 +257,6 @@ func (r *TrustResolver) resolve() {
 	}
 	r.selectedAnchors = r.chooseAnchors(starting)
 	r.trustTree.resolve(r.selectedAnchors)
-	if err = r.cacheSetTrustTree(); err != nil {
-		internal.Log("TrustResolver: " + err.Error())
-	}
 }
 
 // chooseAnchors selects which trust anchors to use based on the provided
@@ -325,9 +316,6 @@ func (r *TrustResolver) verifySignatures() {
 		internal.Log("TrustResolver: VerifySignatures: signature verification failed; clearing trust tree")
 		r.trustTree = trustTree{}
 	}
-	if err := r.cacheSetTrustTree(); err != nil {
-		internal.Log("TrustResolver: " + err.Error())
-	}
 	if r.trustTree.signaturesVerified {
 		internal.Logf(
 			"TrustResolver: VerifySignatures: signature verification succeeded; valid authorities at root: %d",
@@ -379,34 +367,6 @@ func (r TrustResolver) cacheSetTrustChains(chains TrustChains) error {
 	internal.Logf("TrustResolver: Caching trust chains with TTL %s (hash:%s)", ttl, hash)
 	return cache.Set(
 		cache.Key(cache.KeyTrustTreeChains, hash), chains,
-		ttl,
-	)
-}
-
-func (r *TrustResolver) cacheGetTrustTree() (
-	set bool, err error,
-) {
-	hash, err := r.hash()
-	if err != nil {
-		return false, err
-	}
-	set, err = cache.Get(
-		cache.Key(cache.KeyTrustTree, hash), &r.trustTree,
-	)
-	return
-}
-func (r TrustResolver) cacheSetTrustTree() error {
-	hash, err := r.hash()
-	if err != nil {
-		return err
-	}
-	if err = cache.Delete(cache.Key(cache.KeyTrustTreeChains, hash)); err != nil {
-		return err
-	}
-	ttl := unixtime.Until(r.trustTree.expiresAt)
-	internal.Logf("TrustResolver: Caching trust tree with TTL %s (hash:%s)", ttl, hash)
-	return cache.Set(
-		cache.Key(cache.KeyTrustTree, hash), r.trustTree,
 		ttl,
 	)
 }

@@ -96,7 +96,6 @@ const (
 	KeyEntityStatement            = "entity_statement"
 	KeyOPMetadata                 = "op_metadata"
 	KeyEntityConfiguration        = "entity_configuration"
-	KeyTrustTree                  = "trust_tree"
 	KeyTrustTreeChains            = "trust_tree_chains"
 	KeyTrustChainResolvedMetadata = "trustchain_resolved_metadata"
 	KeySubordinateListing         = "subordinate_listing"

@@ -16,7 +16,6 @@ import (
 func TestNegativeResolutionDoesNotPersist(t *testing.T) {
 	// Clear relevant caches to avoid cross-test interference
 	_ = cache.Clear(cache.Key(cache.KeyEntityStatement))
-	_ = cache.Clear(cache.Key(cache.KeyTrustTree))
 	_ = cache.Clear(cache.Key(cache.KeyTrustTreeChains))
 
 	// Build a minimal federation: rp -> ia -> ta

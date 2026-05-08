@@ -17,63 +17,83 @@ type testStruct struct {
 func TestCacheWrapper_SetAndGet(t *testing.T) {
 	c := newCacheWrapper(time.Hour)
 
-	t.Run("string value", func(t *testing.T) {
-		err := c.Set("test-string", "hello", time.Hour)
-		require.NoError(t, err)
+	t.Run(
+		"string value", func(t *testing.T) {
+			err := c.Set("test-string", "hello", time.Hour)
+			require.NoError(t, err)
 
-		var result string
-		found, err := c.Get("test-string", &result)
-		require.NoError(t, err)
-		assert.True(t, found)
-		assert.Equal(t, "hello", result)
-	})
+			var result string
+			found, err := c.Get("test-string", &result)
+			require.NoError(t, err)
+			assert.True(t, found)
+			assert.Equal(t, "hello", result)
+		},
+	)
 
-	t.Run("int value", func(t *testing.T) {
-		err := c.Set("test-int", 42, time.Hour)
-		require.NoError(t, err)
+	t.Run(
+		"int value", func(t *testing.T) {
+			err := c.Set("test-int", 42, time.Hour)
+			require.NoError(t, err)
 
-		var result int
-		found, err := c.Get("test-int", &result)
-		require.NoError(t, err)
-		assert.True(t, found)
-		assert.Equal(t, 42, result)
-	})
+			var result int
+			found, err := c.Get("test-int", &result)
+			require.NoError(t, err)
+			assert.True(t, found)
+			assert.Equal(t, 42, result)
+		},
+	)
 
-	t.Run("struct value", func(t *testing.T) {
-		original := testStruct{Name: "test", Value: 123}
-		err := c.Set("test-struct", original, time.Hour)
-		require.NoError(t, err)
+	t.Run(
+		"struct value", func(t *testing.T) {
+			original := testStruct{
+				Name:  "test",
+				Value: 123,
+			}
+			err := c.Set("test-struct", original, time.Hour)
+			require.NoError(t, err)
 
-		var result testStruct
-		found, err := c.Get("test-struct", &result)
-		require.NoError(t, err)
-		assert.True(t, found)
-		assert.Equal(t, original, result)
-	})
+			var result testStruct
+			found, err := c.Get("test-struct", &result)
+			require.NoError(t, err)
+			assert.True(t, found)
+			assert.Equal(t, original, result)
+		},
+	)
 
-	t.Run("slice value", func(t *testing.T) {
-		original := []string{"a", "b", "c"}
-		err := c.Set("test-slice", original, time.Hour)
-		require.NoError(t, err)
+	t.Run(
+		"slice value", func(t *testing.T) {
+			original := []string{
+				"a",
+				"b",
+				"c",
+			}
+			err := c.Set("test-slice", original, time.Hour)
+			require.NoError(t, err)
 
-		var result []string
-		found, err := c.Get("test-slice", &result)
-		require.NoError(t, err)
-		assert.True(t, found)
-		assert.Equal(t, original, result)
-	})
+			var result []string
+			found, err := c.Get("test-slice", &result)
+			require.NoError(t, err)
+			assert.True(t, found)
+			assert.Equal(t, original, result)
+		},
+	)
 
-	t.Run("map value", func(t *testing.T) {
-		original := map[string]int{"a": 1, "b": 2}
-		err := c.Set("test-map", original, time.Hour)
-		require.NoError(t, err)
+	t.Run(
+		"map value", func(t *testing.T) {
+			original := map[string]int{
+				"a": 1,
+				"b": 2,
+			}
+			err := c.Set("test-map", original, time.Hour)
+			require.NoError(t, err)
 
-		var result map[string]int
-		found, err := c.Get("test-map", &result)
-		require.NoError(t, err)
-		assert.True(t, found)
-		assert.Equal(t, original, result)
-	})
+			var result map[string]int
+			found, err := c.Get("test-map", &result)
+			require.NoError(t, err)
+			assert.True(t, found)
+			assert.Equal(t, original, result)
+		},
+	)
 }
 
 func TestCacheWrapper_GetMiss(t *testing.T) {
@@ -136,32 +156,40 @@ func TestCacheWrapper_Clear(t *testing.T) {
 func TestNoopCache(t *testing.T) {
 	c := noopCache{}
 
-	t.Run("Get always misses", func(t *testing.T) {
-		var result string
-		found, err := c.Get("any-key", &result)
-		assert.NoError(t, err)
-		assert.False(t, found)
-	})
+	t.Run(
+		"Get always misses", func(t *testing.T) {
+			var result string
+			found, err := c.Get("any-key", &result)
+			assert.NoError(t, err)
+			assert.False(t, found)
+		},
+	)
 
-	t.Run("Set does nothing", func(t *testing.T) {
-		err := c.Set("key", "value", time.Hour)
-		assert.NoError(t, err)
+	t.Run(
+		"Set does nothing", func(t *testing.T) {
+			err := c.Set("key", "value", time.Hour)
+			assert.NoError(t, err)
 
-		// Verify nothing was stored
-		var result string
-		found, _ := c.Get("key", &result)
-		assert.False(t, found)
-	})
+			// Verify nothing was stored
+			var result string
+			found, _ := c.Get("key", &result)
+			assert.False(t, found)
+		},
+	)
 
-	t.Run("Delete does nothing", func(t *testing.T) {
-		err := c.Delete("key")
-		assert.NoError(t, err)
-	})
+	t.Run(
+		"Delete does nothing", func(t *testing.T) {
+			err := c.Delete("key")
+			assert.NoError(t, err)
+		},
+	)
 
-	t.Run("Clear does nothing", func(t *testing.T) {
-		err := c.Clear("prefix")
-		assert.NoError(t, err)
-	})
+	t.Run(
+		"Clear does nothing", func(t *testing.T) {
+			err := c.Clear("prefix")
+			assert.NoError(t, err)
+		},
+	)
 }
 
 func TestUseNoopCache(t *testing.T) {
@@ -193,13 +221,21 @@ func TestKey(t *testing.T) {
 			expected: "entity_statement",
 		},
 		{
-			name:     "two parts",
-			parts:    []string{"entity_statement", "abc123"},
+			name: "two parts",
+			parts: []string{
+				"entity_statement",
+				"abc123",
+			},
 			expected: "entity_statement:abc123",
 		},
 		{
-			name:     "multiple parts",
-			parts:    []string{"a", "b", "c", "d"},
+			name: "multiple parts",
+			parts: []string{
+				"a",
+				"b",
+				"c",
+				"d",
+			},
 			expected: "a:b:c:d",
 		},
 		{
@@ -210,10 +246,12 @@ func TestKey(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			result := Key(tt.parts...)
-			assert.Equal(t, tt.expected, result)
-		})
+		t.Run(
+			tt.name, func(t *testing.T) {
+				result := Key(tt.parts...)
+				assert.Equal(t, tt.expected, result)
+			},
+		)
 	}
 }
 
@@ -242,42 +280,48 @@ func TestPackageLevelFunctions(t *testing.T) {
 
 	SetCache(newCacheWrapper(time.Hour))
 
-	t.Run("Set and Get", func(t *testing.T) {
-		err := Set("pkg-test-key", "pkg-test-value", time.Hour)
-		require.NoError(t, err)
+	t.Run(
+		"Set and Get", func(t *testing.T) {
+			err := Set("pkg-test-key", "pkg-test-value", time.Hour)
+			require.NoError(t, err)
 
-		var result string
-		found, err := Get("pkg-test-key", &result)
-		require.NoError(t, err)
-		assert.True(t, found)
-		assert.Equal(t, "pkg-test-value", result)
-	})
+			var result string
+			found, err := Get("pkg-test-key", &result)
+			require.NoError(t, err)
+			assert.True(t, found)
+			assert.Equal(t, "pkg-test-value", result)
+		},
+	)
 
-	t.Run("Delete", func(t *testing.T) {
-		err := Set("pkg-delete-key", "value", time.Hour)
-		require.NoError(t, err)
+	t.Run(
+		"Delete", func(t *testing.T) {
+			err := Set("pkg-delete-key", "value", time.Hour)
+			require.NoError(t, err)
 
-		err = Delete("pkg-delete-key")
-		require.NoError(t, err)
+			err = Delete("pkg-delete-key")
+			require.NoError(t, err)
 
-		var result string
-		found, _ := Get("pkg-delete-key", &result)
-		assert.False(t, found)
-	})
+			var result string
+			found, _ := Get("pkg-delete-key", &result)
+			assert.False(t, found)
+		},
+	)
 
-	t.Run("Clear", func(t *testing.T) {
-		require.NoError(t, Set("pkg-clear:a", "1", time.Hour))
-		require.NoError(t, Set("pkg-clear:b", "2", time.Hour))
+	t.Run(
+		"Clear", func(t *testing.T) {
+			require.NoError(t, Set("pkg-clear:a", "1", time.Hour))
+			require.NoError(t, Set("pkg-clear:b", "2", time.Hour))
 
-		err := Clear("pkg-clear:")
-		require.NoError(t, err)
+			err := Clear("pkg-clear:")
+			require.NoError(t, err)
 
-		var result string
-		found, _ := Get("pkg-clear:a", &result)
-		assert.False(t, found)
-		found, _ = Get("pkg-clear:b", &result)
-		assert.False(t, found)
-	})
+			var result string
+			found, _ := Get("pkg-clear:a", &result)
+			assert.False(t, found)
+			found, _ = Get("pkg-clear:b", &result)
+			assert.False(t, found)
+		},
+	)
 }
 
 func TestSetMaxLifetime(t *testing.T) {
@@ -291,44 +335,50 @@ func TestSetMaxLifetime(t *testing.T) {
 
 	SetCache(newCacheWrapper(time.Hour))
 
-	t.Run("clamps TTL when max is set", func(t *testing.T) {
-		SetMaxLifetime(time.Minute)
+	t.Run(
+		"clamps TTL when max is set", func(t *testing.T) {
+			SetMaxLifetime(time.Minute)
 
-		// Even though we request 1 hour, it should be clamped
-		err := Set("max-lifetime-test", "value", time.Hour)
-		require.NoError(t, err)
+			// Even though we request 1 hour, it should be clamped
+			err := Set("max-lifetime-test", "value", time.Hour)
+			require.NoError(t, err)
 
-		// Value should still be retrievable
-		var result string
-		found, err := Get("max-lifetime-test", &result)
-		require.NoError(t, err)
-		assert.True(t, found)
-		assert.Equal(t, "value", result)
-	})
+			// Value should still be retrievable
+			var result string
+			found, err := Get("max-lifetime-test", &result)
+			require.NoError(t, err)
+			assert.True(t, found)
+			assert.Equal(t, "value", result)
+		},
+	)
 
-	t.Run("no clamping when max is zero", func(t *testing.T) {
-		SetMaxLifetime(0)
+	t.Run(
+		"no clamping when max is zero", func(t *testing.T) {
+			SetMaxLifetime(0)
 
-		err := Set("no-max-test", "value", time.Hour)
-		require.NoError(t, err)
+			err := Set("no-max-test", "value", time.Hour)
+			require.NoError(t, err)
 
-		var result string
-		found, err := Get("no-max-test", &result)
-		require.NoError(t, err)
-		assert.True(t, found)
-	})
+			var result string
+			found, err := Get("no-max-test", &result)
+			require.NoError(t, err)
+			assert.True(t, found)
+		},
+	)
 
-	t.Run("no clamping when TTL is less than max", func(t *testing.T) {
-		SetMaxLifetime(time.Hour)
+	t.Run(
+		"no clamping when TTL is less than max", func(t *testing.T) {
+			SetMaxLifetime(time.Hour)
 
-		err := Set("under-max-test", "value", time.Minute)
-		require.NoError(t, err)
+			err := Set("under-max-test", "value", time.Minute)
+			require.NoError(t, err)
 
-		var result string
-		found, err := Get("under-max-test", &result)
-		require.NoError(t, err)
-		assert.True(t, found)
-	})
+			var result string
+			found, err := Get("under-max-test", &result)
+			require.NoError(t, err)
+			assert.True(t, found)
+		},
+	)
 }
 
 func TestSetCache(t *testing.T) {
@@ -382,7 +432,6 @@ func TestCacheConstants(t *testing.T) {
 	assert.NotEmpty(t, KeyEntityStatement)
 	assert.NotEmpty(t, KeyOPMetadata)
 	assert.NotEmpty(t, KeyEntityConfiguration)
-	assert.NotEmpty(t, KeyTrustTree)
 	assert.NotEmpty(t, KeyTrustTreeChains)
 	assert.NotEmpty(t, KeyTrustChainResolvedMetadata)
 	assert.NotEmpty(t, KeySubordinateListing)
