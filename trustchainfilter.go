@@ -2,10 +2,23 @@ package oidfed
 
 import (
 	"sort"
+
+	"github.com/go-oidfed/lib/unixtime"
 )
 
 // TrustChains is a slice of multiple TrustChain
 type TrustChains []TrustChain
+
+// MinExpiresAt returns the earliest expiration time of all TrustChains in the TrustChains
+func (c TrustChains) MinExpiresAt() (minExpiration unixtime.Unixtime) {
+	for _, cc := range c {
+		chainExpiration := cc.ExpiresAt()
+		if minExpiration.IsZero() || chainExpiration.Before(minExpiration.Time) {
+			minExpiration = chainExpiration
+		}
+	}
+	return
+}
 
 // Filter filters multiple TrustChains with the passed TrustChainsFilter to a subset
 func (c TrustChains) Filter(filter ...TrustChainsFilter) TrustChains {

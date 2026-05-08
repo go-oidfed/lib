@@ -363,7 +363,7 @@ func (r TrustResolver) cacheSetTrustChains(chains TrustChains) error {
 	if err != nil {
 		return err
 	}
-	ttl := unixtime.Until(r.trustTree.expiresAt)
+	ttl := unixtime.Until(chains.MinExpiresAt())
 	internal.Logf("TrustResolver: Caching trust chains with TTL %s (hash:%s)", ttl, hash)
 	return cache.Set(
 		cache.Key(cache.KeyTrustTreeChains, hash), chains,
@@ -377,7 +377,6 @@ type trustTree struct {
 	Subordinate         *EntityStatement
 	Authorities         []trustTree
 	signaturesVerified  bool
-	expiresAt           unixtime.Unixtime
 	depth               int
 	includedEntityTypes *strset.Set
 	subordinateIDs      *strset.Set
@@ -388,8 +387,6 @@ func (t *trustTree) resolve(anchors []string) {
 		return
 	}
 
-	t.updateExpirationTime()
-
 	// Early return if the entity is issued by a trust anchor
 	if sliceutils.SliceContains(t.Entity.Issuer, anchors) {
 		internal.Logf("TrustResolver: resolve: entity %s is issued by a trust anchor; early return", t.Entity.Issuer)
@@ -397,13 +394,6 @@ func (t *trustTree) resolve(anchors []string) {
 	}
 
 	t.resolveAuthorities(anchors)
-}
-
-func (t *trustTree) updateExpirationTime() {
-	if t.expiresAt.IsZero() || t.expiresAt.Unix() == 0 || t.Entity.ExpiresAt.
-		Before(t.expiresAt.Time) {
-		t.expiresAt = t.Entity.ExpiresAt
-	}
 }
 
 func (t *trustTree) resolveAuthorities(anchors []string) {
@@ -508,9 +498,6 @@ func (t *trustTree) resolveAuthority(authorityID string, anchors []string) (trus
 		t.Entity.Issuer,
 	)
 
-	t.updateExpirationTimeFromSubordinate(subordinateStmt)
-	internal.Logf("TrustResolver: resolveAuthority: updated expiration to %v after subordinate stmt", t.expiresAt)
-
 	subtree := t.createAuthorityTrustTree(authorityStmt, subordinateStmt, authorityID, anchors)
 	internal.Logf(
 		"TrustResolver: resolveAuthority: created subtree for authority %s at depth %d (authorities: %d)", authorityID,
@@ -548,12 +535,6 @@ func isValidSubordinateStatement(stmt *EntityStatement, authorityID, entityIssue
 	return stmt.Issuer == authorityID &&
 		stmt.Subject == entityIssuer &&
 		stmt.TimeValid()
-}
-
-func (t *trustTree) updateExpirationTimeFromSubordinate(subordinateStmt *EntityStatement) {
-	if subordinateStmt.ExpiresAt.Before(t.expiresAt.Time) {
-		t.expiresAt = subordinateStmt.ExpiresAt
-	}
 }
 
 func (t *trustTree) createAuthorityTrustTree(
