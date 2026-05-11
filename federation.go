@@ -43,16 +43,17 @@ type FederationLeaf struct {
 // DynamicFederationEntity mirrors FederationEntity but exposes all properties
 // (except EntityID) as functions of time, enabling time-dependent values.
 type DynamicFederationEntity struct {
-	ID                    string
-	Metadata              func() (*Metadata, error)
-	AuthorityHints        func() ([]string, error)
-	TrustAnchorHints      func() ([]string, error)
-	ConfigurationLifetime func() (time.Duration, error)
-	EntityStatementSigner func() (*jwx.EntityStatementSigner, error)
-	TrustMarks            func() ([]*EntityConfigurationTrustMarkConfig, error)
-	TrustMarkIssuers      func() (AllowedTrustMarkIssuers, error)
-	TrustMarkOwners       func() (TrustMarkOwners, error)
-	Extra                 func() (map[string]any, []string, error)
+	ID                             string
+	Metadata                       func() (*Metadata, error)
+	AuthorityHints                 func() ([]string, error)
+	TrustAnchorHints               func() ([]string, error)
+	ConfigurationLifetime          func() (time.Duration, error)
+	EntityStatementSigner          func() (*jwx.EntityStatementSigner, error)
+	TrustMarks                     func() ([]*EntityConfigurationTrustMarkConfig, error)
+	TrustMarkIssuers               func() (AllowedTrustMarkIssuers, error)
+	TrustMarkOwners                func() (TrustMarkOwners, error)
+	Extra                          func() (map[string]any, []string, error)
+	ShouldApplyInformationalClaims func() (bool, error)
 }
 
 // EntityID returns the entity ID of the DynamicFederationEntity
@@ -157,7 +158,13 @@ func (f DynamicFederationEntity) EntityConfigurationPayload() (*EntityStatementP
 	}
 
 	if metadata != nil {
-		metadata.ApplyInformationalClaimsToFederationEntity()
+		if f.ShouldApplyInformationalClaims == nil {
+			metadata.ApplyInformationalClaimsToFederationEntity()
+		} else if shouldApply, err := f.ShouldApplyInformationalClaims(); err != nil {
+			internal.Logf("Failed to determine if informational claims should be applied: %v", err)
+		} else if shouldApply {
+			metadata.ApplyInformationalClaimsToFederationEntity()
+		}
 	}
 
 	var jwks jwx.JWKS
@@ -270,11 +277,12 @@ type StaticFederationEntity struct {
 	TrustAnchorHints      []string
 	ConfigurationLifetime time.Duration
 	*jwx.EntityStatementSigner
-	TrustMarks       []*EntityConfigurationTrustMarkConfig
-	TrustMarkIssuers AllowedTrustMarkIssuers
-	TrustMarkOwners  TrustMarkOwners
-	Extra            map[string]any
-	CriticalClaims   []string
+	TrustMarks                     []*EntityConfigurationTrustMarkConfig
+	TrustMarkIssuers               AllowedTrustMarkIssuers
+	TrustMarkOwners                TrustMarkOwners
+	Extra                          map[string]any
+	CriticalClaims                 []string
+	ShouldApplyInformationalClaims bool
 }
 
 // EntityID returns the entity ID of the StaticFederationEntity
@@ -307,7 +315,12 @@ func (f StaticFederationEntity) EntityConfigurationPayload() (*EntityStatementPa
 		TrustMarkOwners: func() (TrustMarkOwners, error) {
 			return f.TrustMarkOwners, nil
 		},
-		Extra: func() (map[string]any, []string, error) { return f.Extra, f.CriticalClaims, nil },
+		Extra: func() (
+			map[string]any, []string, error,
+		) {
+			return f.Extra, f.CriticalClaims, nil
+		},
+		ShouldApplyInformationalClaims: func() (bool, error) { return f.ShouldApplyInformationalClaims, nil },
 	}.EntityConfigurationPayload()
 }
 
