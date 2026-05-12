@@ -350,9 +350,12 @@ var policyOperatorEssential = NewPolicyOperator(
 		if policyValue == nil {
 			return value, valueSet, nil
 		}
-		if essential, eok := policyValue.(bool); eok && essential &&
-			(value == nil || (!utils.IsSlice(value) && reflect.ValueOf(value).IsZero())) {
-			return nil, valueSet, errors.Errorf("metadata value for '%s' not set but required", pathInfo)
+		if essential, eok := policyValue.(bool); eok && essential {
+			isNotSet := !valueSet && (value == nil || (utils.IsSlice(value) && reflect.ValueOf(value).IsNil()) || (!utils.IsSlice(value) && reflect.ValueOf(value).IsZero()))
+			isEmptyNonSlice := valueSet && !utils.IsSlice(value) && reflect.ValueOf(value).IsZero()
+			if isNotSet || isEmptyNonSlice {
+				return nil, valueSet, errors.Errorf("metadata value for '%s' not set but required", pathInfo)
+			}
 		}
 		return value, valueSet, nil
 	},
