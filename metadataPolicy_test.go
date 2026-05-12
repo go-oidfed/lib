@@ -167,3 +167,91 @@ func TestMergeAndApplyMetadataPolicies(t *testing.T) {
 		)
 	}
 }
+
+func TestContactsEssentialPolicy(t *testing.T) {
+	tests := []struct {
+		name             string
+		policy           MetadataPolicy
+		metadata         OpenIDRelyingPartyMetadata
+		expectedContacts []string
+		expectError      bool
+	}{
+		{
+			name: "contacts essential true with contacts provided",
+			policy: MetadataPolicy{
+				"contacts": MetadataPolicyEntry{
+					"essential": true,
+				},
+			},
+			metadata: OpenIDRelyingPartyMetadata{
+				Contacts: []string{"contact@example.com"},
+			},
+			expectedContacts: []string{"contact@example.com"},
+			expectError:      false,
+		},
+		{
+			name: "contacts essential true without empty contacts",
+			policy: MetadataPolicy{
+				"contacts": MetadataPolicyEntry{
+					"essential": true,
+				},
+			},
+			metadata:         OpenIDRelyingPartyMetadata{Contacts: []string{}},
+			expectedContacts: []string{},
+			expectError:      false,
+		},
+		{
+			name: "contacts essential true without contacts",
+			policy: MetadataPolicy{
+				"contacts": MetadataPolicyEntry{
+					"essential": true,
+				},
+			},
+			metadata:         OpenIDRelyingPartyMetadata{},
+			expectedContacts: nil,
+			expectError:      true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(
+			tt.name, func(t *testing.T) {
+				result, err := applyPolicy(&tt.metadata, tt.policy, "")
+				if tt.expectError {
+					if err == nil {
+						t.Fatalf("expected error, but got none")
+					}
+					return
+				}
+				if err != nil {
+					t.Fatalf("unexpected error: %v", err)
+				}
+
+				resolved, ok := result.(*OpenIDRelyingPartyMetadata)
+				if !ok {
+					t.Fatalf("result is not OpenIDRelyingPartyMetadata")
+				}
+
+				if len(tt.expectedContacts) == 0 && len(resolved.Contacts) == 0 {
+					return
+				}
+
+				if len(tt.expectedContacts) != len(resolved.Contacts) {
+					t.Fatalf(
+						"contacts length mismatch: expected %d, got %d",
+						len(tt.expectedContacts), len(resolved.Contacts),
+					)
+				}
+
+				for i, expected := range tt.expectedContacts {
+					if resolved.Contacts[i] != expected {
+						t.Fatalf(
+							"contacts mismatch at index %d: expected %s, got %s",
+							i, expected, resolved.Contacts[i],
+						)
+					}
+				}
+			},
+		)
+	}
+}
