@@ -24,11 +24,12 @@ const (
 
 // Constants for entity types
 const (
-	EntityTypeFederationEntity       = "federation_entity"
-	EntityTypeOpenIDRelyingParty     = "openid_relying_party"
-	EntityTypeOpenIDProvider         = "openid_provider"
-	EntityTypeOAuthClient            = "oauth_client"
-	EntityTypeOAuthProtectedResource = "oauth_resource"
+	EntityTypeFederationEntity         = "federation_entity"
+	EntityTypeOpenIDRelyingParty       = "openid_relying_party"
+	EntityTypeOpenIDProvider           = "openid_provider"
+	EntityTypeOAuthAuthorizationServer = "oauth_authorization_server"
+	EntityTypeOAuthClient              = "oauth_client"
+	EntityTypeOAuthProtectedResource   = "oauth_resource"
 )
 
 // Constants for registration types
