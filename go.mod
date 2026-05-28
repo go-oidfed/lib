@@ -1,9 +1,9 @@
 module github.com/go-oidfed/lib
 
-go 1.25.1
+go 1.25.8
 
 require (
-	github.com/ThalesGroup/crypto11 v1.6.0
+	github.com/ThalesGroup/crypto11 v1.6.1
 	github.com/TwiN/gocache/v2 v2.4.0
 	github.com/adam-hanna/arrayOperations v1.0.1
 	github.com/coreos/go-oidc/v3 v3.18.0
@@ -48,7 +48,7 @@ require (
 	github.com/mattn/go-colorable v0.1.13 // indirect
 	github.com/mattn/go-isatty v0.0.20 // indirect
 	github.com/mattn/go-runewidth v0.0.16 // indirect
-	github.com/miekg/pkcs11 v1.1.1 // indirect
+	github.com/miekg/pkcs11 v1.1.2 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
 	github.com/rivo/uniseg v0.2.0 // indirect
 	github.com/rogpeppe/go-internal v1.13.1 // indirect
