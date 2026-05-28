@@ -255,3 +255,69 @@ func TestContactsEssentialPolicy(t *testing.T) {
 		)
 	}
 }
+
+func TestMetadataPoliciesUnmarshalWithUnknownEntityType(t *testing.T) {
+	input := `{"federation_entity":{"display_name":{"essential":true}},"openid_provider":{"display_name":{"essential":true},"scope":{"superset_of":["openid","profile","email"]}},"wallet_provider":{"other_claim":{"essential":true}}}`
+
+	var mp MetadataPolicies
+	err := json.Unmarshal([]byte(input), &mp)
+	if err != nil {
+		t.Fatalf("failed to unmarshal: %v", err)
+	}
+
+	if _, ok := mp.Extra["wallet_provider"]; !ok {
+		t.Fatal("expected 'wallet_provider' in Extra, but not found")
+	}
+
+	entry := mp.Extra["wallet_provider"]["other_claim"]
+	if entry["essential"] != true {
+		t.Fatalf("expected essential=true, got %v", entry["essential"])
+	}
+}
+
+func TestMetadataPoliciesExtraRoundTrip(t *testing.T) {
+	original := MetadataPolicies{
+		FederationEntity: MetadataPolicy{
+			"display_name": MetadataPolicyEntry{"essential": true},
+		},
+		OpenIDProvider: MetadataPolicy{
+			"scope": MetadataPolicyEntry{"superset_of": []any{"openid", "profile"}},
+		},
+		Extra: map[string]MetadataPolicy{
+			"wallet_provider": {
+				"other_claim": MetadataPolicyEntry{"essential": true},
+			},
+		},
+	}
+
+	data, err := json.Marshal(original)
+	if err != nil {
+		t.Fatalf("failed to marshal: %v", err)
+	}
+
+	var decoded MetadataPolicies
+	err = json.Unmarshal(data, &decoded)
+	if err != nil {
+		t.Fatalf("failed to unmarshal: %v", err)
+	}
+
+	if len(decoded.FederationEntity) != len(original.FederationEntity) {
+		t.Fatalf("FederationEntity length mismatch: expected %d, got %d", len(original.FederationEntity), len(decoded.FederationEntity))
+	}
+	if len(decoded.OpenIDProvider) != len(original.OpenIDProvider) {
+		t.Fatalf("OpenIDProvider length mismatch: expected %d, got %d", len(original.OpenIDProvider), len(decoded.OpenIDProvider))
+	}
+	if len(decoded.Extra) != len(original.Extra) {
+		t.Fatalf("Extra length mismatch: expected %d, got %d", len(original.Extra), len(decoded.Extra))
+	}
+
+	for k, v := range original.Extra {
+		decodedVal, ok := decoded.Extra[k]
+		if !ok {
+			t.Fatalf("expected key %q in Extra, but not found", k)
+		}
+		if len(decodedVal) != len(v) {
+			t.Fatalf("Extra[%q] length mismatch: expected %d, got %d", k, len(v), len(decodedVal))
+		}
+	}
+}

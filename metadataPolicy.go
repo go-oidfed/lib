@@ -42,26 +42,11 @@ func (m MetadataPolicies) MarshalJSON() ([]byte, error) {
 func (m *MetadataPolicies) UnmarshalJSON(data []byte) error {
 	type Alias MetadataPolicies
 	mm := Alias(*m)
-	extra, err := unmarshalWithExtra(data, &mm)
+	extra, err := unmarshalWithExtraTyped[MetadataPolicy](data, &mm)
 	if err != nil {
 		return err
 	}
-
-	// Be careful not to set mm.Extra if there was no extra in the JSON, so that
-	// we don't set the field to an empty map when we want it to be nil.
-	if len(extra) > 0 {
-		policyMap := make(map[string]MetadataPolicy)
-		for k, v := range extra {
-			policy, ok := v.(MetadataPolicy)
-			if !ok {
-				return errors.Errorf("non MetadataPolicy in metadata policies")
-			}
-
-			policyMap[k] = policy
-		}
-
-		mm.Extra = policyMap
-	}
+	mm.Extra = extra
 	*m = MetadataPolicies(mm)
 	return nil
 }

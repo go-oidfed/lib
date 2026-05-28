@@ -133,11 +133,11 @@ func (e EntityStatementPayload) MarshalJSON() ([]byte, error) {
 	return extraMarshalHelper(explicitFields, e.Extra)
 }
 
-func unmarshalWithExtra(data []byte, target interface{}) (map[string]interface{}, error) {
+func unmarshalWithExtraTyped[V any](data []byte, target interface{}) (map[string]V, error) {
 	if err := json.Unmarshal(data, target); err != nil {
 		return nil, errors.WithStack(err)
 	}
-	extra := make(map[string]interface{})
+	extra := make(map[string]V)
 	if err := json.Unmarshal(data, &extra); err != nil {
 		return nil, errors.WithStack(err)
 	}
@@ -148,6 +148,10 @@ func unmarshalWithExtra(data []byte, target interface{}) (map[string]interface{}
 		extra = nil
 	}
 	return extra, nil
+}
+
+func unmarshalWithExtra(data []byte, target interface{}) (map[string]interface{}, error) {
+	return unmarshalWithExtraTyped[any](data, target)
 }
 
 func yamlUnmarshalWithExtra(data *yaml.Node, target interface{}) (map[string]interface{}, error) {
