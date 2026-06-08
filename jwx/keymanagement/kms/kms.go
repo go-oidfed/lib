@@ -161,7 +161,7 @@ func shortenExpirationUntilFuture(
 ) {
 	newExpForOldKey := &unixtime.Unixtime{Time: earliestNbf.Add(overlap)}
 	for _, k := range algPKs {
-		if k.ExpiresAt != nil && k.ExpiresAt.IsZero() || newExpForOldKey.Before(k.ExpiresAt.Time) {
+		if k.ExpiresAt == nil || k.ExpiresAt.IsZero() || newExpForOldKey.Before(k.ExpiresAt.Time) {
 			k.ExpiresAt = newExpForOldKey
 			if uErr := pkStorage.Update(k.KID, k.UpdateablePublicKeyMetadata); uErr != nil {
 				log.WithError(uErr).Error(logPrefix + ": automatic rotation: failed to update old key exp")
@@ -188,4 +188,18 @@ type PendingDefaultChange struct {
 type scheduledState struct {
 	PendingAlgChange     *PendingAlgChange     `json:"pending_alg_change,omitempty"`
 	PendingDefaultChange *PendingDefaultChange `json:"pending_default_change,omitempty"`
+}
+
+// PEMStorer defines the interface for storing and retrieving
+// PEM-encoded private keys by KID
+type PEMStorer interface {
+	ReadPEM(kid string) ([]byte, error)
+	WritePEM(kid string, data []byte) error
+}
+
+// KMSStateStorer defines the interface for persisting scheduled
+// configuration changes (algorithm changes, default algorithm changes)
+type KMSStateStorer interface {
+	LoadScheduledState() (scheduledState, error)
+	SaveScheduledState(scheduledState) error
 }

@@ -39,8 +39,13 @@ func NewSingleAlgPKCS11KMS(
 ) KeyManagementSystem {
 	config.Algs = []jwa.SignatureAlgorithm{alg}
 	config.DefaultAlg = alg
+	stateStorer := &PKCS11StateStorer{
+		StorageDir: config.StorageDir,
+		TypeID:     config.TypeID,
+	}
 	return &PKCS11KMS{
 		PKCS11KMSConfig: config,
+		stateStorer:     stateStorer,
 		PKs:             pks,
 	}
 }
@@ -94,7 +99,8 @@ type PKCS11KMSConfig struct {
 type PKCS11KMS struct {
 	PKCS11KMSConfig
 
-	ctx *crypto11.Context
+	ctx         *crypto11.Context
+	stateStorer KMSStateStorer
 
 	// signers is a map of all loaded signers, keyed by kid
 	signers map[string]crypto.Signer
@@ -341,47 +347,60 @@ func (kms *PKCS11KMS) ChangeDefaultAlgorithmAt(alg jwa.SignatureAlgorithm, effec
 	return nil
 }
 
-// scheduled state helpers (persisted JSON next to filesystem PK storage when available)
-func (kms *PKCS11KMS) stateFilePath() string {
-	if kms.StorageDir != "" {
-		return filepath.Join(kms.StorageDir, "kms_state.json")
+// PKCS11StateStorer implements KMSStateStorer for PKCS#11 KMS
+type PKCS11StateStorer struct {
+	StorageDir string
+	TypeID     string
+}
+
+func (pss *PKCS11StateStorer) stateFilePath() string {
+	if pss.StorageDir != "" {
+		return filepath.Join(pss.StorageDir, "kms_state.json")
 	}
 	base := "kms_state.json"
-	if kms.TypeID != "" {
-		base = fmt.Sprintf("kms_state_%s.json", kms.TypeID)
+	if pss.TypeID != "" {
+		base = fmt.Sprintf("kms_state_%s.json", pss.TypeID)
 	}
 	return base
 }
 
-func (kms *PKCS11KMS) loadScheduledState() (scheduledState, error) {
+func (pss *PKCS11StateStorer) LoadScheduledState() (scheduledState, error) {
 	var st scheduledState
-	f := kms.stateFilePath()
+	f := pss.stateFilePath()
 	b, err := os.ReadFile(f)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return st, nil
+			return scheduledState{}, nil
 		}
-		return st, err
+		return scheduledState{}, err
 	}
 	if len(b) == 0 {
-		return st, nil
+		return scheduledState{}, nil
 	}
 	if err := json.Unmarshal(b, &st); err != nil {
-		return st, err
+		return scheduledState{}, err
 	}
 	return st, nil
 }
 
-func (kms *PKCS11KMS) saveScheduledState(st scheduledState) error {
+func (pss *PKCS11StateStorer) SaveScheduledState(st scheduledState) error {
 	b, err := json.MarshalIndent(st, "", "  ")
 	if err != nil {
 		return err
 	}
-	p := kms.stateFilePath()
+	p := pss.stateFilePath()
 	if err := os.MkdirAll(filepath.Dir(p), 0o700); err != nil {
 		return err
 	}
-	return os.WriteFile(p, b, 0o600)
+	return os.WriteFile(p, b, 0600)
+}
+
+func (kms *PKCS11KMS) loadScheduledState() (scheduledState, error) {
+	return kms.stateStorer.LoadScheduledState()
+}
+
+func (kms *PKCS11KMS) saveScheduledState(st scheduledState) error {
+	return kms.stateStorer.SaveScheduledState(st)
 }
 
 // labeledSigner wraps a crypto.Signer and carries a stable KID (e.g., HSM label).
@@ -454,13 +473,13 @@ func (kms *PKCS11KMS) GetForAlgs(algs ...string) (
 			maxExpIndex := -1
 			maxExpWithNbfIndex := -1
 			noExpIndex := -1
-			nbfTreshold := time.Now().Add(-kms.KeyRotation.Overlap.Duration() / 2)
+			nbfThreshold := time.Now().Add(-kms.KeyRotation.Overlap.Duration() / 2)
 			for i, it := range algPKs {
 				if it.ExpiresAt == nil {
 					noExpIndex = i
 					continue
 				}
-				if it.NotBefore != nil && it.NotBefore.Before(nbfTreshold) && it.ExpiresAt.After(
+				if it.NotBefore != nil && it.NotBefore.Before(nbfThreshold) && it.ExpiresAt.After(
 					maxExpWithNbf.Time,
 				) {
 					maxExpWithNbf = *it.ExpiresAt
