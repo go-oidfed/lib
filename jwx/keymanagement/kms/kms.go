@@ -183,9 +183,9 @@ type PendingDefaultChange struct {
 	EffectiveAt unixtime.Unixtime      `json:"effective_at"`
 }
 
-// scheduledState holds pending, time-based configuration changes to be applied
+// ScheduledState holds pending, time-based configuration changes to be applied
 // by the rotation loop. Persisted as JSON next to keys to survive restarts.
-type scheduledState struct {
+type ScheduledState struct {
 	PendingAlgChange     *PendingAlgChange     `json:"pending_alg_change,omitempty"`
 	PendingDefaultChange *PendingDefaultChange `json:"pending_default_change,omitempty"`
 }
@@ -200,6 +200,6 @@ type PEMStorer interface {
 // KMSStateStorer defines the interface for persisting scheduled
 // configuration changes (algorithm changes, default algorithm changes)
 type KMSStateStorer interface {
-	LoadScheduledState() (scheduledState, error)
-	SaveScheduledState(scheduledState) error
+	LoadScheduledState() (ScheduledState, error)
+	SaveScheduledState(ScheduledState) error
 }

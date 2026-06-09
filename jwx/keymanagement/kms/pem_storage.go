@@ -79,11 +79,11 @@ func (kms *PEMStorageKMS) GetAlgs() []jwa.SignatureAlgorithm {
 	return kms.Algs
 }
 
-func (kms *PEMStorageKMS) loadScheduledState() (scheduledState, error) {
+func (kms *PEMStorageKMS) loadScheduledState() (ScheduledState, error) {
 	return kms.stateStorer.LoadScheduledState()
 }
 
-func (kms *PEMStorageKMS) saveScheduledState(st scheduledState) error {
+func (kms *PEMStorageKMS) saveScheduledState(st ScheduledState) error {
 	return kms.stateStorer.SaveScheduledState(st)
 }
 

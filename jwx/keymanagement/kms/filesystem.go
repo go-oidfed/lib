@@ -109,24 +109,24 @@ func (fss *FilesystemStateStorer) stateFilePath() string {
 	return filepath.Join(fss.Dir, "kms_state.json")
 }
 
-func (fss *FilesystemStateStorer) LoadScheduledState() (scheduledState, error) {
+func (fss *FilesystemStateStorer) LoadScheduledState() (ScheduledState, error) {
 	f := fss.stateFilePath()
 	b, err := os.ReadFile(f)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return scheduledState{}, nil
+			return ScheduledState{}, nil
 		}
-		return scheduledState{}, err
+		return ScheduledState{}, err
 	}
 	if len(b) == 0 {
-		return scheduledState{}, nil
+		return ScheduledState{}, nil
 	}
-	var st scheduledState
+	var st ScheduledState
 	err = json.Unmarshal(b, &st)
 	return st, err
 }
 
-func (fss *FilesystemStateStorer) SaveScheduledState(st scheduledState) error {
+func (fss *FilesystemStateStorer) SaveScheduledState(st ScheduledState) error {
 	b, err := json.MarshalIndent(st, "", "  ")
 	if err != nil {
 		return err

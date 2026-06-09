@@ -364,26 +364,26 @@ func (pss *PKCS11StateStorer) stateFilePath() string {
 	return base
 }
 
-func (pss *PKCS11StateStorer) LoadScheduledState() (scheduledState, error) {
-	var st scheduledState
+func (pss *PKCS11StateStorer) LoadScheduledState() (ScheduledState, error) {
+	var st ScheduledState
 	f := pss.stateFilePath()
 	b, err := os.ReadFile(f)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return scheduledState{}, nil
+			return ScheduledState{}, nil
 		}
-		return scheduledState{}, err
+		return ScheduledState{}, err
 	}
 	if len(b) == 0 {
-		return scheduledState{}, nil
+		return ScheduledState{}, nil
 	}
 	if err := json.Unmarshal(b, &st); err != nil {
-		return scheduledState{}, err
+		return ScheduledState{}, err
 	}
 	return st, nil
 }
 
-func (pss *PKCS11StateStorer) SaveScheduledState(st scheduledState) error {
+func (pss *PKCS11StateStorer) SaveScheduledState(st ScheduledState) error {
 	b, err := json.MarshalIndent(st, "", "  ")
 	if err != nil {
 		return err
@@ -395,11 +395,11 @@ func (pss *PKCS11StateStorer) SaveScheduledState(st scheduledState) error {
 	return os.WriteFile(p, b, 0600)
 }
 
-func (kms *PKCS11KMS) loadScheduledState() (scheduledState, error) {
+func (kms *PKCS11KMS) loadScheduledState() (ScheduledState, error) {
 	return kms.stateStorer.LoadScheduledState()
 }
 
-func (kms *PKCS11KMS) saveScheduledState(st scheduledState) error {
+func (kms *PKCS11KMS) saveScheduledState(st ScheduledState) error {
 	return kms.stateStorer.SaveScheduledState(st)
 }
 
