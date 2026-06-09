@@ -37,3 +37,8 @@ const (
 	ClientRegistrationTypeAutomatic = "automatic"
 	ClientRegistrationTypeExplicit  = "explicit"
 )
+
+// Constants for auth methods
+const (
+	AuthMethodPrivateKeyJWT = "private_key_jwt"
+)
