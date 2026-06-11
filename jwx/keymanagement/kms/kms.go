@@ -203,3 +203,59 @@ type KMSStateStorer interface {
 	LoadScheduledState() (ScheduledState, error)
 	SaveScheduledState(ScheduledState) error
 }
+
+// sortKeysByPreference returns indices of algPKs sorted by signing preference.
+// Keys are ordered from most preferred to least preferred based on expiration
+// and not-before times. This allows callers to try keys in order until finding
+// one with a matching private key.
+func sortKeysByPreference(
+	algPKs []public.PublicKeyEntry, overlap time.Duration,
+) []int {
+	if len(algPKs) <= 1 {
+		return []int{0}
+	}
+
+	nbfThreshold := time.Now().Add(-overlap / 2)
+	maxExp := unixtime.Now()
+	maxExpWithNbf := maxExp
+
+	noExpIndex := -1
+	maxExpIndex := -1
+	maxExpWithNbfIndex := -1
+
+	for i, it := range algPKs {
+		if it.ExpiresAt == nil {
+			noExpIndex = i
+			continue
+		}
+		if it.NotBefore != nil && it.NotBefore.Before(nbfThreshold) && it.ExpiresAt.After(
+			maxExpWithNbf.Time,
+		) {
+			maxExpWithNbf = *it.ExpiresAt
+			maxExpWithNbfIndex = i
+
+		} else if maxExpIndex == -1 && it.ExpiresAt.After(maxExp.Time) {
+			maxExp = *it.ExpiresAt
+			maxExpIndex = i
+		}
+	}
+
+	var preferred []int
+	if maxExpWithNbfIndex != -1 {
+		preferred = append(preferred, maxExpWithNbfIndex)
+	}
+	if maxExpIndex != -1 {
+		preferred = append(preferred, maxExpIndex)
+	}
+	if noExpIndex != -1 {
+		preferred = append(preferred, noExpIndex)
+	}
+
+	for i := range algPKs {
+		if i != maxExpWithNbfIndex && i != maxExpIndex && i != noExpIndex {
+			preferred = append(preferred, i)
+		}
+	}
+
+	return preferred
+}

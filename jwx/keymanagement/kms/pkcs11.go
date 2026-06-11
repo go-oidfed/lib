@@ -466,43 +466,22 @@ func (kms *PKCS11KMS) GetForAlgs(algs ...string) (
 		if !ok || len(algPKs) == 0 {
 			continue
 		}
-		pk := algPKs[0]
-		if len(algPKs) > 1 {
-			maxExp := unixtime.Now()
-			maxExpWithNbf := maxExp
-			maxExpIndex := -1
-			maxExpWithNbfIndex := -1
-			noExpIndex := -1
-			nbfThreshold := time.Now().Add(-kms.KeyRotation.Overlap.Duration() / 2)
-			for i, it := range algPKs {
-				if it.ExpiresAt == nil {
-					noExpIndex = i
-					continue
-				}
-				if it.NotBefore != nil && it.NotBefore.Before(nbfThreshold) && it.ExpiresAt.After(
-					maxExpWithNbf.Time,
-				) {
-					maxExpWithNbf = *it.ExpiresAt
-					maxExpWithNbfIndex = i
-
-				} else if maxExpIndex == -1 && it.ExpiresAt.After(maxExp.Time) {
-					maxExp = *it.ExpiresAt
-					maxExpIndex = i
-				}
+		sortedIndices := sortKeysByPreference(algPKs, kms.KeyRotation.Overlap.Duration())
+		for _, idx := range sortedIndices {
+			pk := algPKs[idx]
+			signer, ok := kms.signers[pk.KID]
+			if !ok {
+				log.WithFields(log.Fields{
+					"kid": pk.KID,
+					"alg": alg.String(),
+				}).Debug("pkcs#11 KMS: skipping public key without matching private key")
+				continue
 			}
-			if maxExpWithNbfIndex != -1 {
-				pk = algPKs[maxExpWithNbfIndex]
-			} else if maxExpIndex != -1 {
-				pk = algPKs[maxExpIndex]
-			} else {
-				pk = algPKs[noExpIndex]
-			}
+			return signer, alg
 		}
-		signer, ok := kms.signers[pk.KID]
-		if !ok {
-			continue
-		}
-		return signer, alg
+		log.WithField("alg", alg.String()).Debug(
+			"pkcs#11 KMS: no usable key pair found for algorithm",
+		)
 	}
 	return nil, jwa.SignatureAlgorithm{}
 }
