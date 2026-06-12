@@ -42,3 +42,8 @@ const (
 const (
 	AuthMethodPrivateKeyJWT = "private_key_jwt"
 )
+
+// Constants for OAuth client assertion types
+const (
+	OAuthClientAssertionJWTBearer = "urn:ietf:params:oauth:client-assertion-type:jwt-bearer"
+)

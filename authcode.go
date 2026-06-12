@@ -242,7 +242,7 @@ func (f FederationLeaf) CodeExchange(
 	if err != nil {
 		return nil, nil, err
 	}
-	params.Set("client_assertion_type", "urn:ietf:params:oauth:client-assertion-type:jwt-bearer")
+	params.Set("client_assertion_type", oidfedconst.OAuthClientAssertionJWTBearer)
 	params.Set("client_assertion", string(clientAssertion))
 
 	res, err := http.PostForm(opMetadata.TokenEndpoint, params)
