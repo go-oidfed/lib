@@ -250,9 +250,13 @@ func (r *TrustResolver) resolve() {
 		utils.NilAllExceptByTag(starting.Metadata, r.Types)
 		internal.Logf("TrustResolver: Resolve: constrained metadata to types: %v", r.Types)
 	}
+	var entityTypes []string
+	if starting.Metadata != nil {
+		entityTypes = starting.Metadata.GuessEntityTypes()
+	}
 	r.trustTree = trustTree{
 		Entity:              starting,
-		includedEntityTypes: strset.New(starting.Metadata.GuessEntityTypes()...),
+		includedEntityTypes: strset.New(entityTypes...),
 		subordinateIDs:      strset.New(starting.Subject),
 	}
 	r.selectedAnchors = r.chooseAnchors(starting)
