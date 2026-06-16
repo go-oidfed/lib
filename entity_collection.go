@@ -47,7 +47,7 @@ func (r *collectorResult) runWorker(task func()) {
 }
 
 func (r *collectorResult) processAuthority(
-	authority TrustAnchor,
+	authority *TrustAnchor,
 	req apimodel.EntityCollectionRequest,
 	collector *SimpleEntityCollector,
 ) {
@@ -108,7 +108,13 @@ func (r *collectorResult) processSubordinate(
 			}
 
 			if hasValidFederationListEndpoint(entityConfig) {
-				nested := collector.collect(req, NewTrustAnchorsFromEntityIDs(subordinateID)...)
+				nested := collector.collect(
+					req, func() *TrustAnchor {
+						ta := &TrustAnchor{EntityID: subordinateID}
+						ta.SetJWKS(entityConfig.JWKS)
+						return ta
+					}(),
+				)
 				for _, nestedEntity := range nested {
 					r.entityChan <- nestedEntity
 				}
