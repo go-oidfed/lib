@@ -1,5 +1,5 @@
-github.com/ThalesGroup/crypto11 v1.6.1 h1:8A8dZPAJPkQnuE55rRkaFWKuLvZ0fklrtJuOd1r92yU=
-github.com/ThalesGroup/crypto11 v1.6.1/go.mod h1:JcRp7axGx5fDqzAcco/jC1BYMHCvd+hKPwpdoaMNHMQ=
+github.com/ThalesGroup/crypto11 v1.6.2 h1:X+JsrOlKanaIlHgwV/3MJ/cFivbEaQ8kpXRPoiC2T+c=
+github.com/ThalesGroup/crypto11 v1.6.2/go.mod h1:fQ61t02lJdXD2HrG7upt/VRlDECsipwtqpPcZJEjBKg=
 github.com/TwiN/gocache/v2 v2.4.0 h1:BZ/TqvhipDQE23MFFTjC0MiI1qZ7GEVtSdOFVVXyr18=
 github.com/TwiN/gocache/v2 v2.4.0/go.mod h1:Cl1c0qNlQlXzJhTpAARVqpQDSuGDM5RhtzPYAM1x17g=
 github.com/adam-hanna/arrayOperations v1.0.1 h1:iAot3I2p4yKrFk8eRhEkuHj0ttOrfFJMWAo7Is/rHwk=
