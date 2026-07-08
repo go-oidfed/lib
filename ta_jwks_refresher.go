@@ -90,6 +90,36 @@ func NewTAJWKSRefresher(
 func (p *TAJWKSRefresher) Start() error {
 	p.stopCh = make(chan struct{})
 
+	// Merge config JWKS with stored JWKS for all TAs with EnableJWKSUpdate=true
+	for _, ta := range *p.trustAnchors {
+		if !ta.EnableJWKSUpdate {
+			continue
+		}
+
+		storedJWKS, err := p.storage.GetJWKS(ta.EntityID)
+		if err != nil {
+			p.logger.WithError(err).WithField("entity_id", ta.EntityID).
+				Warn("Failed to load stored JWKS, using config JWKS only")
+		}
+		if storedJWKS != nil && storedJWKS.Set != nil && storedJWKS.Len() > 0 {
+			configJWKS := ta.JWKS()
+			if configJWKS.Set != nil && configJWKS.Len() > 0 {
+				merged := jwx.MergeJWKS(configJWKS, *storedJWKS)
+				ta.SetJWKS(merged)
+				p.logger.WithFields(
+					logrus.Fields{
+						"entity_id":   ta.EntityID,
+						"config_keys": configJWKS.Len(),
+						"stored_keys": storedJWKS.Len(),
+						"merged_keys": merged.Len(),
+					},
+				).Info("Merged config and stored JWKS for TA on startup")
+			} else {
+				ta.SetJWKS(*storedJWKS)
+			}
+		}
+	}
+
 	// Validate all TAs with EnableJWKSUpdate=true have valid JWKS
 	for _, ta := range *p.trustAnchors {
 		if !ta.EnableJWKSUpdate {

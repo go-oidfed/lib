@@ -496,6 +496,108 @@ func TestKeyToJWKS(t *testing.T) {
 }
 
 // =============================================================================
+// MergeJWKS Tests (jwks.go)
+// =============================================================================
+
+// testKeyWithKID creates a public JWK with a specific KID for testing
+func testKeyWithKID(t *testing.T, kid string) jwk.Key {
+	t.Helper()
+	sk := testKey(t, jwa.ES256())
+	pk, err := jwk.PublicKeyOf(sk.Public())
+	require.NoError(t, err)
+	require.NoError(t, pk.Set(jwk.KeyIDKey, kid))
+	return pk
+}
+
+func TestMergeJWKS_NoOverlap(t *testing.T) {
+	jwks1 := NewJWKS()
+	jwks2 := NewJWKS()
+
+	require.NoError(t, jwks1.AddKey(testKeyWithKID(t, "key-a")))
+	require.NoError(t, jwks2.AddKey(testKeyWithKID(t, "key-b")))
+
+	merged := MergeJWKS(jwks1, jwks2)
+	assert.Equal(t, 2, merged.Len())
+
+	kids := map[string]bool{}
+	for i := range merged.Len() {
+		k, _ := merged.Key(i)
+		if kid, ok := k.KeyID(); ok {
+			kids[kid] = true
+		}
+	}
+	assert.True(t, kids["key-a"])
+	assert.True(t, kids["key-b"])
+}
+
+func TestMergeJWKS_KIDOverlap_PrimaryWins(t *testing.T) {
+	jwks1 := NewJWKS()
+	jwks2 := NewJWKS()
+
+	pk1 := testKeyWithKID(t, "shared-kid")
+	pk2 := testKeyWithKID(t, "shared-kid")
+
+	require.NoError(t, jwks1.AddKey(pk1))
+	require.NoError(t, jwks2.AddKey(pk2))
+
+	merged := MergeJWKS(jwks1, jwks2)
+	assert.Equal(t, 1, merged.Len())
+
+	k, _ := merged.Key(0)
+	assert.Equal(t, pk1, k)
+}
+
+func TestMergeJWKS_KeysWithoutKID_AllKept(t *testing.T) {
+	jwks1 := NewJWKS()
+	jwks2 := NewJWKS()
+
+	sk1 := testKey(t, jwa.ES256())
+	pk1, err := jwk.PublicKeyOf(sk1.Public())
+	require.NoError(t, err)
+
+	sk2 := testKey(t, jwa.ES256())
+	pk2, err := jwk.PublicKeyOf(sk2.Public())
+	require.NoError(t, err)
+
+	require.NoError(t, jwks1.AddKey(pk1))
+	require.NoError(t, jwks2.AddKey(pk2))
+
+	merged := MergeJWKS(jwks1, jwks2)
+	assert.Equal(t, 2, merged.Len())
+}
+
+func TestMergeJWKS_EmptyPrimary(t *testing.T) {
+	jwks1 := NewJWKS()
+	jwks2 := NewJWKS()
+
+	require.NoError(t, jwks2.AddKey(testKeyWithKID(t, "key-b")))
+
+	merged := MergeJWKS(jwks1, jwks2)
+	assert.Equal(t, 1, merged.Len())
+}
+
+func TestMergeJWKS_EmptySecondary(t *testing.T) {
+	jwks1 := NewJWKS()
+	jwks2 := NewJWKS()
+
+	require.NoError(t, jwks1.AddKey(testKeyWithKID(t, "key-a")))
+
+	merged := MergeJWKS(jwks1, jwks2)
+	assert.Equal(t, 1, merged.Len())
+}
+
+func TestMergeJWKS_BothEmpty(t *testing.T) {
+	merged := MergeJWKS(NewJWKS(), NewJWKS())
+	assert.Equal(t, 0, merged.Len())
+}
+
+func TestMergeJWKS_NilSets(t *testing.T) {
+	merged := MergeJWKS(JWKS{}, JWKS{})
+	assert.NotNil(t, merged.Set)
+	assert.Equal(t, 0, merged.Len())
+}
+
+// =============================================================================
 // JWT Signing Tests (jwtsigning.go)
 // =============================================================================
 

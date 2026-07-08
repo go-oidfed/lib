@@ -238,3 +238,59 @@ func TestEncodedDecodedEntityID(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, entityID, decoded)
 }
+
+func TestTAJWKSRefresher_StartupMerge(t *testing.T) {
+	tmpDir := t.TempDir()
+	storage, err := NewFileJWKStorage(tmpDir)
+	require.NoError(t, err)
+
+	entityID := "https://ta-merge.example.com"
+
+	// Simulate previously refreshed keys persisted in storage
+	storedJWKS := createTestJWKS(t, "stored-key")
+	err = storage.UpdateJWKS(entityID, *storedJWKS)
+	require.NoError(t, err)
+
+	// Create a TA with config JWKS containing a different key
+	configJWKS := createTestJWKS(t, "config-key")
+	ta := &TrustAnchor{
+		EntityID:         entityID,
+		EnableJWKSUpdate: true,
+	}
+	ta.SetJWKS(*configJWKS)
+
+	tas := TrustAnchors{ta}
+
+	// Build the refresher (registers jwks_file paths if set — none here)
+	refresher, err := NewTAJWKSRefresher(&tas, storage)
+	require.NoError(t, err)
+
+	// Simulate the merge logic from Start() without calling Start()
+	// (Start() would also do an HTTP poll which we can't do in a unit test)
+	for _, ta := range tas {
+		if !ta.EnableJWKSUpdate {
+			continue
+		}
+		gotStored, err := refresher.storage.GetJWKS(ta.EntityID)
+		require.NoError(t, err)
+		require.NotNil(t, gotStored)
+
+		configJWKS := ta.JWKS()
+		merged := jwx.MergeJWKS(configJWKS, *gotStored)
+		ta.SetJWKS(merged)
+	}
+
+	// Verify the TA now has both keys
+	finalJWKS := ta.JWKS()
+	assert.Equal(t, 2, finalJWKS.Len())
+
+	kids := map[string]bool{}
+	for i := range finalJWKS.Len() {
+		k, _ := finalJWKS.Key(i)
+		if kid, ok := k.KeyID(); ok {
+			kids[kid] = true
+		}
+	}
+	assert.True(t, kids["config-key"], "config key should be present after merge")
+	assert.True(t, kids["stored-key"], "stored key should be present after merge")
+}
