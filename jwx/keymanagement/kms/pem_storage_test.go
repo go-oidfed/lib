@@ -409,3 +409,98 @@ func (m *mockPublicKeyStorage) Get(string) (*public.PublicKeyEntry, error) {
 	}
 	return nil, nil
 }
+
+// =============================================================================
+// KeyAnnouncementLeadTimeDuration Tests
+// =============================================================================
+
+func TestKeyAnnouncementLeadTimeDuration_FixedDuration(t *testing.T) {
+	cfg := KeyRotationConfig{
+		KeyAnnouncementLeadTime:         duration.DurationOption(48 * time.Hour),
+		EntityConfigurationLifetimeFunc: func() (time.Duration, error) { return 24 * time.Hour, nil },
+	}
+	leadTime, err := cfg.KeyAnnouncementLeadTimeDuration()
+	require.NoError(t, err)
+	assert.Equal(t, 48*time.Hour, leadTime)
+}
+
+func TestKeyAnnouncementLeadTimeDuration_Multiplier(t *testing.T) {
+	cfg := KeyRotationConfig{
+		KeyAnnouncementLeadTimeECMultiplier: 5.0,
+		EntityConfigurationLifetimeFunc:     func() (time.Duration, error) { return 12 * time.Hour, nil },
+	}
+	leadTime, err := cfg.KeyAnnouncementLeadTimeDuration()
+	require.NoError(t, err)
+	assert.Equal(t, 60*time.Hour, leadTime)
+}
+
+func TestKeyAnnouncementLeadTimeDuration_Default_Max5xECLifetime_24h(t *testing.T) {
+	// EC lifetime 24h → default = max(5*24h, 24h) = 120h
+	cfg := KeyRotationConfig{
+		EntityConfigurationLifetimeFunc: func() (time.Duration, error) { return 24 * time.Hour, nil },
+	}
+	leadTime, err := cfg.KeyAnnouncementLeadTimeDuration()
+	require.NoError(t, err)
+	assert.Equal(t, 120*time.Hour, leadTime)
+}
+
+func TestKeyAnnouncementLeadTimeDuration_Default_Floor24h(t *testing.T) {
+	// EC lifetime 5min → default = max(5*5min, 24h) = 24h
+	cfg := KeyRotationConfig{
+		EntityConfigurationLifetimeFunc: func() (time.Duration, error) { return 5 * time.Minute, nil },
+	}
+	leadTime, err := cfg.KeyAnnouncementLeadTimeDuration()
+	require.NoError(t, err)
+	assert.Equal(t, 24*time.Hour, leadTime)
+}
+
+func TestKeyAnnouncementLeadTimeDuration_Default_NoECLifetime_Fallback24h(t *testing.T) {
+	// No EntityConfigurationLifetimeFunc set at all
+	cfg := KeyRotationConfig{}
+	leadTime, err := cfg.KeyAnnouncementLeadTimeDuration()
+	require.NoError(t, err)
+	assert.Equal(t, 24*time.Hour, leadTime)
+}
+
+func TestKeyAnnouncementLeadTimeDuration_ClampedToECLifetime(t *testing.T) {
+	// Fixed duration 5min, but EC lifetime is 1h → should clamp to 1h
+	cfg := KeyRotationConfig{
+		KeyAnnouncementLeadTime:         duration.DurationOption(5 * time.Minute),
+		EntityConfigurationLifetimeFunc: func() (time.Duration, error) { return 1 * time.Hour, nil },
+	}
+	leadTime, err := cfg.KeyAnnouncementLeadTimeDuration()
+	require.NoError(t, err)
+	assert.Equal(t, 1*time.Hour, leadTime)
+}
+
+func TestKeyAnnouncementLeadTimeDuration_MultiplierClampedToECLifetime(t *testing.T) {
+	// Multiplier 0.5 * 1h EC lifetime = 30min, but min is EC lifetime (1h)
+	cfg := KeyRotationConfig{
+		KeyAnnouncementLeadTimeECMultiplier: 0.5,
+		EntityConfigurationLifetimeFunc:     func() (time.Duration, error) { return 1 * time.Hour, nil },
+	}
+	leadTime, err := cfg.KeyAnnouncementLeadTimeDuration()
+	require.NoError(t, err)
+	assert.Equal(t, 1*time.Hour, leadTime)
+}
+
+func TestKeyAnnouncementLeadTimeDuration_MultiplierTakesPrecedenceOverFixed(t *testing.T) {
+	// Both set: multiplier should win
+	cfg := KeyRotationConfig{
+		KeyAnnouncementLeadTime:             duration.DurationOption(1 * time.Hour),
+		KeyAnnouncementLeadTimeECMultiplier: 3.0,
+		EntityConfigurationLifetimeFunc:     func() (time.Duration, error) { return 24 * time.Hour, nil },
+	}
+	leadTime, err := cfg.KeyAnnouncementLeadTimeDuration()
+	require.NoError(t, err)
+	assert.Equal(t, 72*time.Hour, leadTime)
+}
+
+func TestKeyAnnouncementLeadTimeDuration_MultiplierNoECLifetimeFunc_Error(t *testing.T) {
+	cfg := KeyRotationConfig{
+		KeyAnnouncementLeadTimeECMultiplier: 5.0,
+	}
+	_, err := cfg.KeyAnnouncementLeadTimeDuration()
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "EntityConfigurationLifetimeFunc not set")
+}

@@ -203,7 +203,9 @@ func (kms *PKCS11KMS) ChangeKeyRotationConfig(config KeyRotationConfig) error {
 	kms.KeyRotation = config
 	same := prev.Enabled == config.Enabled &&
 		prev.Interval.Duration() == config.Interval.Duration() &&
-		prev.Overlap.Duration() == config.Overlap.Duration()
+		prev.Overlap.Duration() == config.Overlap.Duration() &&
+		prev.KeyAnnouncementLeadTime.Duration() == config.KeyAnnouncementLeadTime.Duration() &&
+		prev.KeyAnnouncementLeadTimeECMultiplier == config.KeyAnnouncementLeadTimeECMultiplier
 	if same {
 		return nil
 	}
@@ -727,11 +729,11 @@ func (kms *PKCS11KMS) generateNewSigner(
 	case nbfModeNow:
 		nbf = &now
 	case nbfModeNext:
-		lifetime, err := kms.KeyRotation.EntityConfigurationLifetimeFunc()
+		leadTime, err := kms.KeyRotation.KeyAnnouncementLeadTimeDuration()
 		if err != nil {
-			return nil, errors.Wrap(err, "failed to get entity configuration lifetime")
+			return nil, errors.Wrap(err, "failed to get key announcement lead time")
 		}
-		nbf = &unixtime.Unixtime{Time: now.Add(lifetime)}
+		nbf = &unixtime.Unixtime{Time: now.Add(leadTime)}
 	case nbfModeAt:
 		// Should not hit here; use generateNewSignerAt to pass explicit time.
 		return nil, errors.New("nbfModeAt requires explicit time; use generateNewSignerAt")
@@ -891,8 +893,8 @@ func (kms *PKCS11KMS) rotateKeys(kids []string, revoked bool, reason string) err
 	// Avoid gaps: if the computed future NotBefore would be after latest current expiration,
 	// activate the new key immediately.
 	if mode == nbfModeNext {
-		if lifetime, err := kms.KeyRotation.EntityConfigurationLifetimeFunc(); err == nil {
-			if time.Now().Add(lifetime).After(latestExp) {
+		if leadTime, err := kms.KeyRotation.KeyAnnouncementLeadTimeDuration(); err == nil {
+			if time.Now().Add(leadTime).After(latestExp) {
 				mode = nbfModeNow
 			}
 		}
@@ -1151,7 +1153,7 @@ func (kms *PKCS11KMS) rotationEvaluationForAlg(
 		},
 	)
 
-	// Trigger early enough to accommodate nbf = now + lifetime
+	// Trigger early enough to accommodate nbf = now + leadTime
 	lifetime := time.Duration(0)
 	if kms.KeyRotation.EntityConfigurationLifetimeFunc != nil {
 		if lt, lerr := kms.KeyRotation.EntityConfigurationLifetimeFunc(); lerr == nil {
@@ -1160,9 +1162,18 @@ func (kms *PKCS11KMS) rotationEvaluationForAlg(
 			log.WithError(lerr).Warn("pkcs#11 KMS: automatic rotation: failed to get lifetime; using 0")
 		}
 	}
+	leadTime, lerr := kms.KeyRotation.KeyAnnouncementLeadTimeDuration()
+	if lerr != nil {
+		log.WithError(lerr).Warn("pkcs#11 KMS: automatic rotation: failed to get key announcement lead time; using EC lifetime")
+		leadTime = lifetime
+	}
 	currExp := current.ExpiresAt
 	if currExp == nil || currExp.IsZero() {
-		current.UpdateablePublicKeyMetadata.ExpiresAt = &unixtime.Unixtime{Time: now.Add(lifetime)}
+		defaultExp := now.Add(lifetime)
+		if lerr == nil {
+			defaultExp = now.Add(leadTime).Add(kms.KeyRotation.Overlap.Duration())
+		}
+		current.UpdateablePublicKeyMetadata.ExpiresAt = &unixtime.Unixtime{Time: defaultExp}
 		if err := kms.PKs.Update(current.KID, current.UpdateablePublicKeyMetadata); err != nil {
 			log.WithError(err).Error("pkcs#11 KMS: automatic rotation: failed to update key expiration")
 			currExp = &unixtime.Unixtime{Time: now}
@@ -1171,7 +1182,7 @@ func (kms *PKCS11KMS) rotationEvaluationForAlg(
 		}
 	}
 	// Use currExp (ensured non-nil) for threshold calculation
-	threshold := currExp.Time.Add(-kms.KeyRotation.Overlap.Duration()).Add(-lifetime)
+	threshold := currExp.Time.Add(-kms.KeyRotation.Overlap.Duration()).Add(-leadTime)
 	if !threshold.After(now) {
 		kids := make([]string, len(algPKs))
 		for i, pk := range algPKs {
