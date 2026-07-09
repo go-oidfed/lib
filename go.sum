@@ -120,6 +120,8 @@ github.com/vmihailenco/tagparser/v2 v2.0.0/go.mod h1:Wri+At7QHww0WTrCBeu4J6bNtoV
 github.com/yuin/goldmark v1.4.13/go.mod h1:6yULJ656Px+3vBD8DxQVa3kxgyrAnzto9xy5taEt/CY=
 github.com/zachmann/go-utils v0.0.0-20251216142941-208653c379f5 h1:I7z+FmEH97tc0KgtBtXHytMHy2iwslFSQSkYVXIhvGE=
 github.com/zachmann/go-utils v0.0.0-20251216142941-208653c379f5/go.mod h1:w6Li6qqJxdRzcX6bdgWM4JoDZlPV1KMp65P7yTratow=
+github.com/zachmann/go-utils v0.0.0-20260709061248-d06e3e0557c4 h1:TpLkSQpGe0W3RFW74z9DiYmKejJsPB3VsY7GH8sB/xg=
+github.com/zachmann/go-utils v0.0.0-20260709061248-d06e3e0557c4/go.mod h1:y2rIiyBDWSwSaCnGTO7uLVYUBCAczOZ5d4RnWQp1v04=
 github.com/zeebo/xxh3 v1.1.0 h1:s7DLGDK45Dyfg7++yxI0khrfwq9661w9EN78eP/UZVs=
 github.com/zeebo/xxh3 v1.1.0/go.mod h1:IisAie1LELR4xhVinxWS5+zf1lA4p0MW4T+w+W07F5s=
 go.uber.org/atomic v1.11.0 h1:ZvwS0R+56ePWxUNi+Atn9dWONBPp/AUETXlHW0DxSjE=
