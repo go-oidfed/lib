@@ -33,6 +33,7 @@ type TAJWKSRefresher struct {
 	storage      JWKStorage
 	logger       logrus.FieldLogger
 
+	mu      sync.Mutex            // guards trustAnchors slice and taState map for concurrent Add/Remove/Update
 	taState map[string]*pollState // Internal, keyed by EntityID
 	stopCh  chan struct{}
 	wg      sync.WaitGroup
@@ -42,6 +43,7 @@ type pollState struct {
 	LastKnownKIDs *strset.Set
 	backoff       time.Duration
 	mu            sync.RWMutex
+	stopCh        chan struct{} // per-TA stop channel; closed by Remove to stop a single goroutine
 }
 
 // NewTAJWKSRefresher creates a new TA key poller
@@ -95,6 +97,9 @@ func (p *TAJWKSRefresher) Start() error {
 		if !ta.EnableJWKSUpdate {
 			continue
 		}
+		if p.storage == nil {
+			continue
+		}
 
 		storedJWKS, err := p.storage.GetJWKS(ta.EntityID)
 		if err != nil {
@@ -120,7 +125,8 @@ func (p *TAJWKSRefresher) Start() error {
 		}
 	}
 
-	// Validate all TAs with EnableJWKSUpdate=true have valid JWKS
+	// Validate all TAs with EnableJWKSUpdate=true have valid JWKS, unless
+	// storage is available to seed the JWKS from the first poll (first-poll-seed).
 	for _, ta := range *p.trustAnchors {
 		if !ta.EnableJWKSUpdate {
 			continue
@@ -128,14 +134,23 @@ func (p *TAJWKSRefresher) Start() error {
 
 		jwks := ta.JWKS()
 		if jwks.Set == nil || jwks.Len() == 0 {
-			return errors.Errorf("TA %s has enable_jwks_update=true but no JWKS available", ta.EntityID)
+			if p.storage == nil {
+				return errors.Errorf("TA %s has enable_jwks_update=true but no JWKS available", ta.EntityID)
+			}
+			// No JWKS yet but storage is available: the initial poll will fetch
+			// the EC and seed the JWKS. Skip the validation error.
+			p.logger.WithField("entity_id", ta.EntityID).
+				Info("TA has no JWKS; will seed from first poll")
 		}
 
 		// Initialize poll state
+		p.mu.Lock()
 		p.taState[ta.EntityID] = &pollState{
 			LastKnownKIDs: extractKIDs(jwks),
 			backoff:       initialBackoff,
+			stopCh:        make(chan struct{}),
 		}
+		p.mu.Unlock()
 
 		// Perform initial fetch and update
 		if _, err := p.pollAndMaybeUpdate(ta); err != nil {
@@ -157,6 +172,119 @@ func (p *TAJWKSRefresher) Stop() {
 	p.wg.Wait()
 }
 
+// IsStarted reports whether the refresher has been started (Start called and
+// not yet stopped). Safe to call concurrently with Start/Stop.
+func (p *TAJWKSRefresher) IsStarted() bool {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.stopCh != nil
+}
+
+// Add adds a trust anchor to the refresher and, if the refresher is running and
+// the TA has EnableJWKSUpdate=true, starts polling it immediately. If a TA with
+// the same entity_id already exists, it is replaced (its polling goroutine is
+// stopped first). The initial poll is performed synchronously; an error is
+// returned if it fails (unless the TA has no JWKS and storage is available to
+// seed — then the error from a failed initial fetch is returned but the TA is
+// still registered).
+//
+// This is safe to call after Start(); it is the dynamic per-TA control used by
+// the admin API.
+func (p *TAJWKSRefresher) Add(ta *TrustAnchor) error {
+	if ta == nil || ta.EntityID == "" {
+		return errors.New("cannot add nil trust anchor or one without entity_id")
+	}
+	p.mu.Lock()
+	started := p.stopCh != nil
+	// Stop existing polling goroutine for this entity_id, if any.
+	if existing, ok := p.taState[ta.EntityID]; ok && existing.stopCh != nil {
+		close(existing.stopCh)
+		delete(p.taState, ta.EntityID)
+	}
+	// Replace or append in the slice.
+	replaced := false
+	for i, existing := range *p.trustAnchors {
+		if existing.EntityID == ta.EntityID {
+			(*p.trustAnchors)[i] = ta
+			replaced = true
+			break
+		}
+	}
+	if !replaced {
+		*p.trustAnchors = append(*p.trustAnchors, ta)
+	}
+	p.mu.Unlock()
+
+	if !ta.EnableJWKSUpdate || !started {
+		return nil
+	}
+
+	// Initialize poll state and start polling.
+	p.mu.Lock()
+	p.taState[ta.EntityID] = &pollState{
+		LastKnownKIDs: extractKIDs(ta.JWKS()),
+		backoff:       initialBackoff,
+		stopCh:        make(chan struct{}),
+	}
+	p.mu.Unlock()
+
+	if _, err := p.pollAndMaybeUpdate(ta); err != nil {
+		return errors.Wrapf(err, "initial poll failed for TA %s", ta.EntityID)
+	}
+	p.wg.Add(1)
+	go p.pollGoroutine(ta)
+	return nil
+}
+
+// Remove stops polling for and removes a trust anchor by entity_id. If the TA
+// does not exist, this is a no-op. Safe to call after Start().
+func (p *TAJWKSRefresher) Remove(entityID string) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if state, ok := p.taState[entityID]; ok {
+		if state.stopCh != nil {
+			close(state.stopCh)
+		}
+		delete(p.taState, entityID)
+	}
+	// Remove from the slice.
+	filtered := (*p.trustAnchors)[:0]
+	for _, ta := range *p.trustAnchors {
+		if ta.EntityID != entityID {
+			filtered = append(filtered, ta)
+		}
+	}
+	*p.trustAnchors = filtered
+}
+
+// Update replaces an existing trust anchor with an updated one, restarting its
+// polling goroutine if poll-relevant fields changed. If the TA does not exist,
+// it is added via Add. Safe to call after Start().
+func (p *TAJWKSRefresher) Update(ta *TrustAnchor) error {
+	if ta == nil || ta.EntityID == "" {
+		return errors.New("cannot update nil trust anchor or one without entity_id")
+	}
+	p.mu.Lock()
+	_, exists := p.taState[ta.EntityID]
+	p.mu.Unlock()
+	if !exists {
+		// Not currently registered; check if it's in the slice at all.
+		found := false
+		for _, existing := range *p.trustAnchors {
+			if existing.EntityID == ta.EntityID {
+				found = true
+				break
+			}
+		}
+		if !found {
+			return p.Add(ta)
+		}
+	}
+	// Stop the existing goroutine then Add the updated TA.
+	p.Remove(ta.EntityID)
+	return p.Add(ta)
+}
+
 // pollGoroutine runs the polling loop for a single TA
 func (p *TAJWKSRefresher) pollGoroutine(ta *TrustAnchor) {
 	defer p.wg.Done()
@@ -165,16 +293,31 @@ func (p *TAJWKSRefresher) pollGoroutine(ta *TrustAnchor) {
 
 	var nextInterval time.Duration
 
+	// Per-TA stop channel; nil if not present (e.g. started via Start before
+	// per-TA channels existed). We select on it additionally so Remove can
+	// stop this single goroutine.
+	p.mu.Lock()
+	state := p.taState[ta.EntityID]
+	p.mu.Unlock()
+	var taStopCh chan struct{}
+	if state != nil {
+		taStopCh = state.stopCh
+	}
+
 	for {
 		select {
 		case <-p.stopCh:
+			return
+		case <-taStopCh:
 			return
 		case <-time.After(nextInterval):
 		}
 
 		pollInterval, err := p.pollAndMaybeUpdate(ta)
 		if err != nil {
+			p.mu.Lock()
 			state := p.taState[ta.EntityID]
+			p.mu.Unlock()
 			if state != nil {
 				state.mu.Lock()
 				// Exponential backoff: multiply by 2, cap at maxBackoff
@@ -194,7 +337,9 @@ func (p *TAJWKSRefresher) pollGoroutine(ta *TrustAnchor) {
 			}
 		} else {
 			// Reset backoff on success
+			p.mu.Lock()
 			state := p.taState[ta.EntityID]
+			p.mu.Unlock()
 			if state != nil {
 				state.mu.Lock()
 				state.backoff = initialBackoff
@@ -231,14 +376,17 @@ func (p *TAJWKSRefresher) pollAndMaybeUpdate(ta *TrustAnchor) (time.Duration, er
 		}
 	}
 
+	p.mu.Lock()
 	state := p.taState[ta.EntityID]
 	if state == nil {
+		p.mu.Unlock()
 		return 0, errors.Errorf("polling state not found for TA %s", ta.EntityID)
 	}
 	state.mu.Lock()
+	p.mu.Unlock()
 	state.backoff = initialBackoff
 	newKIDs := extractKIDs(ec.JWKS)
-	changed, added, removed := hasJWKSChanged(p.taState[entityID].LastKnownKIDs, newKIDs)
+	changed, added, removed := hasJWKSChanged(state.LastKnownKIDs, newKIDs)
 
 	if changed {
 		// Update storage
@@ -303,6 +451,9 @@ func hasJWKSChanged(oldJWKS, newJWKS *strset.Set) (bool, []string, []string) {
 // extractKIDs extracts all KIDs from a JWKS
 func extractKIDs(jwks jwx.JWKS) *strset.Set {
 	kids := strset.New()
+	if jwks.Set == nil {
+		return kids
+	}
 	for i := range jwks.Len() {
 		key, _ := jwks.Key(i)
 		if kid, ok := key.KeyID(); ok && kid != "" {
