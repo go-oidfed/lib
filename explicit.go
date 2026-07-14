@@ -84,7 +84,7 @@ func (f FederationLeaf) GetExplicitRegistration(op string) (
 	var client OpenIDRelyingPartyMetadata
 	found, err := cache.Get(cache.Key(cache.KeyExplicitRegistration, op), &client)
 	if err != nil {
-		internal.WithError(err).Error("ExplicitRegistration: error retrieving explicit registration from cache")
+		internal.Logger().Error().Err(err).Msg("ExplicitRegistration: error retrieving explicit registration from cache")
 	}
 	if found {
 		return &client, nil, nil
@@ -101,7 +101,7 @@ func (f FederationLeaf) GetExplicitRegistration(op string) (
 		cache.Key(cache.KeyExplicitRegistration, op), client, time.Until(resp.ExpiresAt.Time.Add(-10*time.Second)),
 	)
 	if err != nil {
-		internal.WithError(err).Error("ExplicitRegistration: error caching explicit registration")
+		internal.Logger().Error().Err(err).Msg("ExplicitRegistration: error caching explicit registration")
 	}
 	return &client, nil, nil
 }
@@ -144,7 +144,7 @@ func (f FederationLeaf) DoExplicitClientRegistration(op string) (
 			},
 		)
 		if err != nil {
-			internal.WithError(err).Error("explicit client registration: could not resolve own trust chain")
+			internal.Logger().Error().Err(err).Msg("explicit client registration: could not resolve own trust chain")
 		} else if len(ownResolved.TrustChain) > 0 {
 			_ = headers.Set("trust_chain", ownResolved.TrustChain)
 			_ = headers.Set("peer_trust_chain", resolved.TrustChain)

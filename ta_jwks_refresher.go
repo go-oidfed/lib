@@ -6,8 +6,8 @@ import (
 	"time"
 
 	"github.com/pkg/errors"
+	"github.com/rs/zerolog"
 	"github.com/scylladb/go-set/strset"
-	"github.com/sirupsen/logrus"
 
 	"github.com/go-oidfed/lib/internal"
 	"github.com/go-oidfed/lib/jwx"
@@ -31,7 +31,7 @@ type TAJWKSRefresherConfig struct {
 type TAJWKSRefresher struct {
 	trustAnchors *TrustAnchors
 	storage      JWKStorage
-	logger       logrus.FieldLogger
+	logger       zerolog.Logger
 
 	mu      sync.Mutex            // guards trustAnchors slice and taState map for concurrent Add/Remove/Update
 	taState map[string]*pollState // Internal, keyed by EntityID
@@ -54,17 +54,15 @@ func NewTAJWKSRefresher(
 	storage JWKStorage,
 	configs ...*TAJWKSRefresherConfig,
 ) (*TAJWKSRefresher, error) {
-	logLevel := logrus.InfoLevel
+	logLevel := zerolog.InfoLevel
 
 	if len(configs) > 0 && configs[0] != nil {
-		level, err := logrus.ParseLevel(strings.ToLower(configs[0].LogLevel))
+		level, err := zerolog.ParseLevel(strings.ToLower(configs[0].LogLevel))
 		if err == nil {
 			logLevel = level
 		}
 	}
-	logger := internal.Logger()
-	// TODO the refresher logger should use another log level
-	_ = logLevel
+	logger := internal.Logger().Level(logLevel)
 
 	refresher := &TAJWKSRefresher{
 		trustAnchors: tas,
@@ -103,22 +101,20 @@ func (p *TAJWKSRefresher) Start() error {
 
 		storedJWKS, err := p.storage.GetJWKS(ta.EntityID)
 		if err != nil {
-			p.logger.WithError(err).WithField("entity_id", ta.EntityID).
-				Warn("Failed to load stored JWKS, using config JWKS only")
+			p.logger.Warn().Err(err).Str("entity_id", ta.EntityID).
+				Msg("Failed to load stored JWKS, using config JWKS only")
 		}
 		if storedJWKS != nil && storedJWKS.Set != nil && storedJWKS.Len() > 0 {
 			configJWKS := ta.JWKS()
 			if configJWKS.Set != nil && configJWKS.Len() > 0 {
 				merged := jwx.MergeJWKS(configJWKS, *storedJWKS)
 				ta.SetJWKS(merged)
-				p.logger.WithFields(
-					logrus.Fields{
-						"entity_id":   ta.EntityID,
-						"config_keys": configJWKS.Len(),
-						"stored_keys": storedJWKS.Len(),
-						"merged_keys": merged.Len(),
-					},
-				).Info("Merged config and stored JWKS for TA on startup")
+				p.logger.Info().
+					Str("entity_id", ta.EntityID).
+					Int("config_keys", configJWKS.Len()).
+					Int("stored_keys", storedJWKS.Len()).
+					Int("merged_keys", merged.Len()).
+					Msg("Merged config and stored JWKS for TA on startup")
 			} else {
 				ta.SetJWKS(*storedJWKS)
 			}
@@ -139,8 +135,8 @@ func (p *TAJWKSRefresher) Start() error {
 			}
 			// No JWKS yet but storage is available: the initial poll will fetch
 			// the EC and seed the JWKS. Skip the validation error.
-			p.logger.WithField("entity_id", ta.EntityID).
-				Info("TA has no JWKS; will seed from first poll")
+			p.logger.Info().Str("entity_id", ta.EntityID).
+				Msg("TA has no JWKS; will seed from first poll")
 		}
 
 		// Initialize poll state
@@ -289,7 +285,7 @@ func (p *TAJWKSRefresher) Update(ta *TrustAnchor) error {
 func (p *TAJWKSRefresher) pollGoroutine(ta *TrustAnchor) {
 	defer p.wg.Done()
 
-	p.logger.WithField("entity_id", ta.EntityID).Debug("Starting TA key polling")
+	p.logger.Debug().Str("entity_id", ta.EntityID).Msg("Starting TA key polling")
 
 	var nextInterval time.Duration
 
@@ -328,12 +324,10 @@ func (p *TAJWKSRefresher) pollGoroutine(ta *TrustAnchor) {
 				nextInterval = state.backoff
 				state.mu.Unlock()
 
-				p.logger.WithError(err).WithFields(
-					logrus.Fields{
-						"entity_id":  ta.EntityID,
-						"next_retry": time.Now().Add(nextInterval).Format(time.RFC3339),
-					},
-				).Warn("Failed to fetch EC for TA, retrying with backoff")
+				p.logger.Warn().Err(err).
+					Str("entity_id", ta.EntityID).
+					Str("next_retry", time.Now().Add(nextInterval).Format(time.RFC3339)).
+					Msg("Failed to fetch EC for TA, retrying with backoff")
 			}
 		} else {
 			// Reset backoff on success
@@ -361,12 +355,10 @@ func (p *TAJWKSRefresher) pollAndMaybeUpdate(ta *TrustAnchor) (time.Duration, er
 		return 0, errors.Wrap(err, "failed to fetch EC")
 	}
 
-	p.logger.WithFields(
-		logrus.Fields{
-			"entity_id": entityID,
-			"keys":      ec.JWKS.Len(),
-		},
-	).Debug("Fetched EC for TA")
+	p.logger.Debug().
+		Str("entity_id", entityID).
+		Int("keys", ec.JWKS.Len()).
+		Msg("Fetched EC for TA")
 
 	// Verify signature using current JWKS
 	currentJWKS := ta.JWKS()
@@ -392,7 +384,7 @@ func (p *TAJWKSRefresher) pollAndMaybeUpdate(ta *TrustAnchor) (time.Duration, er
 		// Update storage
 		if p.storage != nil {
 			if err = p.storage.UpdateJWKS(entityID, ec.JWKS); err != nil {
-				p.logger.WithError(err).WithField("entity_id", entityID).Error("Failed to store updated JWKS")
+				p.logger.Error().Err(err).Str("entity_id", entityID).Msg("Failed to store updated JWKS")
 			}
 		}
 		// Update TA's atomic JWKS
@@ -401,13 +393,11 @@ func (p *TAJWKSRefresher) pollAndMaybeUpdate(ta *TrustAnchor) (time.Duration, er
 		state.LastKnownKIDs = newKIDs
 
 		// Log the change
-		p.logger.WithFields(
-			logrus.Fields{
-				"entity_id": entityID,
-				"added":     added,
-				"removed":   removed,
-			},
-		).Info("JWKS changed for TA")
+		p.logger.Info().
+			Str("entity_id", entityID).
+			Strs("added", added).
+			Strs("removed", removed).
+			Msg("JWKS changed for TA")
 	}
 	state.mu.Unlock()
 

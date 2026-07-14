@@ -33,7 +33,7 @@ func NewSingleAlgFilesystemKMS(
 		pks,
 	)
 	if err := kms.Load(); err != nil {
-		log.WithError(err).Error("Failed to load PEMStorageKMS")
+		log.Logger().Error().Err(err).Msg("Failed to load PEMStorageKMS")
 		return nil
 	}
 
@@ -199,7 +199,7 @@ func NewFilesystemKMSFromBasic(
 	}
 
 	if err := kms.Load(); err != nil {
-		log.WithError(err).Warn("NewFilesystemKMSFromBasic: Load encountered issues after migration")
+		log.Logger().Warn().Err(err).Msg("NewFilesystemKMSFromBasic: Load encountered issues after migration")
 	}
 
 	return &FilesystemKMS{PEMStorageKMS: kms}, nil

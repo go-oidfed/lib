@@ -182,7 +182,7 @@ func (f FederationLeaf) GetAuthorizationURL(
 			},
 		)
 		if err != nil {
-			internal.WithError(err).Error("explicit client registration: could not resolve own trust chain")
+			internal.Logger().Error().Err(err).Msg("explicit client registration: could not resolve own trust chain")
 		} else if len(ownResolved.TrustChain) > 0 {
 			_ = headers.Set("trust_chain", ownResolved.TrustChain)
 			_ = headers.Set("peer_trust_chain", resolved.TrustChain)

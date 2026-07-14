@@ -134,10 +134,10 @@ func (f *FileJWKStorage) RegisterEntityJWKSFile(entityID, jwksFile string) error
 
 	// Create new symlink
 	if err := os.Symlink(jwksFile, symlinkPath); err != nil {
-		internal.Logger().WithError(err).
-			WithField("entity_id", entityID).
-			WithField("target", jwksFile).
-			Warn("Failed to create JWKS symlink")
+		internal.Logger().Warn().Err(err).
+			Str("entity_id", entityID).
+			Str("target", jwksFile).
+			Msg("Failed to create JWKS symlink")
 	}
 
 	return nil

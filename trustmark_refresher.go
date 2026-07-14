@@ -141,7 +141,7 @@ func (c *EntityConfigurationTrustMarkConfig) TrustMarkJWT() (string, error) {
 				go func() {
 					defer c.refreshing.Store(false)
 					if err := c.refresh(); err != nil {
-						internal.WithError(err).Warn("TrustMarkRefresher: background refresh failed")
+						internal.Logger().Warn().Err(err).Msg("TrustMarkRefresher: background refresh failed")
 					}
 				}()
 			}

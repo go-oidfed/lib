@@ -5,8 +5,8 @@ import (
 	"errors"
 	"time"
 
+	log "github.com/go-oidfed/lib/internal"
 	"github.com/lestrrat-go/jwx/v3/jwa"
-	log "github.com/sirupsen/logrus"
 	"github.com/zachmann/go-utils/duration"
 
 	"github.com/go-oidfed/lib/jwx"
@@ -225,7 +225,7 @@ func shortenExpirationUntilFuture(
 		if k.ExpiresAt == nil || k.ExpiresAt.IsZero() || newExpForOldKey.Before(k.ExpiresAt.Time) {
 			k.ExpiresAt = newExpForOldKey
 			if uErr := pkStorage.Update(k.KID, k.UpdateablePublicKeyMetadata); uErr != nil {
-				log.WithError(uErr).Error(logPrefix + ": automatic rotation: failed to update old key exp")
+				log.Logger().Error().Err(uErr).Msg(logPrefix + ": automatic rotation: failed to update old key exp")
 			}
 		}
 	}

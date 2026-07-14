@@ -40,9 +40,9 @@ func (fs *FilesystemPublicKeyStorage) Load() error {
 
 	data, err := os.ReadFile(fs.storageFilePath())
 	if err != nil {
-		log.WithError(err).WithField(
-			"filepath", fs.storageFilePath(),
-		).Warn("FilesystemPublicKeyStorage: could not read storage file")
+		log.Logger().Warn().Err(err).
+			Str("filepath", fs.storageFilePath()).
+			Msg("FilesystemPublicKeyStorage: could not read storage file")
 		return nil
 	}
 	if len(data) == 0 {

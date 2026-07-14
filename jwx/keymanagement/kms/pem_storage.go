@@ -63,7 +63,7 @@ func NewPEMStorageKMS(
 func (kms *PEMStorageKMS) GetPendingChanges() (*PendingAlgChange, *PendingDefaultChange) {
 	loadedState, err := kms.loadScheduledState()
 	if err != nil {
-		log.WithError(err).Error("PEMStorageKMS: failed to load scheduled state")
+		log.Logger().Error().Err(err).Msg("PEMStorageKMS: failed to load scheduled state")
 		return nil, nil
 	}
 	return loadedState.PendingAlgChange, loadedState.PendingDefaultChange
@@ -236,7 +236,7 @@ func (kms *PEMStorageKMS) GetForAlgs(algs ...string) (
 ) {
 	activePKs, err := kms.PKs.GetActive()
 	if err != nil {
-		log.WithError(err).Error("PEMStorageKMS: failed to get active public keys")
+		log.Logger().Error().Err(err).Msg("PEMStorageKMS: failed to get active public keys")
 		return nil, jwa.SignatureAlgorithm{}
 	}
 	pksByAlg := activePKs.ByAlg()
@@ -253,17 +253,16 @@ func (kms *PEMStorageKMS) GetForAlgs(algs ...string) (
 			pk := algPKs[idx]
 			signer, ok := kms.signers[pk.KID]
 			if !ok {
-				log.WithFields(log.Fields{
-					"kid": pk.KID,
-					"alg": alg.String(),
-				}).Debug("PEMStorageKMS: skipping public key without matching private key")
+				log.Logger().Debug().
+					Str("kid", pk.KID).
+					Str("alg", alg.String()).
+					Msg("PEMStorageKMS: skipping public key without matching private key")
 				continue
 			}
 			return signer, alg
 		}
-		log.WithField("alg", alg.String()).Debug(
-			"PEMStorageKMS: no usable key pair found for algorithm",
-		)
+		log.Logger().Debug().Str("alg", alg.String()).
+			Msg("PEMStorageKMS: no usable key pair found for algorithm")
 	}
 	return nil, jwa.SignatureAlgorithm{}
 }
@@ -290,7 +289,7 @@ func (kms *PEMStorageKMS) Load() error {
 		alg := kalg.(jwa.SignatureAlgorithm)
 		signer, err := kms.readSigner(kid, alg)
 		if err != nil {
-			log.WithError(err).WithField("kid", kid).Warn("PEMStorageKMS: could not load signing key")
+			log.Logger().Warn().Err(err).Str("kid", kid).Msg("PEMStorageKMS: could not load signing key")
 		} else {
 			kms.signers[kid] = signer
 			loadedAlgs[alg] = struct{}{}
@@ -301,10 +300,10 @@ func (kms *PEMStorageKMS) Load() error {
 	log.Debug("PEMStorageKMS: Checking that all signing algs have a valid key")
 	for _, alg := range kms.Algs {
 		if _, ok := loadedAlgs[alg]; ok {
-			log.WithField("alg", alg.String()).Debug("PEMStorageKMS: key for alg already found")
+			log.Logger().Debug().Str("alg", alg.String()).Msg("PEMStorageKMS: key for alg already found")
 			continue
 		}
-		log.WithField("alg", alg.String()).Debug("PEMStorageKMS: key for alg is missing")
+		log.Logger().Debug().Str("alg", alg.String()).Msg("PEMStorageKMS: key for alg is missing")
 		if !kms.GenerateKeys {
 			log.Info("PEMStorageKMS: key generation disabled")
 			return errors.Errorf(
@@ -518,7 +517,7 @@ func (kms *PEMStorageKMS) ChangeAlgsAt(
 			if k.ExpiresAt == nil || k.ExpiresAt.IsZero() || targetExp.Before(k.ExpiresAt.Time) {
 				k.ExpiresAt = targetExp
 				if err = kms.PKs.Update(k.KID, k.UpdateablePublicKeyMetadata); err != nil {
-					log.WithError(err).Error("PEMStorageKMS: schedule algs: failed to update old key exp")
+					log.Logger().Error().Err(err).Msg("PEMStorageKMS: schedule algs: failed to update old key exp")
 				}
 			}
 		}
@@ -535,12 +534,10 @@ func (kms *PEMStorageKMS) ChangeAlgsAt(
 }
 
 func (kms *PEMStorageKMS) rotateKeys(kids []string, revoked bool, reason string) error {
-	log.WithFields(
-		log.Fields{
-			"kids":    kids,
-			"revoked": revoked,
-		},
-	).Info("PEMStorageKMS: rotation: start")
+	log.Logger().Info().
+		Strs("kids", kids).
+		Bool("revoked", revoked).
+		Msg("PEMStorageKMS: rotation: start")
 	ks := make([]*public.PublicKeyEntry, len(kids))
 	var signingAlg jwa.SignatureAlgorithm
 	latestExp := time.Time{}
@@ -577,13 +574,11 @@ func (kms *PEMStorageKMS) rotateKeys(kids []string, revoked bool, reason string)
 	if err != nil {
 		return err
 	}
-	log.WithFields(
-		log.Fields{
-			"alg":     signingAlg.String(),
-			"mode":    fmt.Sprintf("%v", mode),
-			"new_kid": pk.KID,
-		},
-	).Info("PEMStorageKMS: rotation: generated new key")
+	log.Logger().Info().
+		Str("alg", signingAlg.String()).
+		Str("mode", fmt.Sprintf("%v", mode)).
+		Str("new_kid", pk.KID).
+		Msg("PEMStorageKMS: rotation: generated new key")
 	newExpForOldKey := &unixtime.Unixtime{Time: pk.NotBefore.Add(kms.KeyRotation.Overlap.Duration())}
 	for _, k := range ks {
 		if revoked {
@@ -595,26 +590,22 @@ func (kms *PEMStorageKMS) rotateKeys(kids []string, revoked bool, reason string)
 			k.ExpiresAt = newExpForOldKey
 		}
 		if err = kms.PKs.Update(k.KID, k.UpdateablePublicKeyMetadata); err != nil {
-			log.WithError(err).Error("PEMStorageKMS: rotation: failed to update key")
+			log.Logger().Error().Err(err).Msg("PEMStorageKMS: rotation: failed to update key")
 		}
 	}
-	log.WithFields(
-		log.Fields{
-			"alg":     signingAlg.String(),
-			"new_kid": pk.KID,
-		},
-	).Info("PEMStorageKMS: rotation: completed")
+	log.Logger().Info().
+		Str("alg", signingAlg.String()).
+		Str("new_kid", pk.KID).
+		Msg("PEMStorageKMS: rotation: completed")
 	return nil
 }
 
 // RotateKey rotates a single key, optionally marking it revoked and recording a reason.
 func (kms *PEMStorageKMS) RotateKey(kid string, revoked bool, reason string) error {
-	log.WithFields(
-		log.Fields{
-			"kid":     kid,
-			"revoked": revoked,
-		},
-	).Info("PEMStorageKMS: rotate key")
+	log.Logger().Info().
+		Str("kid", kid).
+		Bool("revoked", revoked).
+		Msg("PEMStorageKMS: rotate key")
 	return kms.rotateKeys([]string{kid}, revoked, reason)
 }
 
@@ -634,16 +625,15 @@ func (kms *PEMStorageKMS) RotateAllKeys(revoked bool, reason string) error {
 			if _, err = kms.generateNewSigner(alg, nbfModeNow); err != nil {
 				return err
 			}
-			log.WithField(
-				"alg", alg.String(),
-			).Info("PEMStorageKMS: rotation: seeded new key for alg with no active keys")
+			log.Logger().Info().Str("alg", alg.String()).
+				Msg("PEMStorageKMS: rotation: seeded new key for alg with no active keys")
 		}
 
 		kids := make([]string, len(algPKs))
 		for i, pk := range algPKs {
 			kids[i] = pk.KID
 		}
-		log.WithField("alg", alg.String()).Info("PEMStorageKMS: rotation: processing alg")
+		log.Logger().Info().Str("alg", alg.String()).Msg("PEMStorageKMS: rotation: processing alg")
 		if err = kms.rotateKeys(kids, revoked, reason); err != nil {
 			return err
 		}
@@ -700,7 +690,7 @@ func (kms *PEMStorageKMS) rotationStep(now time.Time) (time.Duration, bool) {
 
 	activePKs, err := kms.PKs.GetActive()
 	if err != nil {
-		log.WithError(err).Error("PEMStorageKMS: automatic rotation: failed to get active public keys")
+		log.Logger().Error().Err(err).Msg("PEMStorageKMS: automatic rotation: failed to get active public keys")
 		return nextSleep, false
 	}
 	pksByAlg := activePKs.ByAlg()
@@ -721,11 +711,11 @@ func (kms *PEMStorageKMS) rotationStep(now time.Time) (time.Duration, bool) {
 			if !now.Before(p.EffectiveAt.Time) {
 				kms.Algs = p.Algs
 				if err := kms.Load(); err != nil {
-					log.WithError(err).Error("PEMStorageKMS: scheduled alg change: load failed")
+					log.Logger().Error().Err(err).Msg("PEMStorageKMS: scheduled alg change: load failed")
 				}
 				st.PendingAlgChange = nil
 				if err := kms.saveScheduledState(st); err != nil {
-					log.WithError(err).Error("PEMStorageKMS: scheduled alg change: save state failed")
+					log.Logger().Error().Err(err).Msg("PEMStorageKMS: scheduled alg change: save state failed")
 				}
 				return true
 			}
@@ -743,7 +733,7 @@ func (kms *PEMStorageKMS) rotationStep(now time.Time) (time.Duration, bool) {
 				kms.DefaultAlg = p.Alg
 				st.PendingDefaultChange = nil
 				if err = kms.saveScheduledState(st); err != nil {
-					log.WithError(err).Error("PEMStorageKMS: scheduled default change: save state failed")
+					log.Logger().Error().Err(err).Msg("PEMStorageKMS: scheduled default change: save state failed")
 				}
 				return true
 			}
@@ -760,7 +750,7 @@ func (kms *PEMStorageKMS) rotationStep(now time.Time) (time.Duration, bool) {
 			didRotate = true
 		}
 	} else {
-		log.WithError(err).Error("PEMStorageKMS: scheduled state load failed")
+		log.Logger().Error().Err(err).Msg("PEMStorageKMS: scheduled state load failed")
 	}
 	return nextSleep, didRotate
 }
@@ -778,7 +768,7 @@ func (kms *PEMStorageKMS) rotationEvaluationForAlg(
 	if !ok || len(algPKs) == 0 {
 		earliestNbf, hasFuture, vErr := earliestFutureNbfForAlg(kms.PKs, alg, now)
 		if vErr != nil {
-			log.WithError(vErr).Error("PEMStorageKMS: automatic rotation: failed to get valid public keys for future check")
+			log.Logger().Error().Err(vErr).Msg("PEMStorageKMS: automatic rotation: failed to get valid public keys for future check")
 			return 0, false
 		}
 		if hasFuture {
@@ -789,10 +779,10 @@ func (kms *PEMStorageKMS) rotationEvaluationForAlg(
 			return wait, false
 		}
 		if _, err := kms.generateNewSigner(alg, nbfModeNow); err != nil {
-			log.WithError(err).Error("PEMStorageKMS: automatic rotation: failed to seed key for alg")
+			log.Logger().Error().Err(err).Msg("PEMStorageKMS: automatic rotation: failed to seed key for alg")
 			return minSleep, false
 		}
-		log.WithField("alg", alg.String()).Info("PEMStorageKMS: automatic rotation: seeded new key for alg")
+		log.Logger().Info().Str("alg", alg.String()).Msg("PEMStorageKMS: automatic rotation: seeded new key for alg")
 		return 0, true
 	}
 
@@ -818,12 +808,12 @@ func (kms *PEMStorageKMS) rotationEvaluationForAlg(
 		if lt, lerr := kms.KeyRotation.EntityConfigurationLifetimeFunc(); lerr == nil {
 			lifetime = lt
 		} else {
-			log.WithError(lerr).Warn("PEMStorageKMS: automatic rotation: failed to get lifetime; using 0")
+			log.Logger().Warn().Err(lerr).Msg("PEMStorageKMS: automatic rotation: failed to get lifetime; using 0")
 		}
 	}
 	leadTime, lerr := kms.KeyRotation.KeyAnnouncementLeadTimeDuration()
 	if lerr != nil {
-		log.WithError(lerr).Warn("PEMStorageKMS: automatic rotation: failed to get key announcement lead time; using EC lifetime")
+		log.Logger().Warn().Err(lerr).Msg("PEMStorageKMS: automatic rotation: failed to get key announcement lead time; using EC lifetime")
 		leadTime = lifetime
 	}
 	currExp := current.ExpiresAt
@@ -834,7 +824,7 @@ func (kms *PEMStorageKMS) rotationEvaluationForAlg(
 		}
 		current.UpdateablePublicKeyMetadata.ExpiresAt = &unixtime.Unixtime{Time: defaultExp}
 		if err := kms.PKs.Update(current.KID, current.UpdateablePublicKeyMetadata); err != nil {
-			log.WithError(err).Error("PEMStorageKMS: automatic rotation: failed to update key expiration")
+			log.Logger().Error().Err(err).Msg("PEMStorageKMS: automatic rotation: failed to update key expiration")
 			currExp = &unixtime.Unixtime{Time: now}
 		} else {
 			currExp = current.ExpiresAt
@@ -857,7 +847,7 @@ func (kms *PEMStorageKMS) rotationEvaluationForAlg(
 			return wait, false
 		}
 		if err := kms.rotateKeys(kids, false, ""); err != nil {
-			log.WithError(err).Error("PEMStorageKMS: automatic rotation: rotate failed")
+			log.Logger().Error().Err(err).Msg("PEMStorageKMS: automatic rotation: rotate failed")
 			return minSleep, false
 		}
 		return 0, true
