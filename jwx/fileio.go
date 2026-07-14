@@ -7,6 +7,7 @@ import (
 	"encoding/pem"
 	"os"
 
+	ed448ext "github.com/jwx-go/ed448/v4"
 	"github.com/jwx-go/es256k/v4"
 	"github.com/lestrrat-go/jwx/v4/jwa"
 	"github.com/pkg/errors"
@@ -38,6 +39,12 @@ func ReadSignerFromFile(keyfile string, alg jwa.SignatureAlgorithm) (crypto.Sign
 		if !ok {
 			return nil, errors.New("not an Ed25519 Private Key")
 		}
+	case ed448ext.EdDSAEd448():
+		key, err := parseEd448PKCS8PrivateKey(block.Bytes)
+		if err != nil {
+			return nil, errors.WithStack(err)
+		}
+		sk = key
 	default:
 		return nil, errors.New("unknown signing algorithm: " + alg.String())
 	}

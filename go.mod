@@ -6,6 +6,7 @@ require (
 	github.com/ThalesGroup/crypto11 v1.6.1
 	github.com/TwiN/gocache/v2 v2.4.0
 	github.com/adam-hanna/arrayOperations v1.0.1
+	github.com/cloudflare/circl v1.6.4
 	github.com/coreos/go-oidc/v3 v3.18.0
 	github.com/decred/dcrd/dcrec/secp256k1/v4 v4.4.1
 	github.com/go-resty/resty/v2 v2.17.2
@@ -13,6 +14,7 @@ require (
 	github.com/google/go-querystring v1.2.0
 	github.com/google/uuid v1.6.0
 	github.com/jarcoal/httpmock v1.4.1
+	github.com/jwx-go/ed448/v4 v4.0.3
 	github.com/jwx-go/es256k/v4 v4.0.3
 	github.com/lithammer/fuzzysearch v1.1.8
 	github.com/luci/go-render v0.0.0-20160219211803-9a04cc21af0f
@@ -39,6 +41,7 @@ require (
 	github.com/klauspost/compress v1.17.9 // indirect
 	github.com/kr/pretty v0.3.1 // indirect
 	github.com/lestrrat-go/dsig v1.3.0 // indirect
+	github.com/lestrrat-go/dsig-circl-ed448 v1.0.0 // indirect
 	github.com/lestrrat-go/dsig-secp256k1 v1.0.0 // indirect
 	github.com/lestrrat-go/jwx/v4 v4.1.0
 	github.com/lestrrat-go/option/v3 v3.0.0-alpha1 // indirect
