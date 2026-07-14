@@ -4,8 +4,8 @@ import (
 	"bytes"
 	"encoding/json"
 
-	"github.com/lestrrat-go/jwx/v3/jwa"
-	"github.com/lestrrat-go/jwx/v3/jwk"
+	"github.com/lestrrat-go/jwx/v4/jwa"
+	"github.com/lestrrat-go/jwx/v4/jwk"
 	"github.com/pkg/errors"
 	"github.com/scylladb/go-set/strset"
 	"github.com/vmihailenco/msgpack/v5"
@@ -13,6 +13,14 @@ import (
 
 	"github.com/go-oidfed/lib/unixtime"
 )
+
+func init() {
+	for _, field := range []string{"exp", "iat", "nbf"} {
+		if err := jwk.RegisterCustomField[unixtime.Unixtime](field); err != nil {
+			panic(err)
+		}
+	}
+}
 
 // JWKS is a wrapper type for jwk.Set to implement custom marshaling
 type JWKS struct {
@@ -97,10 +105,9 @@ func (jwks *JWKS) UnmarshalMsgpack(data []byte) error {
 // expiration time of all keys
 func (jwks JWKS) MinimalExpirationTime() unixtime.Unixtime {
 	var exp unixtime.Unixtime
-	for i := range jwks.Len() {
-		k, _ := jwks.Key(i)
-		var e unixtime.Unixtime
-		if err := k.Get("exp", &e); err != nil {
+	for _, k := range jwks.All() {
+		e, err := jwk.Get[unixtime.Unixtime](k, "exp")
+		if err != nil {
 			continue
 		}
 		if exp.IsZero() || e.Before(exp.Time) {
@@ -114,10 +121,9 @@ func (jwks JWKS) MinimalExpirationTime() unixtime.Unixtime {
 // expiration time of all keys.
 func (jwks JWKS) MaximalExpirationTime() unixtime.Unixtime {
 	var exp unixtime.Unixtime
-	for i := range jwks.Len() {
-		k, _ := jwks.Key(i)
-		var e unixtime.Unixtime
-		if err := k.Get("exp", &e); err != nil {
+	for _, k := range jwks.All() {
+		e, err := jwk.Get[unixtime.Unixtime](k, "exp")
+		if err != nil {
 			continue
 		}
 		if exp.IsZero() || e.After(exp.Time) {
@@ -136,8 +142,7 @@ func MergeJWKS(primary, secondary JWKS) JWKS {
 	seenKIDs := strset.New()
 
 	if primary.Set != nil {
-		for i := range primary.Len() {
-			key, _ := primary.Key(i)
+		for _, key := range primary.All() {
 			if kid, ok := key.KeyID(); ok && kid != "" {
 				seenKIDs.Add(kid)
 			}
@@ -146,8 +151,7 @@ func MergeJWKS(primary, secondary JWKS) JWKS {
 	}
 
 	if secondary.Set != nil {
-		for i := range secondary.Len() {
-			key, _ := secondary.Key(i)
+		for _, key := range secondary.All() {
 			if kid, ok := key.KeyID(); ok && kid != "" {
 				if seenKIDs.Has(kid) {
 					continue

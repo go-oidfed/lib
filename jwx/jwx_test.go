@@ -12,9 +12,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/lestrrat-go/jwx/v3/jwa"
-	"github.com/lestrrat-go/jwx/v3/jwk"
-	"github.com/lestrrat-go/jwx/v3/jws"
+	"github.com/lestrrat-go/jwx/v4/jwa"
+	"github.com/lestrrat-go/jwx/v4/jwk"
+	"github.com/lestrrat-go/jwx/v4/jws"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/vmihailenco/msgpack/v5"
@@ -520,8 +520,7 @@ func TestMergeJWKS_NoOverlap(t *testing.T) {
 	assert.Equal(t, 2, merged.Len())
 
 	kids := map[string]bool{}
-	for i := range merged.Len() {
-		k, _ := merged.Key(i)
+	for _, k := range merged.All() {
 		if kid, ok := k.KeyID(); ok {
 			kids[kid] = true
 		}

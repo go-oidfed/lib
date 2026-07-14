@@ -3,7 +3,7 @@ package kms
 import (
 	"crypto"
 
-	"github.com/lestrrat-go/jwx/v3/jwa"
+	"github.com/lestrrat-go/jwx/v4/jwa"
 
 	"github.com/go-oidfed/lib/jwx"
 )

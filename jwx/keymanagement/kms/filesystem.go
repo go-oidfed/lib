@@ -7,7 +7,7 @@ import (
 
 	log "github.com/go-oidfed/lib/internal"
 
-	"github.com/lestrrat-go/jwx/v3/jwa"
+	"github.com/lestrrat-go/jwx/v4/jwa"
 
 	"github.com/go-oidfed/lib/jwx"
 	"github.com/go-oidfed/lib/jwx/keymanagement/public"

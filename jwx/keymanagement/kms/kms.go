@@ -6,7 +6,7 @@ import (
 	"time"
 
 	log "github.com/go-oidfed/lib/internal"
-	"github.com/lestrrat-go/jwx/v3/jwa"
+	"github.com/lestrrat-go/jwx/v4/jwa"
 	"github.com/zachmann/go-utils/duration"
 
 	"github.com/go-oidfed/lib/jwx"

@@ -285,8 +285,7 @@ func TestTAJWKSRefresher_StartupMerge(t *testing.T) {
 	assert.Equal(t, 2, finalJWKS.Len())
 
 	kids := map[string]bool{}
-	for i := range finalJWKS.Len() {
-		k, _ := finalJWKS.Key(i)
+	for _, k := range finalJWKS.All() {
 		if kid, ok := k.KeyID(); ok {
 			kids[kid] = true
 		}

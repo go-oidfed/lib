@@ -444,8 +444,7 @@ func extractKIDs(jwks jwx.JWKS) *strset.Set {
 	if jwks.Set == nil {
 		return kids
 	}
-	for i := range jwks.Len() {
-		key, _ := jwks.Key(i)
+	for _, key := range jwks.All() {
 		if kid, ok := key.KeyID(); ok && kid != "" {
 			kids.Add(kid)
 		}

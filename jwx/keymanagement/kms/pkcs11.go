@@ -20,8 +20,8 @@ import (
 
 	"github.com/ThalesGroup/crypto11"
 	"github.com/google/uuid"
-	"github.com/lestrrat-go/jwx/v3/jwa"
-	"github.com/lestrrat-go/jwx/v3/jwk"
+	"github.com/lestrrat-go/jwx/v4/jwa"
+	"github.com/lestrrat-go/jwx/v4/jwk"
 	"github.com/pkg/errors"
 	"github.com/zachmann/go-utils/sliceutils"
 

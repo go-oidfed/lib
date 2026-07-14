@@ -10,7 +10,7 @@ import (
 
 	"github.com/coreos/go-oidc/v3/oidc"
 	"github.com/gofiber/fiber/v2"
-	"github.com/lestrrat-go/jwx/v3/jws"
+	"github.com/lestrrat-go/jwx/v4/jws"
 	"github.com/pkg/errors"
 	"golang.org/x/oauth2"
 
