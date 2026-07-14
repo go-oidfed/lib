@@ -25,7 +25,7 @@ func ReadSignerFromFile(keyfile string, alg jwa.SignatureAlgorithm) (crypto.Sign
 		sk, err = x509.ParsePKCS1PrivateKey(block.Bytes)
 	case jwa.ES256(), jwa.ES384(), jwa.ES512():
 		sk, err = x509.ParseECPrivateKey(block.Bytes)
-	case jwa.EdDSA():
+	case jwa.EdDSA(), jwa.EdDSAEd25519():
 		key, err := x509.ParsePKCS8PrivateKey(block.Bytes)
 		if err != nil {
 			return nil, errors.WithStack(err)

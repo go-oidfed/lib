@@ -31,7 +31,7 @@ func generatePrivateKey(alg jwa.SignatureAlgorithm, rsaKeyLen int) (
 		sk, err = ecdsa.GenerateKey(elliptic.P384(), rand.Reader)
 	case jwa.ES512():
 		sk, err = ecdsa.GenerateKey(elliptic.P521(), rand.Reader)
-	case jwa.EdDSA():
+	case jwa.EdDSA(), jwa.EdDSAEd25519():
 		_, sk, err = ed25519.GenerateKey(rand.Reader)
 	default:
 		err = errors.Errorf("unknown signing algorithm '%s'", alg)

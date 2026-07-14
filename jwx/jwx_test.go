@@ -866,11 +866,11 @@ func TestSupportedAlgs(t *testing.T) {
 	algs := SupportedAlgs()
 
 	assert.NotEmpty(t, algs)
-	assert.Len(t, algs, 10)
+	assert.Len(t, algs, 11)
 
 	expectedAlgs := []jwa.SignatureAlgorithm{
 		jwa.ES256(), jwa.ES384(), jwa.ES512(),
-		jwa.EdDSA(),
+		jwa.EdDSA(), jwa.EdDSAEd25519(),
 		jwa.RS256(), jwa.RS384(), jwa.RS512(),
 		jwa.PS256(), jwa.PS384(), jwa.PS512(),
 	}

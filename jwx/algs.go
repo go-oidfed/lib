@@ -9,6 +9,7 @@ var supportedAlgs = []jwa.SignatureAlgorithm{
 	jwa.ES256(),
 	jwa.ES384(),
 	jwa.EdDSA(),
+	jwa.EdDSAEd25519(),
 	jwa.PS512(),
 	jwa.PS256(),
 	jwa.PS384(),
