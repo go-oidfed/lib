@@ -12,9 +12,11 @@ import (
 	"testing"
 	"time"
 
+	"filippo.io/mldsa"
 	"github.com/cloudflare/circl/sign/ed448"
 	ed448ext "github.com/jwx-go/ed448/v4"
 	"github.com/jwx-go/es256k/v4"
+	jwxmldsa "github.com/jwx-go/mldsa/v4"
 	"github.com/lestrrat-go/jwx/v4/jwa"
 	"github.com/lestrrat-go/jwx/v4/jwk"
 	"github.com/lestrrat-go/jwx/v4/jws"
@@ -143,6 +145,39 @@ func TestGeneratePrivateKey(t *testing.T) {
 	)
 
 	t.Run(
+		"ML-DSA-44", func(t *testing.T) {
+			sk, err := generatePrivateKey(jwxmldsa.MLDSA44(), 0)
+			require.NoError(t, err)
+			assert.NotNil(t, sk)
+			mlKey, ok := sk.(*mldsa.PrivateKey)
+			assert.True(t, ok, "expected *mldsa.PrivateKey")
+			assert.Equal(t, "ML-DSA-44", mlKey.PublicKey().Parameters().String())
+		},
+	)
+
+	t.Run(
+		"ML-DSA-65", func(t *testing.T) {
+			sk, err := generatePrivateKey(jwxmldsa.MLDSA65(), 0)
+			require.NoError(t, err)
+			assert.NotNil(t, sk)
+			mlKey, ok := sk.(*mldsa.PrivateKey)
+			assert.True(t, ok, "expected *mldsa.PrivateKey")
+			assert.Equal(t, "ML-DSA-65", mlKey.PublicKey().Parameters().String())
+		},
+	)
+
+	t.Run(
+		"ML-DSA-87", func(t *testing.T) {
+			sk, err := generatePrivateKey(jwxmldsa.MLDSA87(), 0)
+			require.NoError(t, err)
+			assert.NotNil(t, sk)
+			mlKey, ok := sk.(*mldsa.PrivateKey)
+			assert.True(t, ok, "expected *mldsa.PrivateKey")
+			assert.Equal(t, "ML-DSA-87", mlKey.PublicKey().Parameters().String())
+		},
+	)
+
+	t.Run(
 		"unknown algorithm", func(t *testing.T) {
 			sk, err := generatePrivateKey(jwa.SignatureAlgorithm{}, 0)
 			assert.Error(t, err)
@@ -219,6 +254,54 @@ func TestExportPrivateKeyAsPem(t *testing.T) {
 			parsed, err := parseEd448PKCS8PrivateKey(block.Bytes)
 			require.NoError(t, err)
 			assert.Equal(t, sk.(ed448.PrivateKey).Seed(), parsed.Seed())
+		},
+	)
+
+	t.Run(
+		"ML-DSA-44 key", func(t *testing.T) {
+			sk := testKey(t, jwxmldsa.MLDSA44())
+			pemData := exportPrivateKeyAsPem(sk)
+			require.NotNil(t, pemData)
+
+			block, _ := pem.Decode(pemData)
+			require.NotNil(t, block)
+			assert.Equal(t, "PRIVATE KEY", block.Type)
+
+			parsed, err := parseMLDSAPKCS8PrivateKey(block.Bytes)
+			require.NoError(t, err)
+			assert.Equal(t, sk.(*mldsa.PrivateKey).Bytes(), parsed.Bytes())
+		},
+	)
+
+	t.Run(
+		"ML-DSA-65 key", func(t *testing.T) {
+			sk := testKey(t, jwxmldsa.MLDSA65())
+			pemData := exportPrivateKeyAsPem(sk)
+			require.NotNil(t, pemData)
+
+			block, _ := pem.Decode(pemData)
+			require.NotNil(t, block)
+			assert.Equal(t, "PRIVATE KEY", block.Type)
+
+			parsed, err := parseMLDSAPKCS8PrivateKey(block.Bytes)
+			require.NoError(t, err)
+			assert.Equal(t, sk.(*mldsa.PrivateKey).Bytes(), parsed.Bytes())
+		},
+	)
+
+	t.Run(
+		"ML-DSA-87 key", func(t *testing.T) {
+			sk := testKey(t, jwxmldsa.MLDSA87())
+			pemData := exportPrivateKeyAsPem(sk)
+			require.NotNil(t, pemData)
+
+			block, _ := pem.Decode(pemData)
+			require.NotNil(t, block)
+			assert.Equal(t, "PRIVATE KEY", block.Type)
+
+			parsed, err := parseMLDSAPKCS8PrivateKey(block.Bytes)
+			require.NoError(t, err)
+			assert.Equal(t, sk.(*mldsa.PrivateKey).Bytes(), parsed.Bytes())
 		},
 	)
 
@@ -335,6 +418,18 @@ func TestGenerateKeyPair(t *testing.T) {
 		},
 		{
 			ed448ext.EdDSAEd448(),
+			0,
+		},
+		{
+			jwxmldsa.MLDSA44(),
+			0,
+		},
+		{
+			jwxmldsa.MLDSA65(),
+			0,
+		},
+		{
+			jwxmldsa.MLDSA87(),
 			0,
 		},
 	}
@@ -1094,11 +1189,101 @@ func TestEd448_PEMRoundTrip(t *testing.T) {
 	assert.Equal(t, sk.Seed(), parsed.Seed())
 }
 
+func TestMLDSA44_SignAndVerify(t *testing.T) {
+	sk, pk, _, err := GenerateKeyPair(jwxmldsa.MLDSA44(), 0)
+	require.NoError(t, err)
+	payload := []byte(`{"hello":"mldsa44"}`)
+
+	signed, err := SignWithType(payload, nil, oidfedconst.JWTTypeEntityStatement, jwxmldsa.MLDSA44(), sk)
+	require.NoError(t, err)
+	assert.NotEmpty(t, signed)
+
+	verified, err := jws.Verify(signed, jws.WithKey(jwxmldsa.MLDSA44(), pk))
+	require.NoError(t, err)
+	assert.Equal(t, payload, verified)
+}
+
+func TestMLDSA44_PEMRoundTrip(t *testing.T) {
+	sk := testKey(t, jwxmldsa.MLDSA44()).(*mldsa.PrivateKey)
+
+	pemData := exportMLDSAPrivateKeyAsPem(sk)
+	require.NotNil(t, pemData)
+
+	block, _ := pem.Decode(pemData)
+	require.NotNil(t, block)
+	assert.Equal(t, "PRIVATE KEY", block.Type)
+
+	parsed, err := parseMLDSAPKCS8PrivateKey(block.Bytes)
+	require.NoError(t, err)
+	assert.Equal(t, sk.Bytes(), parsed.Bytes())
+	assert.True(t, sk.PublicKey().Equal(parsed.PublicKey()))
+}
+
+func TestMLDSA65_SignAndVerify(t *testing.T) {
+	sk, pk, _, err := GenerateKeyPair(jwxmldsa.MLDSA65(), 0)
+	require.NoError(t, err)
+	payload := []byte(`{"hello":"mldsa65"}`)
+
+	signed, err := SignWithType(payload, nil, oidfedconst.JWTTypeEntityStatement, jwxmldsa.MLDSA65(), sk)
+	require.NoError(t, err)
+	assert.NotEmpty(t, signed)
+
+	verified, err := jws.Verify(signed, jws.WithKey(jwxmldsa.MLDSA65(), pk))
+	require.NoError(t, err)
+	assert.Equal(t, payload, verified)
+}
+
+func TestMLDSA65_PEMRoundTrip(t *testing.T) {
+	sk := testKey(t, jwxmldsa.MLDSA65()).(*mldsa.PrivateKey)
+
+	pemData := exportMLDSAPrivateKeyAsPem(sk)
+	require.NotNil(t, pemData)
+
+	block, _ := pem.Decode(pemData)
+	require.NotNil(t, block)
+	assert.Equal(t, "PRIVATE KEY", block.Type)
+
+	parsed, err := parseMLDSAPKCS8PrivateKey(block.Bytes)
+	require.NoError(t, err)
+	assert.Equal(t, sk.Bytes(), parsed.Bytes())
+	assert.True(t, sk.PublicKey().Equal(parsed.PublicKey()))
+}
+
+func TestMLDSA87_SignAndVerify(t *testing.T) {
+	sk, pk, _, err := GenerateKeyPair(jwxmldsa.MLDSA87(), 0)
+	require.NoError(t, err)
+	payload := []byte(`{"hello":"mldsa87"}`)
+
+	signed, err := SignWithType(payload, nil, oidfedconst.JWTTypeEntityStatement, jwxmldsa.MLDSA87(), sk)
+	require.NoError(t, err)
+	assert.NotEmpty(t, signed)
+
+	verified, err := jws.Verify(signed, jws.WithKey(jwxmldsa.MLDSA87(), pk))
+	require.NoError(t, err)
+	assert.Equal(t, payload, verified)
+}
+
+func TestMLDSA87_PEMRoundTrip(t *testing.T) {
+	sk := testKey(t, jwxmldsa.MLDSA87()).(*mldsa.PrivateKey)
+
+	pemData := exportMLDSAPrivateKeyAsPem(sk)
+	require.NotNil(t, pemData)
+
+	block, _ := pem.Decode(pemData)
+	require.NotNil(t, block)
+	assert.Equal(t, "PRIVATE KEY", block.Type)
+
+	parsed, err := parseMLDSAPKCS8PrivateKey(block.Bytes)
+	require.NoError(t, err)
+	assert.Equal(t, sk.Bytes(), parsed.Bytes())
+	assert.True(t, sk.PublicKey().Equal(parsed.PublicKey()))
+}
+
 func TestSupportedAlgs(t *testing.T) {
 	algs := SupportedAlgs()
 
 	assert.NotEmpty(t, algs)
-	assert.Len(t, algs, 13)
+	assert.Len(t, algs, 16)
 
 	expectedAlgs := []jwa.SignatureAlgorithm{
 		jwa.ES256(),
@@ -1114,6 +1299,9 @@ func TestSupportedAlgs(t *testing.T) {
 		jwa.PS256(),
 		jwa.PS384(),
 		jwa.PS512(),
+		jwxmldsa.MLDSA44(),
+		jwxmldsa.MLDSA65(),
+		jwxmldsa.MLDSA87(),
 	}
 
 	for _, expected := range expectedAlgs {

@@ -3,6 +3,7 @@ package jwx
 import (
 	"github.com/jwx-go/ed448/v4"
 	"github.com/jwx-go/es256k/v4"
+	jwxmldsa "github.com/jwx-go/mldsa/v4"
 	"github.com/lestrrat-go/jwx/v4/jwa"
 )
 
@@ -20,6 +21,9 @@ var supportedAlgs = []jwa.SignatureAlgorithm{
 	jwa.RS512(),
 	jwa.RS384(),
 	jwa.RS256(),
+	jwxmldsa.MLDSA44(),
+	jwxmldsa.MLDSA65(),
+	jwxmldsa.MLDSA87(),
 }
 var supportedAlgsStr []string
 

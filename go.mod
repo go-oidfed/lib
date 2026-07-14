@@ -3,6 +3,7 @@ module github.com/go-oidfed/lib
 go 1.26.0
 
 require (
+	filippo.io/mldsa v0.0.0-20260215214346-43d0283efc3e
 	github.com/ThalesGroup/crypto11 v1.6.1
 	github.com/TwiN/gocache/v2 v2.4.0
 	github.com/adam-hanna/arrayOperations v1.0.1
@@ -16,6 +17,7 @@ require (
 	github.com/jarcoal/httpmock v1.4.1
 	github.com/jwx-go/ed448/v4 v4.0.3
 	github.com/jwx-go/es256k/v4 v4.0.3
+	github.com/jwx-go/mldsa/v4 v4.0.3
 	github.com/lithammer/fuzzysearch v1.1.8
 	github.com/luci/go-render v0.0.0-20160219211803-9a04cc21af0f
 	github.com/pkg/errors v0.9.1

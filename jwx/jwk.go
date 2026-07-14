@@ -10,9 +10,11 @@ import (
 	"crypto/x509"
 	"encoding/pem"
 
+	"filippo.io/mldsa"
 	"github.com/cloudflare/circl/sign/ed448"
 	ed448ext "github.com/jwx-go/ed448/v4"
 	"github.com/jwx-go/es256k/v4"
+	jwxmldsa "github.com/jwx-go/mldsa/v4"
 	"github.com/lestrrat-go/jwx/v4/jwa"
 	"github.com/lestrrat-go/jwx/v4/jwk"
 	"github.com/pkg/errors"
@@ -42,6 +44,12 @@ func generatePrivateKey(alg jwa.SignatureAlgorithm, rsaKeyLen int) (
 		_, sk, err = ed25519.GenerateKey(rand.Reader)
 	case ed448ext.EdDSAEd448():
 		_, sk, err = ed448.GenerateKey(rand.Reader)
+	case jwxmldsa.MLDSA44():
+		sk, err = mldsa.GenerateKey(mldsa.MLDSA44())
+	case jwxmldsa.MLDSA65():
+		sk, err = mldsa.GenerateKey(mldsa.MLDSA65())
+	case jwxmldsa.MLDSA87():
+		sk, err = mldsa.GenerateKey(mldsa.MLDSA87())
 	default:
 		err = errors.Errorf("unknown signing algorithm '%s'", alg)
 		return
@@ -67,6 +75,8 @@ func exportPrivateKeyAsPem(sk crypto.Signer) []byte {
 		return exportEDDSAPrivateKeyAsPem(sk)
 	case ed448.PrivateKey:
 		return exportEd448PrivateKeyAsPem(sk)
+	case *mldsa.PrivateKey:
+		return exportMLDSAPrivateKeyAsPem(sk)
 	default:
 		return nil
 	}

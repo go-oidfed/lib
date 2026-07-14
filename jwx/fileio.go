@@ -9,6 +9,7 @@ import (
 
 	ed448ext "github.com/jwx-go/ed448/v4"
 	"github.com/jwx-go/es256k/v4"
+	jwxmldsa "github.com/jwx-go/mldsa/v4"
 	"github.com/lestrrat-go/jwx/v4/jwa"
 	"github.com/pkg/errors"
 	"github.com/zachmann/go-utils/fileutils"
@@ -41,6 +42,12 @@ func ReadSignerFromFile(keyfile string, alg jwa.SignatureAlgorithm) (crypto.Sign
 		}
 	case ed448ext.EdDSAEd448():
 		key, err := parseEd448PKCS8PrivateKey(block.Bytes)
+		if err != nil {
+			return nil, errors.WithStack(err)
+		}
+		sk = key
+	case jwxmldsa.MLDSA44(), jwxmldsa.MLDSA65(), jwxmldsa.MLDSA87():
+		key, err := parseMLDSAPKCS8PrivateKey(block.Bytes)
 		if err != nil {
 			return nil, errors.WithStack(err)
 		}
