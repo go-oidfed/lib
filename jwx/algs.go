@@ -1,6 +1,7 @@
 package jwx
 
 import (
+	"github.com/jwx-go/es256k/v4"
 	"github.com/lestrrat-go/jwx/v4/jwa"
 )
 
@@ -8,6 +9,7 @@ var supportedAlgs = []jwa.SignatureAlgorithm{
 	jwa.ES512(),
 	jwa.ES256(),
 	jwa.ES384(),
+	es256k.ES256K(),
 	jwa.EdDSA(),
 	jwa.EdDSAEd25519(),
 	jwa.PS512(),

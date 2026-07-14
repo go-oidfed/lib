@@ -7,6 +7,7 @@ import (
 	"encoding/pem"
 	"os"
 
+	"github.com/jwx-go/es256k/v4"
 	"github.com/lestrrat-go/jwx/v4/jwa"
 	"github.com/pkg/errors"
 	"github.com/zachmann/go-utils/fileutils"
@@ -25,6 +26,8 @@ func ReadSignerFromFile(keyfile string, alg jwa.SignatureAlgorithm) (crypto.Sign
 		sk, err = x509.ParsePKCS1PrivateKey(block.Bytes)
 	case jwa.ES256(), jwa.ES384(), jwa.ES512():
 		sk, err = x509.ParseECPrivateKey(block.Bytes)
+	case es256k.ES256K():
+		sk, err = parseSecp256k1PKCS8PrivateKey(block.Bytes)
 	case jwa.EdDSA(), jwa.EdDSAEd25519():
 		key, err := x509.ParsePKCS8PrivateKey(block.Bytes)
 		if err != nil {

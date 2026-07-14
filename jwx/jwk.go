@@ -10,6 +10,7 @@ import (
 	"crypto/x509"
 	"encoding/pem"
 
+	"github.com/jwx-go/es256k/v4"
 	"github.com/lestrrat-go/jwx/v4/jwa"
 	"github.com/lestrrat-go/jwx/v4/jwk"
 	"github.com/pkg/errors"
@@ -31,6 +32,8 @@ func generatePrivateKey(alg jwa.SignatureAlgorithm, rsaKeyLen int) (
 		sk, err = ecdsa.GenerateKey(elliptic.P384(), rand.Reader)
 	case jwa.ES512():
 		sk, err = ecdsa.GenerateKey(elliptic.P521(), rand.Reader)
+	case es256k.ES256K():
+		sk, err = ecdsa.GenerateKey(secp256k1Curve, rand.Reader) //nolint:staticcheck // secp256k1.S256() returns a deprecated-interface value; required for ecdsa.GenerateKey
 	case jwa.EdDSA(), jwa.EdDSAEd25519():
 		_, sk, err = ed25519.GenerateKey(rand.Reader)
 	default:
@@ -50,6 +53,9 @@ func exportPrivateKeyAsPem(sk crypto.Signer) []byte {
 	case *rsa.PrivateKey:
 		return exportRSAPrivateKeyAsPem(sk)
 	case *ecdsa.PrivateKey:
+		if sk.Curve.Params().Name == secp256k1Curve.Params().Name {
+			return exportSecp256k1PrivateKeyAsPem(sk)
+		}
 		return exportECPrivateKeyAsPem(sk)
 	case ed25519.PrivateKey:
 		return exportEDDSAPrivateKeyAsPem(sk)

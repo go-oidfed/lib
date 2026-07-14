@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/jwx-go/es256k/v4"
 	"github.com/lestrrat-go/jwx/v4/jwa"
 	"github.com/lestrrat-go/jwx/v4/jwk"
 	"github.com/lestrrat-go/jwx/v4/jws"
@@ -98,6 +99,15 @@ func TestGeneratePrivateKey(t *testing.T) {
 		assert.True(t, ok, "expected Ed25519 key")
 	})
 
+	t.Run("ES256K", func(t *testing.T) {
+		sk, err := generatePrivateKey(es256k.ES256K(), 0)
+		require.NoError(t, err)
+		assert.NotNil(t, sk)
+		ecKey, ok := sk.(*ecdsa.PrivateKey)
+		assert.True(t, ok, "expected ECDSA key")
+		assert.Equal(t, "secp256k1", ecKey.Curve.Params().Name)
+	})
+
 	t.Run("unknown algorithm", func(t *testing.T) {
 		sk, err := generatePrivateKey(jwa.SignatureAlgorithm{}, 0)
 		assert.Error(t, err)
@@ -135,6 +145,21 @@ func TestExportPrivateKeyAsPem(t *testing.T) {
 		block, _ := pem.Decode(pemData)
 		require.NotNil(t, block)
 		assert.Equal(t, "PRIVATE KEY", block.Type)
+	})
+
+	t.Run("ES256K key", func(t *testing.T) {
+		sk := testKey(t, es256k.ES256K())
+		pemData := exportPrivateKeyAsPem(sk)
+		require.NotNil(t, pemData)
+
+		block, _ := pem.Decode(pemData)
+		require.NotNil(t, block)
+		assert.Equal(t, "PRIVATE KEY", block.Type)
+
+		parsed, err := parseSecp256k1PKCS8PrivateKey(block.Bytes)
+		require.NoError(t, err)
+		assert.Equal(t, "secp256k1", parsed.Curve.Params().Name)
+		assert.Equal(t, sk.(*ecdsa.PrivateKey).D, parsed.D)
 	})
 
 	t.Run("unsupported key type", func(t *testing.T) {
@@ -222,6 +247,7 @@ func TestGenerateKeyPair(t *testing.T) {
 		{jwa.ES256(), 0},
 		{jwa.ES384(), 0},
 		{jwa.ES512(), 0},
+		{es256k.ES256K(), 0},
 		{jwa.EdDSA(), 0},
 	}
 
@@ -862,14 +888,46 @@ func TestSingleKeySigner_JWKS(t *testing.T) {
 // Algorithms Tests (algs.go)
 // =============================================================================
 
+func TestES256K_SignAndVerify(t *testing.T) {
+	sk, pk, _, err := GenerateKeyPair(es256k.ES256K(), 0)
+	require.NoError(t, err)
+	payload := []byte(`{"hello":"secp256k1"}`)
+
+	signed, err := SignWithType(payload, nil, oidfedconst.JWTTypeEntityStatement, es256k.ES256K(), sk)
+	require.NoError(t, err)
+	assert.NotEmpty(t, signed)
+
+	verified, err := jws.Verify(signed, jws.WithKey(es256k.ES256K(), pk))
+	require.NoError(t, err)
+	assert.Equal(t, payload, verified)
+}
+
+func TestES256K_PEMRoundTrip(t *testing.T) {
+	sk := testKey(t, es256k.ES256K()).(*ecdsa.PrivateKey)
+
+	pemData := exportSecp256k1PrivateKeyAsPem(sk)
+	require.NotNil(t, pemData)
+
+	block, _ := pem.Decode(pemData)
+	require.NotNil(t, block)
+	assert.Equal(t, "PRIVATE KEY", block.Type)
+
+	parsed, err := parseSecp256k1PKCS8PrivateKey(block.Bytes)
+	require.NoError(t, err)
+	assert.Equal(t, sk.D, parsed.D)
+	assert.Equal(t, sk.X, parsed.X)
+	assert.Equal(t, sk.Y, parsed.Y)
+}
+
 func TestSupportedAlgs(t *testing.T) {
 	algs := SupportedAlgs()
 
 	assert.NotEmpty(t, algs)
-	assert.Len(t, algs, 11)
+	assert.Len(t, algs, 12)
 
 	expectedAlgs := []jwa.SignatureAlgorithm{
 		jwa.ES256(), jwa.ES384(), jwa.ES512(),
+		es256k.ES256K(),
 		jwa.EdDSA(), jwa.EdDSAEd25519(),
 		jwa.RS256(), jwa.RS384(), jwa.RS512(),
 		jwa.PS256(), jwa.PS384(), jwa.PS512(),
