@@ -34,9 +34,27 @@ var supportedAlgs = []jwa.SignatureAlgorithm{
 }
 var supportedAlgsStr []string
 
+var defaultAlgs = []jwa.SignatureAlgorithm{
+	jwa.ES512(),
+	jwa.ES256(),
+	jwa.ES384(),
+	jwa.EdDSAEd25519(),
+	ed448.EdDSAEd448(),
+	jwa.PS512(),
+	jwa.PS256(),
+	jwa.PS384(),
+	jwa.RS512(),
+	jwa.RS384(),
+	jwa.RS256(),
+}
+var defaultAlgsStr []string
+
 func init() {
 	for _, alg := range supportedAlgs {
 		supportedAlgsStr = append(supportedAlgsStr, alg.String())
+	}
+	for _, alg := range defaultAlgs {
+		defaultAlgsStr = append(defaultAlgsStr, alg.String())
 	}
 }
 
@@ -49,4 +67,14 @@ func SupportedAlgs() []jwa.SignatureAlgorithm {
 // string
 func SupportedAlgsStrings() []string {
 	return supportedAlgsStr
+}
+
+// DefaultAlgs returns a set of default signing algorithms as a slice of jwa.SignatureAlgorithm
+func DefaultAlgs() []jwa.SignatureAlgorithm {
+	return defaultAlgs
+}
+
+// DefaultAlgsStrings returns a set of default signing algorithms as a slice of string
+func DefaultAlgsStrings() []string {
+	return defaultAlgsStr
 }
