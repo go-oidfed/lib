@@ -14,6 +14,7 @@ import (
 
 	"filippo.io/mldsa"
 	"github.com/cloudflare/circl/sign/ed448"
+	"github.com/jwx-go/compsig/v4"
 	ed448ext "github.com/jwx-go/ed448/v4"
 	"github.com/jwx-go/es256k/v4"
 	jwxmldsa "github.com/jwx-go/mldsa/v4"
@@ -34,7 +35,7 @@ import (
 // =============================================================================
 
 // testKey generates a test key for the given algorithm
-func testKey(t *testing.T, alg jwa.SignatureAlgorithm) crypto.Signer {
+func testKey(t *testing.T, alg jwa.SignatureAlgorithm) SigningKey {
 	t.Helper()
 	var rsaKeyLen int
 	switch alg {
@@ -174,6 +175,39 @@ func TestGeneratePrivateKey(t *testing.T) {
 			mlKey, ok := sk.(*mldsa.PrivateKey)
 			assert.True(t, ok, "expected *mldsa.PrivateKey")
 			assert.Equal(t, "ML-DSA-87", mlKey.PublicKey().Parameters().String())
+		},
+	)
+
+	t.Run(
+		"Compsig ML-DSA-44-ES256", func(t *testing.T) {
+			sk, err := generatePrivateKey(compsig.MLDSA44ES256(), 0)
+			require.NoError(t, err)
+			assert.NotNil(t, sk)
+			w, ok := sk.(*compsigSigningKey)
+			assert.True(t, ok, "expected *compsigSigningKey")
+			assert.Equal(t, "ML-DSA-44-ES256", w.sk.Algorithm().String())
+		},
+	)
+
+	t.Run(
+		"Compsig ML-DSA-65-Ed25519", func(t *testing.T) {
+			sk, err := generatePrivateKey(compsig.MLDSA65Ed25519(), 0)
+			require.NoError(t, err)
+			assert.NotNil(t, sk)
+			w, ok := sk.(*compsigSigningKey)
+			assert.True(t, ok, "expected *compsigSigningKey")
+			assert.Equal(t, "ML-DSA-65-Ed25519", w.sk.Algorithm().String())
+		},
+	)
+
+	t.Run(
+		"Compsig ML-DSA-87-Ed448", func(t *testing.T) {
+			sk, err := generatePrivateKey(compsig.MLDSA87Ed448(), 0)
+			require.NoError(t, err)
+			assert.NotNil(t, sk)
+			w, ok := sk.(*compsigSigningKey)
+			assert.True(t, ok, "expected *compsigSigningKey")
+			assert.Equal(t, "ML-DSA-87-Ed448", w.sk.Algorithm().String())
 		},
 	)
 
@@ -430,6 +464,18 @@ func TestGenerateKeyPair(t *testing.T) {
 		},
 		{
 			jwxmldsa.MLDSA87(),
+			0,
+		},
+		{
+			compsig.MLDSA44ES256(),
+			0,
+		},
+		{
+			compsig.MLDSA65Ed25519(),
+			0,
+		},
+		{
+			compsig.MLDSA87Ed448(),
 			0,
 		},
 	}
@@ -1279,11 +1325,197 @@ func TestMLDSA87_PEMRoundTrip(t *testing.T) {
 	assert.True(t, sk.PublicKey().Equal(parsed.PublicKey()))
 }
 
+func TestCompsig_MLDSA44ES256_SignAndVerify(t *testing.T) {
+	sk, pk, _, err := GenerateKeyPair(compsig.MLDSA44ES256(), 0)
+	require.NoError(t, err)
+	payload := []byte(`{"hello":"compsig-44-es256"}`)
+
+	signed, err := SignWithType(payload, nil, oidfedconst.JWTTypeEntityStatement, compsig.MLDSA44ES256(), sk)
+	require.NoError(t, err)
+	assert.NotEmpty(t, signed)
+
+	verified, err := jws.Verify(signed, jws.WithKey(compsig.MLDSA44ES256(), pk))
+	require.NoError(t, err)
+	assert.Equal(t, payload, verified)
+}
+
+func TestCompsig_MLDSA44ES256_PEMRoundTrip(t *testing.T) {
+	sk := testKey(t, compsig.MLDSA44ES256()).(*compsigSigningKey)
+
+	pemData := exportCompsigPrivateKeyAsPem(sk.sk)
+	require.NotNil(t, pemData)
+
+	block, _ := pem.Decode(pemData)
+	require.NotNil(t, block)
+	assert.Equal(t, "PRIVATE KEY", block.Type)
+
+	parsed, err := parseCompsigPKCS8PrivateKey(block.Bytes)
+	require.NoError(t, err)
+	rawOrig, _ := sk.sk.MarshalBinary()
+	rawParsed, _ := parsed.MarshalBinary()
+	assert.Equal(t, rawOrig, rawParsed)
+}
+
+func TestCompsig_MLDSA65ES256_SignAndVerify(t *testing.T) {
+	sk, pk, _, err := GenerateKeyPair(compsig.MLDSA65ES256(), 0)
+	require.NoError(t, err)
+	payload := []byte(`{"hello":"compsig-65-es256"}`)
+
+	signed, err := SignWithType(payload, nil, oidfedconst.JWTTypeEntityStatement, compsig.MLDSA65ES256(), sk)
+	require.NoError(t, err)
+	assert.NotEmpty(t, signed)
+
+	verified, err := jws.Verify(signed, jws.WithKey(compsig.MLDSA65ES256(), pk))
+	require.NoError(t, err)
+	assert.Equal(t, payload, verified)
+}
+
+func TestCompsig_MLDSA65ES256_PEMRoundTrip(t *testing.T) {
+	sk := testKey(t, compsig.MLDSA65ES256()).(*compsigSigningKey)
+
+	pemData := exportCompsigPrivateKeyAsPem(sk.sk)
+	require.NotNil(t, pemData)
+
+	block, _ := pem.Decode(pemData)
+	require.NotNil(t, block)
+	assert.Equal(t, "PRIVATE KEY", block.Type)
+
+	parsed, err := parseCompsigPKCS8PrivateKey(block.Bytes)
+	require.NoError(t, err)
+	rawOrig, _ := sk.sk.MarshalBinary()
+	rawParsed, _ := parsed.MarshalBinary()
+	assert.Equal(t, rawOrig, rawParsed)
+}
+
+func TestCompsig_MLDSA87ES384_SignAndVerify(t *testing.T) {
+	sk, pk, _, err := GenerateKeyPair(compsig.MLDSA87ES384(), 0)
+	require.NoError(t, err)
+	payload := []byte(`{"hello":"compsig-87-es384"}`)
+
+	signed, err := SignWithType(payload, nil, oidfedconst.JWTTypeEntityStatement, compsig.MLDSA87ES384(), sk)
+	require.NoError(t, err)
+	assert.NotEmpty(t, signed)
+
+	verified, err := jws.Verify(signed, jws.WithKey(compsig.MLDSA87ES384(), pk))
+	require.NoError(t, err)
+	assert.Equal(t, payload, verified)
+}
+
+func TestCompsig_MLDSA87ES384_PEMRoundTrip(t *testing.T) {
+	sk := testKey(t, compsig.MLDSA87ES384()).(*compsigSigningKey)
+
+	pemData := exportCompsigPrivateKeyAsPem(sk.sk)
+	require.NotNil(t, pemData)
+
+	block, _ := pem.Decode(pemData)
+	require.NotNil(t, block)
+	assert.Equal(t, "PRIVATE KEY", block.Type)
+
+	parsed, err := parseCompsigPKCS8PrivateKey(block.Bytes)
+	require.NoError(t, err)
+	rawOrig, _ := sk.sk.MarshalBinary()
+	rawParsed, _ := parsed.MarshalBinary()
+	assert.Equal(t, rawOrig, rawParsed)
+}
+
+func TestCompsig_MLDSA44Ed25519_SignAndVerify(t *testing.T) {
+	sk, pk, _, err := GenerateKeyPair(compsig.MLDSA44Ed25519(), 0)
+	require.NoError(t, err)
+	payload := []byte(`{"hello":"compsig-44-ed25519"}`)
+
+	signed, err := SignWithType(payload, nil, oidfedconst.JWTTypeEntityStatement, compsig.MLDSA44Ed25519(), sk)
+	require.NoError(t, err)
+	assert.NotEmpty(t, signed)
+
+	verified, err := jws.Verify(signed, jws.WithKey(compsig.MLDSA44Ed25519(), pk))
+	require.NoError(t, err)
+	assert.Equal(t, payload, verified)
+}
+
+func TestCompsig_MLDSA44Ed25519_PEMRoundTrip(t *testing.T) {
+	sk := testKey(t, compsig.MLDSA44Ed25519()).(*compsigSigningKey)
+
+	pemData := exportCompsigPrivateKeyAsPem(sk.sk)
+	require.NotNil(t, pemData)
+
+	block, _ := pem.Decode(pemData)
+	require.NotNil(t, block)
+	assert.Equal(t, "PRIVATE KEY", block.Type)
+
+	parsed, err := parseCompsigPKCS8PrivateKey(block.Bytes)
+	require.NoError(t, err)
+	rawOrig, _ := sk.sk.MarshalBinary()
+	rawParsed, _ := parsed.MarshalBinary()
+	assert.Equal(t, rawOrig, rawParsed)
+}
+
+func TestCompsig_MLDSA65Ed25519_SignAndVerify(t *testing.T) {
+	sk, pk, _, err := GenerateKeyPair(compsig.MLDSA65Ed25519(), 0)
+	require.NoError(t, err)
+	payload := []byte(`{"hello":"compsig-65-ed25519"}`)
+
+	signed, err := SignWithType(payload, nil, oidfedconst.JWTTypeEntityStatement, compsig.MLDSA65Ed25519(), sk)
+	require.NoError(t, err)
+	assert.NotEmpty(t, signed)
+
+	verified, err := jws.Verify(signed, jws.WithKey(compsig.MLDSA65Ed25519(), pk))
+	require.NoError(t, err)
+	assert.Equal(t, payload, verified)
+}
+
+func TestCompsig_MLDSA65Ed25519_PEMRoundTrip(t *testing.T) {
+	sk := testKey(t, compsig.MLDSA65Ed25519()).(*compsigSigningKey)
+
+	pemData := exportCompsigPrivateKeyAsPem(sk.sk)
+	require.NotNil(t, pemData)
+
+	block, _ := pem.Decode(pemData)
+	require.NotNil(t, block)
+	assert.Equal(t, "PRIVATE KEY", block.Type)
+
+	parsed, err := parseCompsigPKCS8PrivateKey(block.Bytes)
+	require.NoError(t, err)
+	rawOrig, _ := sk.sk.MarshalBinary()
+	rawParsed, _ := parsed.MarshalBinary()
+	assert.Equal(t, rawOrig, rawParsed)
+}
+
+func TestCompsig_MLDSA87Ed448_SignAndVerify(t *testing.T) {
+	sk, pk, _, err := GenerateKeyPair(compsig.MLDSA87Ed448(), 0)
+	require.NoError(t, err)
+	payload := []byte(`{"hello":"compsig-87-ed448"}`)
+
+	signed, err := SignWithType(payload, nil, oidfedconst.JWTTypeEntityStatement, compsig.MLDSA87Ed448(), sk)
+	require.NoError(t, err)
+	assert.NotEmpty(t, signed)
+
+	verified, err := jws.Verify(signed, jws.WithKey(compsig.MLDSA87Ed448(), pk))
+	require.NoError(t, err)
+	assert.Equal(t, payload, verified)
+}
+
+func TestCompsig_MLDSA87Ed448_PEMRoundTrip(t *testing.T) {
+	sk := testKey(t, compsig.MLDSA87Ed448()).(*compsigSigningKey)
+
+	pemData := exportCompsigPrivateKeyAsPem(sk.sk)
+	require.NotNil(t, pemData)
+
+	block, _ := pem.Decode(pemData)
+	require.NotNil(t, block)
+	assert.Equal(t, "PRIVATE KEY", block.Type)
+
+	parsed, err := parseCompsigPKCS8PrivateKey(block.Bytes)
+	require.NoError(t, err)
+	rawOrig, _ := sk.sk.MarshalBinary()
+	rawParsed, _ := parsed.MarshalBinary()
+	assert.Equal(t, rawOrig, rawParsed)
+}
+
 func TestSupportedAlgs(t *testing.T) {
 	algs := SupportedAlgs()
 
 	assert.NotEmpty(t, algs)
-	assert.Len(t, algs, 16)
+	assert.Len(t, algs, 22)
 
 	expectedAlgs := []jwa.SignatureAlgorithm{
 		jwa.ES256(),
@@ -1302,6 +1534,12 @@ func TestSupportedAlgs(t *testing.T) {
 		jwxmldsa.MLDSA44(),
 		jwxmldsa.MLDSA65(),
 		jwxmldsa.MLDSA87(),
+		compsig.MLDSA44ES256(),
+		compsig.MLDSA65ES256(),
+		compsig.MLDSA87ES384(),
+		compsig.MLDSA44Ed25519(),
+		compsig.MLDSA65Ed25519(),
+		compsig.MLDSA87Ed448(),
 	}
 
 	for _, expected := range expectedAlgs {

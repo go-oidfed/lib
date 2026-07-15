@@ -2,12 +2,6 @@ package kms
 
 import (
 	"cmp"
-	"crypto"
-	"crypto/ecdsa"
-	"crypto/ed25519"
-	"crypto/rsa"
-	"crypto/x509"
-	"encoding/pem"
 	"fmt"
 	"slices"
 	"sync"
@@ -33,7 +27,7 @@ type PEMStorageKMS struct {
 	stateStorer KMSStateStorer
 
 	// signers is a map of all loaded signers, where the key is the kid
-	signers map[string]crypto.Signer
+	signers map[string]jwx.SigningKey
 
 	PKs public.PublicKeyStorage
 
@@ -55,7 +49,7 @@ func NewPEMStorageKMS(
 		pemStorer:   pemStorer,
 		stateStorer: stateStorer,
 		PKs:         pks,
-		signers:     make(map[string]crypto.Signer),
+		signers:     make(map[string]jwx.SigningKey),
 	}
 }
 
@@ -212,8 +206,8 @@ func (kms *PEMStorageKMS) ChangeKeyRotationConfig(config KeyRotationConfig) erro
 	return nil
 }
 
-// GetDefault returns a crypto.Signer and the corresponding jwa.SignatureAlgorithm
-func (kms *PEMStorageKMS) GetDefault() (crypto.Signer, jwa.SignatureAlgorithm) {
+// GetDefault returns a SigningKey and the corresponding jwa.SignatureAlgorithm
+func (kms *PEMStorageKMS) GetDefault() (jwx.SigningKey, jwa.SignatureAlgorithm) {
 	if len(kms.Algs) == 0 {
 		return nil, jwa.SignatureAlgorithm{}
 	}
@@ -228,10 +222,10 @@ func (kms *PEMStorageKMS) GetDefault() (crypto.Signer, jwa.SignatureAlgorithm) {
 }
 
 // GetForAlgs takes a list of acceptable signature algorithms and returns a
-// usable crypto.Signer or nil as well as the corresponding
+// usable SigningKey or nil as well as the corresponding
 // jwa.SignatureAlgorithm
 func (kms *PEMStorageKMS) GetForAlgs(algs ...string) (
-	crypto.Signer,
+	jwx.SigningKey,
 	jwa.SignatureAlgorithm,
 ) {
 	activePKs, err := kms.PKs.GetActive()
@@ -272,7 +266,7 @@ func (kms *PEMStorageKMS) GetForAlgs(algs ...string) (
 func (kms *PEMStorageKMS) Load() error {
 	log.Debugf("PEMStorageKMS: loading keys")
 	if kms.signers == nil {
-		kms.signers = make(map[string]crypto.Signer)
+		kms.signers = make(map[string]jwx.SigningKey)
 	}
 
 	log.Debug("PEMStorageKMS: loading active pks")
@@ -319,7 +313,7 @@ func (kms *PEMStorageKMS) Load() error {
 	return nil
 }
 
-func (kms *PEMStorageKMS) readSigner(kid string, alg jwa.SignatureAlgorithm) (crypto.Signer, error) {
+func (kms *PEMStorageKMS) readSigner(kid string, alg jwa.SignatureAlgorithm) (jwx.SigningKey, error) {
 	pemData, err := kms.pemStorer.ReadPEM(kid)
 	if err != nil {
 		return nil, err
@@ -327,7 +321,7 @@ func (kms *PEMStorageKMS) readSigner(kid string, alg jwa.SignatureAlgorithm) (cr
 	return readSignerFromPEM(pemData, alg)
 }
 
-func (kms *PEMStorageKMS) writeSigner(kid string, sk crypto.Signer) error {
+func (kms *PEMStorageKMS) writeSigner(kid string, sk jwx.SigningKey) error {
 	pemData, err := writeSignerToPEM(sk)
 	if err != nil {
 		return err
@@ -335,17 +329,12 @@ func (kms *PEMStorageKMS) writeSigner(kid string, sk crypto.Signer) error {
 	return kms.pemStorer.WritePEM(kid, pemData)
 }
 
-func writeSignerToPEM(sk crypto.Signer) ([]byte, error) {
-	switch sk := sk.(type) {
-	case *rsa.PrivateKey:
-		return exportRSAPrivateKeyAsPEM(sk)
-	case *ecdsa.PrivateKey:
-		return exportECPrivateKeyAsPEM(sk)
-	case ed25519.PrivateKey:
-		return exportEDDSAPrivateKeyAsPEM(sk)
-	default:
+func writeSignerToPEM(sk jwx.SigningKey) ([]byte, error) {
+	pemData := jwx.ExportSignerAsPEM(sk)
+	if pemData == nil {
 		return nil, errors.New("unsupported key type")
 	}
+	return pemData, nil
 }
 
 func (kms *PEMStorageKMS) generateNewSigner(
@@ -872,72 +861,6 @@ func (kms *PEMStorageKMS) StopAutomaticRotation() {
 
 // PEM helper functions
 
-func readSignerFromPEM(data []byte, alg jwa.SignatureAlgorithm) (crypto.Signer, error) {
-	block, _ := pem.Decode(data)
-	if block == nil {
-		return nil, errors.New("invalid PEM data")
-	}
-	var sk crypto.Signer
-	var err error
-	switch alg {
-	case jwa.RS256(), jwa.RS384(), jwa.RS512(), jwa.PS256(), jwa.PS384(), jwa.PS512():
-		sk, err = x509.ParsePKCS1PrivateKey(block.Bytes)
-	case jwa.ES256(), jwa.ES384(), jwa.ES512():
-		sk, err = x509.ParseECPrivateKey(block.Bytes)
-	case jwa.EdDSA():
-		key, err := x509.ParsePKCS8PrivateKey(block.Bytes)
-		if err != nil {
-			return nil, errors.WithStack(err)
-		}
-		var ok bool
-		sk, ok = key.(ed25519.PrivateKey)
-		if !ok {
-			return nil, errors.New("not an Ed25519 Private Key")
-		}
-	default:
-		return nil, errors.New("unknown signing algorithm: " + alg.String())
-	}
-	if err != nil {
-		return nil, errors.WithStack(err)
-	}
-	return sk, nil
-}
-
-func exportRSAPrivateKeyAsPEM(privkey *rsa.PrivateKey) ([]byte, error) {
-	privkeyBytes := x509.MarshalPKCS1PrivateKey(privkey)
-	privkeyPem := pem.EncodeToMemory(
-		&pem.Block{
-			Type:  "RSA PRIVATE KEY",
-			Bytes: privkeyBytes,
-		},
-	)
-	return privkeyPem, nil
-}
-
-func exportECPrivateKeyAsPEM(privkey *ecdsa.PrivateKey) ([]byte, error) {
-	privkeyBytes, err := x509.MarshalECPrivateKey(privkey)
-	if err != nil {
-		return nil, errors.WithStack(err)
-	}
-	privkeyPem := pem.EncodeToMemory(
-		&pem.Block{
-			Type:  "EC PRIVATE KEY",
-			Bytes: privkeyBytes,
-		},
-	)
-	return privkeyPem, nil
-}
-
-func exportEDDSAPrivateKeyAsPEM(privkey ed25519.PrivateKey) ([]byte, error) {
-	privkeyBytes, err := x509.MarshalPKCS8PrivateKey(privkey)
-	if err != nil {
-		return nil, errors.WithStack(err)
-	}
-	privkeyPem := pem.EncodeToMemory(
-		&pem.Block{
-			Type:  "PRIVATE KEY",
-			Bytes: privkeyBytes,
-		},
-	)
-	return privkeyPem, nil
+func readSignerFromPEM(data []byte, alg jwa.SignatureAlgorithm) (jwx.SigningKey, error) {
+	return jwx.ParseSignerFromPEM(data, alg)
 }

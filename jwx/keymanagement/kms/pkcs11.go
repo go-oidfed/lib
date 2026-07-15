@@ -103,7 +103,7 @@ type PKCS11KMS struct {
 	stateStorer KMSStateStorer
 
 	// signers is a map of all loaded signers, keyed by kid
-	signers map[string]crypto.Signer
+	signers map[string]jwx.SigningKey
 
 	PKs public.PublicKeyStorage
 
@@ -434,8 +434,8 @@ func (kms *PKCS11KMS) keyLabel(kid string) string {
 	return fmt.Sprintf("%s_%s", prefix, kid)
 }
 
-// GetDefault returns a crypto.Signer and the corresponding jwa.SignatureAlgorithm
-func (kms *PKCS11KMS) GetDefault() (crypto.Signer, jwa.SignatureAlgorithm) {
+// GetDefault returns a SigningKey and the corresponding jwa.SignatureAlgorithm
+func (kms *PKCS11KMS) GetDefault() (jwx.SigningKey, jwa.SignatureAlgorithm) {
 	if len(kms.Algs) == 0 {
 		return nil, jwa.SignatureAlgorithm{}
 	}
@@ -451,7 +451,7 @@ func (kms *PKCS11KMS) GetDefault() (crypto.Signer, jwa.SignatureAlgorithm) {
 
 // GetForAlgs returns a signer for the first acceptable algorithm found among active keys.
 func (kms *PKCS11KMS) GetForAlgs(algs ...string) (
-	crypto.Signer,
+	jwx.SigningKey,
 	jwa.SignatureAlgorithm,
 ) {
 	activePKs, err := kms.PKs.GetActive()
@@ -491,7 +491,7 @@ func (kms *PKCS11KMS) GetForAlgs(algs ...string) (
 // and generates any missing keys if enabled.
 func (kms *PKCS11KMS) Load() error {
 	if kms.signers == nil {
-		kms.signers = make(map[string]crypto.Signer)
+		kms.signers = make(map[string]jwx.SigningKey)
 	}
 	if kms.ctx == nil {
 		cfg := &crypto11.Config{
@@ -630,7 +630,7 @@ func (kms *PKCS11KMS) algorithmSupported(alg jwa.SignatureAlgorithm) bool {
 }
 
 // algForSigner determines a configured jwa.SignatureAlgorithm suitable for the signer’s key type.
-func (kms *PKCS11KMS) algForSigner(signer crypto.Signer) (jwa.SignatureAlgorithm, error) {
+func (kms *PKCS11KMS) algForSigner(signer jwx.SigningKey) (jwa.SignatureAlgorithm, error) {
 	pub := signer.Public()
 	switch t := pub.(type) {
 	case *rsa.PublicKey:

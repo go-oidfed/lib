@@ -1,7 +1,6 @@
 package kms
 
 import (
-	"crypto"
 	"fmt"
 	"slices"
 
@@ -17,7 +16,7 @@ type LegacyFilesystemKMS struct {
 	Dir     string
 	TypeID  string
 	Algs    []jwa.SignatureAlgorithm
-	signers map[string]crypto.Signer // kid -> signer
+	signers map[string]jwx.SigningKey // kid -> signer
 }
 
 func (l *LegacyFilesystemKMS) GetDefaultAlg() jwa.SignatureAlgorithm {
@@ -33,7 +32,7 @@ func (l *LegacyFilesystemKMS) legacyKeyFilePath(alg jwa.SignatureAlgorithm) stri
 }
 
 func (l *LegacyFilesystemKMS) Load() error {
-	l.signers = make(map[string]crypto.Signer)
+	l.signers = make(map[string]jwx.SigningKey)
 	for _, alg := range l.Algs {
 		signer, err := jwx.ReadSignerFromFile(l.legacyKeyFilePath(alg), alg)
 		if err != nil {
@@ -48,7 +47,7 @@ func (l *LegacyFilesystemKMS) Load() error {
 	return nil
 }
 
-func (l *LegacyFilesystemKMS) GetForAlgs(algs ...string) (crypto.Signer, jwa.SignatureAlgorithm) {
+func (l *LegacyFilesystemKMS) GetForAlgs(algs ...string) (jwx.SigningKey, jwa.SignatureAlgorithm) {
 	for _, alg := range l.Algs {
 		for _, signer := range l.signers {
 			if slices.Contains(algs, alg.String()) {
@@ -59,7 +58,7 @@ func (l *LegacyFilesystemKMS) GetForAlgs(algs ...string) (crypto.Signer, jwa.Sig
 	return nil, jwa.SignatureAlgorithm{}
 }
 
-func (l *LegacyFilesystemKMS) GetDefault() (crypto.Signer, jwa.SignatureAlgorithm) {
+func (l *LegacyFilesystemKMS) GetDefault() (jwx.SigningKey, jwa.SignatureAlgorithm) {
 	if len(l.Algs) == 0 {
 		return nil, jwa.SignatureAlgorithm{}
 	}

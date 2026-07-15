@@ -1,13 +1,13 @@
 package kms
 
 import (
-	"crypto"
 	"errors"
 	"time"
 
-	log "github.com/go-oidfed/lib/internal"
 	"github.com/lestrrat-go/jwx/v4/jwa"
 	"github.com/zachmann/go-utils/duration"
+
+	log "github.com/go-oidfed/lib/internal"
 
 	"github.com/go-oidfed/lib/jwx"
 	"github.com/go-oidfed/lib/jwx/keymanagement/public"
@@ -33,8 +33,8 @@ const (
 // a default or algorithm-specific signer.
 type BasicKeyManagementSystem interface {
 	Load() error
-	GetForAlgs(algs ...string) (crypto.Signer, jwa.SignatureAlgorithm)
-	GetDefault() (crypto.Signer, jwa.SignatureAlgorithm)
+	GetForAlgs(algs ...string) (jwx.SigningKey, jwa.SignatureAlgorithm)
+	GetDefault() (jwx.SigningKey, jwa.SignatureAlgorithm)
 	GetAlgs() []jwa.SignatureAlgorithm
 	GetDefaultAlg() jwa.SignatureAlgorithm
 }
@@ -141,11 +141,11 @@ type kmsAsVersatileSigner struct {
 	jwksFnc func() (jwx.JWKS, error)
 }
 
-func (k kmsAsVersatileSigner) Signer(algs ...string) (crypto.Signer, jwa.SignatureAlgorithm) {
+func (k kmsAsVersatileSigner) Signer(algs ...string) (jwx.SigningKey, jwa.SignatureAlgorithm) {
 	return k.kms.GetForAlgs(algs...)
 }
 
-func (k kmsAsVersatileSigner) DefaultSigner() (crypto.Signer, jwa.SignatureAlgorithm) {
+func (k kmsAsVersatileSigner) DefaultSigner() (jwx.SigningKey, jwa.SignatureAlgorithm) {
 	return k.kms.GetDefault()
 }
 

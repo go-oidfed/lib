@@ -25,7 +25,7 @@ func TestPEMRoundTripRSA(t *testing.T) {
 	privKey, err := rsa.GenerateKey(rand.Reader, 2048)
 	require.NoError(t, err)
 
-	pemData, err := exportRSAPrivateKeyAsPEM(privKey)
+	pemData, err := writeSignerToPEM(privKey)
 	require.NoError(t, err)
 	require.NotNil(t, pemData)
 
@@ -44,7 +44,7 @@ func TestPEMRoundTripECDSA_P256(t *testing.T) {
 	privKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	require.NoError(t, err)
 
-	pemData, err := exportECPrivateKeyAsPEM(privKey)
+	pemData, err := writeSignerToPEM(privKey)
 	require.NoError(t, err)
 	require.NotNil(t, pemData)
 
@@ -64,7 +64,7 @@ func TestPEMRoundTripECDSA_P384(t *testing.T) {
 	privKey, err := ecdsa.GenerateKey(elliptic.P384(), rand.Reader)
 	require.NoError(t, err)
 
-	pemData, err := exportECPrivateKeyAsPEM(privKey)
+	pemData, err := writeSignerToPEM(privKey)
 	require.NoError(t, err)
 	require.NotNil(t, pemData)
 
@@ -84,7 +84,7 @@ func TestPEMRoundTripECDSA_P521(t *testing.T) {
 	privKey, err := ecdsa.GenerateKey(elliptic.P521(), rand.Reader)
 	require.NoError(t, err)
 
-	pemData, err := exportECPrivateKeyAsPEM(privKey)
+	pemData, err := writeSignerToPEM(privKey)
 	require.NoError(t, err)
 	require.NotNil(t, pemData)
 
@@ -104,7 +104,7 @@ func TestPEMRoundTripEdDSA(t *testing.T) {
 	pubKey, privKey, err := ed25519.GenerateKey(rand.Reader)
 	require.NoError(t, err)
 
-	pemData, err := exportEDDSAPrivateKeyAsPEM(privKey)
+	pemData, err := writeSignerToPEM(privKey)
 	require.NoError(t, err)
 	require.NotNil(t, pemData)
 
@@ -131,7 +131,7 @@ func TestPEMReadWrongAlg(t *testing.T) {
 	privKey, err := rsa.GenerateKey(rand.Reader, 2048)
 	require.NoError(t, err)
 
-	pemData, err := exportRSAPrivateKeyAsPEM(privKey)
+	pemData, err := writeSignerToPEM(privKey)
 	require.NoError(t, err)
 
 	signer, err := readSignerFromPEM(pemData, jwa.EdDSA())
@@ -222,7 +222,7 @@ func TestSortKeysByPreference(t *testing.T) {
 
 func TestGetForAlgs_OrphanedPublicKey(t *testing.T) {
 	kms := &PEMStorageKMS{
-		signers: make(map[string]crypto.Signer),
+		signers: make(map[string]jwx.SigningKey),
 		KMSConfig: KMSConfig{
 			Algs:       []jwa.SignatureAlgorithm{jwa.RS256()},
 			DefaultAlg: jwa.RS256(),
@@ -276,7 +276,7 @@ func TestGetForAlgs_OrphanedPublicKey(t *testing.T) {
 
 func TestGetForAlgs_AllOrphanedKeysForAlg(t *testing.T) {
 	kms := &PEMStorageKMS{
-		signers: make(map[string]crypto.Signer),
+		signers: make(map[string]jwx.SigningKey),
 		KMSConfig: KMSConfig{
 			Algs:       []jwa.SignatureAlgorithm{jwa.RS256()},
 			DefaultAlg: jwa.RS256(),
@@ -325,7 +325,7 @@ func TestGetForAlgs_AllOrphanedKeysForAlg(t *testing.T) {
 
 func TestGetForAlgs_MultipleAlgsWithMixedOrphans(t *testing.T) {
 	kms := &PEMStorageKMS{
-		signers: make(map[string]crypto.Signer),
+		signers: make(map[string]jwx.SigningKey),
 		KMSConfig: KMSConfig{
 			Algs: []jwa.SignatureAlgorithm{
 				jwa.RS256(),

@@ -1,6 +1,7 @@
 package jwx
 
 import (
+	"github.com/jwx-go/compsig/v4"
 	"github.com/jwx-go/ed448/v4"
 	"github.com/jwx-go/es256k/v4"
 	jwxmldsa "github.com/jwx-go/mldsa/v4"
@@ -24,6 +25,12 @@ var supportedAlgs = []jwa.SignatureAlgorithm{
 	jwxmldsa.MLDSA44(),
 	jwxmldsa.MLDSA65(),
 	jwxmldsa.MLDSA87(),
+	compsig.MLDSA44ES256(),
+	compsig.MLDSA65ES256(),
+	compsig.MLDSA87ES384(),
+	compsig.MLDSA44Ed25519(),
+	compsig.MLDSA65Ed25519(),
+	compsig.MLDSA87Ed448(),
 }
 var supportedAlgsStr []string
 

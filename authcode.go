@@ -1,7 +1,6 @@
 package oidfed
 
 import (
-	"crypto"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -102,7 +101,7 @@ func (rop RequestObjectProducer) RequestObject(requestValues map[string]any, hea
 }
 
 func (rop RequestObjectProducer) signPayload(data []byte, headers jws.Headers, algs ...string) ([]byte, error) {
-	var signer crypto.Signer
+	var signer jwx.SigningKey
 	var alg jwa.SignatureAlgorithm
 	if len(algs) == 0 {
 		signer, alg = rop.signer.DefaultSigner()

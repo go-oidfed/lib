@@ -40,6 +40,7 @@ require (
 	github.com/fatih/structs v1.1.0 // indirect
 	github.com/go-jose/go-jose/v4 v4.1.4 // indirect
 	github.com/google/go-cmp v0.7.0 // indirect
+	github.com/jwx-go/compsig/v4 v4.0.3
 	github.com/klauspost/compress v1.17.9 // indirect
 	github.com/kr/pretty v0.3.1 // indirect
 	github.com/lestrrat-go/dsig v1.3.0 // indirect
