@@ -4,10 +4,84 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"reflect"
+	"runtime"
+	"strings"
 	"time"
 
 	"github.com/rs/zerolog"
 )
+
+// zerologPkgPath is the import path of the rs/zerolog package. Frames coming
+// from it (Event.Msg, Logger.Debug, ...) are skipped when resolving the caller
+// so the reported location is the library call site rather than zerolog
+// internals. It is derived from the actual compiled type so it stays correct
+// across vendoring or module replacements.
+var zerologPkgPath = reflect.TypeOf(zerolog.Event{}).PkgPath()
+
+// internalPkgPath is this package's import path. It is skipped so that logging
+// through the wrapper helpers below (Debug, Info, ...) reports the real caller
+// instead of logging.go itself.
+var internalPkgPath = reflect.TypeOf(libCallerHook{}).PkgPath()
+
+// libCallerHook attaches the caller (file:line) to every emitted event. Unlike
+// zerolog's built-in Caller(), which uses a single fixed stack skip, this hook
+// walks the stack and picks the first frame outside of zerolog and this
+// package. That yields the correct call site regardless of whether the log
+// statement went through one of the wrapper helpers (Debug/Info/...) or
+// directly through Logger().X()...Msg(), which require different skip counts.
+//
+// The caller is only recorded at debug level (mirroring the host application's
+// convention of adding Caller() to its own logger only when debug is enabled),
+// keeping library output consistent with the rest of the log stream.
+type libCallerHook struct{}
+
+func (libCallerHook) Run(e *zerolog.Event, _ zerolog.Level, _ string) {
+	if zerolog.GlobalLevel() > zerolog.DebugLevel {
+		return
+	}
+	var pcs [24]uintptr
+	// Start just above this hook and runtime.Callers; package filtering below
+	// handles the rest, so the exact skip is not load-bearing.
+	n := runtime.Callers(2, pcs[:])
+	frames := runtime.CallersFrames(pcs[:n])
+	for {
+		frame, more := frames.Next()
+		if frame.Function != "" && !inPkgTree(frame.Function, zerologPkgPath) && !inPkgExact(frame.Function, internalPkgPath) {
+			e.Str(zerolog.CallerFieldName, zerolog.CallerMarshalFunc(frame.PC, frame.File, frame.Line))
+			return
+		}
+		if !more {
+			return
+		}
+	}
+}
+
+// inPkgTree reports whether fn belongs to pkg or any of its subpackages. Used
+// for the zerolog package, whose Event/Logger/log helpers (and subpackages)
+// are all stack frames that must be skipped.
+func inPkgTree(fn, pkg string) bool {
+	return hasPkgPrefix(fn, pkg, true)
+}
+
+// inPkgExact reports whether fn belongs to pkg itself but not one of its
+// subpackages. Used for this package: the wrapper helpers (Debug, Logger, ...)
+// live here and must be skipped, but callers from internal/* subpackages (if
+// any) are real call sites that should be reported.
+func inPkgExact(fn, pkg string) bool {
+	return hasPkgPrefix(fn, pkg, false)
+}
+
+func hasPkgPrefix(fn, pkg string, allowSubpkg bool) bool {
+	if !strings.HasPrefix(fn, pkg) {
+		return false
+	}
+	if len(fn) == len(pkg) {
+		return true
+	}
+	c := fn[len(pkg)]
+	return c == '.' || (allowSubpkg && c == '/')
+}
 
 // Package-private logger instance to keep logging isolated from applications.
 // Uses zerolog with a console writer by default to match the previous logrus
@@ -18,6 +92,7 @@ var logger = zerolog.New(
 		TimeFormat: time.RFC3339,
 	},
 ).
+	Hook(libCallerHook{}).
 	With().
 	Timestamp().
 	Logger()
