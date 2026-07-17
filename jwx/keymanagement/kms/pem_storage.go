@@ -672,26 +672,21 @@ func (kms *PEMStorageKMS) StartAutomaticRotation() error {
 
 // rotationStep performs one evaluation/rotation cycle and returns the next sleep
 // interval and whether any rotation or seeding occurred (didRotate).
+//
+// Scheduled configuration changes (algorithm set / default algorithm) are
+// applied before the rotation-evaluation loop. This ensures that, once the
+// effective time of a pending alg change has passed, kms.Algs is updated (and
+// its keys loaded) before any seeding decisions are made. Otherwise, the loop
+// would still iterate over the old algorithm set and could regenerate a key
+// for an algorithm that is no longer configured (e.g. after a scheduled alg
+// switch where the old key expired during a downtime).
 func (kms *PEMStorageKMS) rotationStep(now time.Time) (time.Duration, bool) {
 	const minSleep = time.Second
 	nextSleep := max(kms.KeyRotation.Overlap.Duration()/2, minSleep)
 	didRotate := false
 
-	activePKs, err := kms.PKs.GetActive()
-	if err != nil {
-		log.Logger().Error().Err(err).Msg("PEMStorageKMS: automatic rotation: failed to get active public keys")
-		return nextSleep, false
-	}
-	pksByAlg := activePKs.ByAlg()
-	for _, alg := range kms.Algs {
-		sleepCandidate, rotated := kms.rotationEvaluationForAlg(pksByAlg, alg, now, minSleep)
-		if rotated {
-			didRotate = true
-		}
-		if sleepCandidate > 0 && sleepCandidate < nextSleep {
-			nextSleep = sleepCandidate
-		}
-	}
+	// Apply due scheduled changes first so the rotation loop operates on the
+	// up-to-date algorithm set and loaded keys.
 	if st, err := kms.loadScheduledState(); err == nil {
 		applyAlg := func(p *PendingAlgChange) bool {
 			if p == nil {
@@ -708,7 +703,7 @@ func (kms *PEMStorageKMS) rotationStep(now time.Time) (time.Duration, bool) {
 				}
 				return true
 			}
-			wait := time.Until(p.EffectiveAt.Time)
+			wait := p.EffectiveAt.Time.Sub(now)
 			if wait > 0 && wait < nextSleep {
 				nextSleep = wait
 			}
@@ -726,7 +721,7 @@ func (kms *PEMStorageKMS) rotationStep(now time.Time) (time.Duration, bool) {
 				}
 				return true
 			}
-			wait := time.Until(p.EffectiveAt.Time)
+			wait := p.EffectiveAt.Time.Sub(now)
 			if wait > 0 && wait < nextSleep {
 				nextSleep = wait
 			}
@@ -740,6 +735,22 @@ func (kms *PEMStorageKMS) rotationStep(now time.Time) (time.Duration, bool) {
 		}
 	} else {
 		log.Logger().Error().Err(err).Msg("PEMStorageKMS: scheduled state load failed")
+	}
+
+	activePKs, err := kms.PKs.GetActive()
+	if err != nil {
+		log.Logger().Error().Err(err).Msg("PEMStorageKMS: automatic rotation: failed to get active public keys")
+		return nextSleep, false
+	}
+	pksByAlg := activePKs.ByAlg()
+	for _, alg := range kms.Algs {
+		sleepCandidate, rotated := kms.rotationEvaluationForAlg(pksByAlg, alg, now, minSleep)
+		if rotated {
+			didRotate = true
+		}
+		if sleepCandidate > 0 && sleepCandidate < nextSleep {
+			nextSleep = sleepCandidate
+		}
 	}
 	return nextSleep, didRotate
 }

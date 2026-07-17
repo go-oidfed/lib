@@ -1005,30 +1005,22 @@ func (kms *PKCS11KMS) StartAutomaticRotation() error {
 
 // rotationStep performs one evaluation/rotation cycle and returns the next sleep
 // interval and whether any rotation or seeding occurred (didRotate).
+//
+// Scheduled configuration changes (algorithm set / default algorithm) are
+// applied before the rotation-evaluation loop. This ensures that, once the
+// effective time of a pending alg change has passed, kms.Algs is updated (and
+// its keys loaded) before any seeding decisions are made. Otherwise, the loop
+// would still iterate over the old algorithm set and could regenerate a key
+// for an algorithm that is no longer configured (e.g. after a scheduled alg
+// switch where the old key expired during a downtime).
 func (kms *PKCS11KMS) rotationStep(now time.Time) (time.Duration, bool) {
 	// default sleep if we cannot compute anything meaningful
 	const minSleep = time.Second
 	nextSleep := max(kms.KeyRotation.Overlap.Duration()/2, minSleep)
 	didRotate := false
 
-	activePKs, err := kms.PKs.GetActive()
-	if err != nil {
-		log.Logger().Error().Err(err).Msg("pkcs#11 KMS: automatic rotation: failed to get active public keys")
-		return nextSleep, false
-	}
-	pksByAlg := activePKs.ByAlg()
-	// iterate only configured algorithms
-	for _, alg := range kms.Algs {
-		sleepCandidate, rotated := kms.rotationEvaluationForAlg(pksByAlg, alg, now, minSleep)
-		if rotated {
-			didRotate = true
-		}
-		if sleepCandidate > 0 && sleepCandidate < nextSleep {
-			nextSleep = sleepCandidate
-		}
-	}
-
-	// Consider scheduled changes
+	// Apply due scheduled changes first so the rotation loop operates on the
+	// up-to-date algorithm set and loaded keys.
 	if st, err := kms.loadScheduledState(); err == nil {
 		// Helper to apply alg change
 		applyAlg := func(p *PendingAlgChange) bool {
@@ -1046,7 +1038,7 @@ func (kms *PKCS11KMS) rotationStep(now time.Time) (time.Duration, bool) {
 				}
 				return true
 			}
-			wait := time.Until(p.EffectiveAt.Time)
+			wait := p.EffectiveAt.Time.Sub(now)
 			if wait > 0 && wait < nextSleep {
 				nextSleep = wait
 			}
@@ -1065,7 +1057,7 @@ func (kms *PKCS11KMS) rotationStep(now time.Time) (time.Duration, bool) {
 				}
 				return true
 			}
-			wait := time.Until(p.EffectiveAt.Time)
+			wait := p.EffectiveAt.Time.Sub(now)
 			if wait > 0 && wait < nextSleep {
 				nextSleep = wait
 			}
@@ -1079,6 +1071,23 @@ func (kms *PKCS11KMS) rotationStep(now time.Time) (time.Duration, bool) {
 		}
 	} else {
 		log.Logger().Error().Err(err).Msg("pkcs#11 KMS: scheduled state load failed")
+	}
+
+	activePKs, err := kms.PKs.GetActive()
+	if err != nil {
+		log.Logger().Error().Err(err).Msg("pkcs#11 KMS: automatic rotation: failed to get active public keys")
+		return nextSleep, false
+	}
+	pksByAlg := activePKs.ByAlg()
+	// iterate only configured algorithms
+	for _, alg := range kms.Algs {
+		sleepCandidate, rotated := kms.rotationEvaluationForAlg(pksByAlg, alg, now, minSleep)
+		if rotated {
+			didRotate = true
+		}
+		if sleepCandidate > 0 && sleepCandidate < nextSleep {
+			nextSleep = sleepCandidate
+		}
 	}
 
 	return nextSleep, didRotate
