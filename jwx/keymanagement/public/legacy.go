@@ -3,13 +3,12 @@ package public
 import (
 	"encoding/json"
 	"fmt"
-	"math"
 	"os"
 	"path/filepath"
 	"slices"
 	"time"
 
-	"github.com/lestrrat-go/jwx/v3/jwk"
+	"github.com/lestrrat-go/jwx/v4/jwk"
 	"github.com/pkg/errors"
 	"github.com/zachmann/go-utils/fileutils"
 
@@ -164,10 +163,9 @@ func (l *LegacyPublicKeyStorage) collectAll(includeNext, includeOlds bool) Publi
 	}
 	var out PublicKeyEntryList
 	for _, s := range sets {
-		for i := range s.Len() {
-			k, _ := s.Key(i)
+		for _, k := range s.All() {
 			var kid string
-			_ = k.Get("kid", &kid)
+			kid, _ = jwk.Get[string](k, "kid")
 			if kid == "" {
 				continue
 			}
@@ -175,22 +173,15 @@ func (l *LegacyPublicKeyStorage) collectAll(includeNext, includeOlds bool) Publi
 			if cerr != nil {
 				continue
 			}
-			var iatF, nbfF, expF float64
-			_ = k.Get("iat", &iatF)
-			_ = k.Get("nbf", &nbfF)
-			_ = k.Get("exp", &expF)
 			var iat, nbf, exp *unixtime.Unixtime
-			if iatF != 0 {
-				sec, dec := math.Modf(iatF)
-				iat = &unixtime.Unixtime{Time: time.Unix(int64(sec), int64(dec*(1e9)))}
+			if iatVal, err := jwk.Get[unixtime.Unixtime](k, "iat"); err == nil && !iatVal.IsZero() {
+				iat = &iatVal
 			}
-			if nbfF != 0 {
-				sec, dec := math.Modf(nbfF)
-				nbf = &unixtime.Unixtime{Time: time.Unix(int64(sec), int64(dec*(1e9)))}
+			if nbfVal, err := jwk.Get[unixtime.Unixtime](k, "nbf"); err == nil && !nbfVal.IsZero() {
+				nbf = &nbfVal
 			}
-			if expF != 0 {
-				sec, dec := math.Modf(expF)
-				exp = &unixtime.Unixtime{Time: time.Unix(int64(sec), int64(dec*(1e9)))}
+			if expVal, err := jwk.Get[unixtime.Unixtime](k, "exp"); err == nil && !expVal.IsZero() {
+				exp = &expVal
 			}
 			out = append(
 				out, PublicKeyEntry{
@@ -280,8 +271,7 @@ func (pks *LegacyPKCollection) pushOldJWKS(old jwx.JWKS) jwx.JWKS {
 			if pks.history.Set == nil {
 				pks.history = poped
 			} else {
-				for i := range poped.Len() {
-					k, _ := poped.Key(i)
+				for _, k := range poped.All() {
 					_ = pks.history.AddKey(k)
 				}
 			}

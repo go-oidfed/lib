@@ -199,7 +199,11 @@ func TestVerifyEntityHasValidTrustmarkByTrustAnchors_WithValidTrustmark(t *testi
 		failing, err := VerifyEntityHasValidTrustmarkByTrustAnchors(
 			rpWithTM.EntityID,
 			"https://trustmarks.org/tm1",
-			TrustAnchors{{EntityID: taWithTmo.EntityID, JWKS: taWithTmo.data.JWKS}},
+			func() TrustAnchors {
+				tas := TrustAnchors{{EntityID: taWithTmo.EntityID}}
+				tas[0].SetJWKS(taWithTmo.data.JWKS)
+				return tas
+			}(),
 		)
 		// Both should be nil for successful verification
 		assert.Nil(t, failing)
@@ -344,7 +348,11 @@ func TestVerifyEntityHasValidTrustmarks_MultipleValid(t *testing.T) {
 		valid, err := VerifyEntityHasValidTrustmarks(
 			rpWithTM.EntityID,
 			[]string{"https://trustmarks.org/tm1", "https://trustmarks.org/tm2"},
-			TrustAnchors{{EntityID: taWithTmo.EntityID, JWKS: taWithTmo.data.JWKS}},
+			func() TrustAnchors {
+				tas := TrustAnchors{{EntityID: taWithTmo.EntityID}}
+				tas[0].SetJWKS(taWithTmo.data.JWKS)
+				return tas
+			}(),
 		)
 		assert.True(t, valid)
 		assert.NoError(t, err)
@@ -354,7 +362,11 @@ func TestVerifyEntityHasValidTrustmarks_MultipleValid(t *testing.T) {
 		valid, err := VerifyEntityHasValidTrustmarks(
 			rpWithTM.EntityID,
 			[]string{"https://trustmarks.org/tm1", "https://trustmarks.org/nonexistent"},
-			TrustAnchors{{EntityID: taWithTmo.EntityID, JWKS: taWithTmo.data.JWKS}},
+			func() TrustAnchors {
+				tas := TrustAnchors{{EntityID: taWithTmo.EntityID}}
+				tas[0].SetJWKS(taWithTmo.data.JWKS)
+				return tas
+			}(),
 		)
 		assert.False(t, valid)
 		assert.NoError(t, err)
@@ -396,7 +408,11 @@ func TestVerifyEntityHasValidTrustmark_DelegatedTrustmark(t *testing.T) {
 		failing, err := VerifyEntityHasValidTrustmarkByTrustAnchors(
 			rpWithTM.EntityID,
 			"https://trustmarks.org/test",
-			TrustAnchors{{EntityID: taWithTmo.EntityID, JWKS: taWithTmo.data.JWKS}},
+			func() TrustAnchors {
+				tas := TrustAnchors{{EntityID: taWithTmo.EntityID}}
+				tas[0].SetJWKS(taWithTmo.data.JWKS)
+				return tas
+			}(),
 		)
 		assert.Nil(t, failing)
 		assert.Nil(t, err)

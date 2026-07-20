@@ -43,12 +43,11 @@ func TestNegativeResolutionDoesNotPersist(t *testing.T) {
 
 	// Resolver with the TA (including its JWKS for signature verification)
 	resolver := TrustResolver{
-		TrustAnchors: TrustAnchors{
-			{
-				EntityID: ta.EntityID,
-				JWKS:     ta.data.JWKS,
-			},
-		},
+		TrustAnchors: func() TrustAnchors {
+			tas := TrustAnchors{{EntityID: ta.EntityID}}
+			tas[0].SetJWKS(ta.data.JWKS)
+			return tas
+		}(),
 		StartingEntity: rp.EntityID,
 	}
 
@@ -75,12 +74,11 @@ func TestNegativeResolutionDoesNotPersist(t *testing.T) {
 	// Use a fresh resolver instance with identical parameters to ensure we hit the
 	// same cache keys if any negative state persisted.
 	resolver2 := TrustResolver{
-		TrustAnchors: TrustAnchors{
-			{
-				EntityID: ta.EntityID,
-				JWKS:     ta.data.JWKS,
-			},
-		},
+		TrustAnchors: func() TrustAnchors {
+			tas := TrustAnchors{{EntityID: ta.EntityID}}
+			tas[0].SetJWKS(ta.data.JWKS)
+			return tas
+		}(),
 		StartingEntity: rp.EntityID,
 	}
 	chains2 := resolver2.ResolveToValidChains()

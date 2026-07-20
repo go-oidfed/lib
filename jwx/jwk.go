@@ -1,7 +1,6 @@
 package jwx
 
 import (
-	"crypto"
 	"crypto/ecdsa"
 	"crypto/ed25519"
 	"crypto/elliptic"
@@ -10,14 +9,20 @@ import (
 	"crypto/x509"
 	"encoding/pem"
 
-	"github.com/lestrrat-go/jwx/v3/jwa"
-	"github.com/lestrrat-go/jwx/v3/jwk"
+	"filippo.io/mldsa"
+	"github.com/cloudflare/circl/sign/ed448"
+	compsig "github.com/jwx-go/compsig/v4"
+	ed448ext "github.com/jwx-go/ed448/v4"
+	"github.com/jwx-go/es256k/v4"
+	jwxmldsa "github.com/jwx-go/mldsa/v4"
+	"github.com/lestrrat-go/jwx/v4/jwa"
+	"github.com/lestrrat-go/jwx/v4/jwk"
 	"github.com/pkg/errors"
 )
 
 // generatePrivateKey generates a cryptographic private key with the passed properties
 func generatePrivateKey(alg jwa.SignatureAlgorithm, rsaKeyLen int) (
-	sk crypto.Signer, err error,
+	sk SigningKey, err error,
 ) {
 	switch alg {
 	case jwa.RS256(), jwa.RS384(), jwa.RS512(), jwa.PS256(), jwa.PS384(), jwa.PS512():
@@ -31,8 +36,28 @@ func generatePrivateKey(alg jwa.SignatureAlgorithm, rsaKeyLen int) (
 		sk, err = ecdsa.GenerateKey(elliptic.P384(), rand.Reader)
 	case jwa.ES512():
 		sk, err = ecdsa.GenerateKey(elliptic.P521(), rand.Reader)
-	case jwa.EdDSA():
+	case es256k.ES256K():
+		sk, err = ecdsa.GenerateKey(
+			secp256k1Curve, rand.Reader,
+		) //nolint:staticcheck // secp256k1.S256() returns a deprecated-interface value; required for ecdsa.GenerateKey
+	case jwa.EdDSA(), jwa.EdDSAEd25519():
 		_, sk, err = ed25519.GenerateKey(rand.Reader)
+	case ed448ext.EdDSAEd448():
+		_, sk, err = ed448.GenerateKey(rand.Reader)
+	case jwxmldsa.MLDSA44():
+		sk, err = mldsa.GenerateKey(mldsa.MLDSA44())
+	case jwxmldsa.MLDSA65():
+		sk, err = mldsa.GenerateKey(mldsa.MLDSA65())
+	case jwxmldsa.MLDSA87():
+		sk, err = mldsa.GenerateKey(mldsa.MLDSA87())
+	case compsig.MLDSA44ES256(), compsig.MLDSA65ES256(), compsig.MLDSA87ES384(),
+		compsig.MLDSA44Ed25519(), compsig.MLDSA65Ed25519(), compsig.MLDSA87Ed448():
+		var csk *compsig.PrivateKey
+		csk, err = compsig.GenerateKey(alg)
+		if err != nil {
+			break
+		}
+		sk = &compsigSigningKey{sk: csk}
 	default:
 		err = errors.Errorf("unknown signing algorithm '%s'", alg)
 		return
@@ -45,14 +70,23 @@ func generatePrivateKey(alg jwa.SignatureAlgorithm, rsaKeyLen int) (
 }
 
 // exportPrivateKeyAsPem exports the private key
-func exportPrivateKeyAsPem(sk crypto.Signer) []byte {
+func exportPrivateKeyAsPem(sk SigningKey) []byte {
 	switch sk := sk.(type) {
 	case *rsa.PrivateKey:
 		return exportRSAPrivateKeyAsPem(sk)
 	case *ecdsa.PrivateKey:
+		if sk.Curve.Params().Name == secp256k1Curve.Params().Name {
+			return exportSecp256k1PrivateKeyAsPem(sk)
+		}
 		return exportECPrivateKeyAsPem(sk)
 	case ed25519.PrivateKey:
 		return exportEDDSAPrivateKeyAsPem(sk)
+	case ed448.PrivateKey:
+		return exportEd448PrivateKeyAsPem(sk)
+	case *mldsa.PrivateKey:
+		return exportMLDSAPrivateKeyAsPem(sk)
+	case *compsigSigningKey:
+		return exportCompsigPrivateKeyAsPem(sk.sk)
 	default:
 		return nil
 	}
@@ -91,7 +125,7 @@ func exportEDDSAPrivateKeyAsPem(privkey ed25519.PrivateKey) []byte {
 	return privkeyPem
 }
 
-func SignerToPublicJWK(sk crypto.Signer, alg jwa.SignatureAlgorithm) (
+func SignerToPublicJWK(sk SigningKey, alg jwa.SignatureAlgorithm) (
 	pk jwk.Key, kid string, err error,
 ) {
 	pk, err = jwk.PublicKeyOf(sk.Public())
@@ -114,7 +148,7 @@ func SignerToPublicJWK(sk crypto.Signer, alg jwa.SignatureAlgorithm) (
 // GenerateKeyPair generates a cryptographic private key with the passed
 // properties and returns the corresponding public key as a jwk.Key
 func GenerateKeyPair(alg jwa.SignatureAlgorithm, rsaKeyLen int) (
-	sk crypto.Signer, pk jwk.Key, kid string, err error,
+	sk SigningKey, pk jwk.Key, kid string, err error,
 ) {
 	sk, err = generatePrivateKey(alg, rsaKeyLen)
 	if err != nil {

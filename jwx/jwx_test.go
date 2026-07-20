@@ -12,9 +12,15 @@ import (
 	"testing"
 	"time"
 
-	"github.com/lestrrat-go/jwx/v3/jwa"
-	"github.com/lestrrat-go/jwx/v3/jwk"
-	"github.com/lestrrat-go/jwx/v3/jws"
+	"filippo.io/mldsa"
+	"github.com/cloudflare/circl/sign/ed448"
+	"github.com/jwx-go/compsig/v4"
+	ed448ext "github.com/jwx-go/ed448/v4"
+	"github.com/jwx-go/es256k/v4"
+	jwxmldsa "github.com/jwx-go/mldsa/v4"
+	"github.com/lestrrat-go/jwx/v4/jwa"
+	"github.com/lestrrat-go/jwx/v4/jwk"
+	"github.com/lestrrat-go/jwx/v4/jws"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/vmihailenco/msgpack/v5"
@@ -29,7 +35,7 @@ import (
 // =============================================================================
 
 // testKey generates a test key for the given algorithm
-func testKey(t *testing.T, alg jwa.SignatureAlgorithm) crypto.Signer {
+func testKey(t *testing.T, alg jwa.SignatureAlgorithm) SigningKey {
 	t.Helper()
 	var rsaKeyLen int
 	switch alg {
@@ -46,101 +52,299 @@ func testKey(t *testing.T, alg jwa.SignatureAlgorithm) crypto.Signer {
 // =============================================================================
 
 func TestGeneratePrivateKey(t *testing.T) {
-	t.Run("RSA algorithms", func(t *testing.T) {
-		rsaAlgs := []jwa.SignatureAlgorithm{
-			jwa.RS256(), jwa.RS384(), jwa.RS512(),
-			jwa.PS256(), jwa.PS384(), jwa.PS512(),
-		}
-		for _, alg := range rsaAlgs {
-			t.Run(alg.String(), func(t *testing.T) {
-				sk, err := generatePrivateKey(alg, 2048)
-				require.NoError(t, err)
-				assert.NotNil(t, sk)
-				_, ok := sk.(*rsa.PrivateKey)
-				assert.True(t, ok, "expected RSA key")
-			})
-		}
-	})
+	t.Run(
+		"RSA algorithms", func(t *testing.T) {
+			rsaAlgs := []jwa.SignatureAlgorithm{
+				jwa.RS256(),
+				jwa.RS384(),
+				jwa.RS512(),
+				jwa.PS256(),
+				jwa.PS384(),
+				jwa.PS512(),
+			}
+			for _, alg := range rsaAlgs {
+				t.Run(
+					alg.String(), func(t *testing.T) {
+						sk, err := generatePrivateKey(alg, 2048)
+						require.NoError(t, err)
+						assert.NotNil(t, sk)
+						_, ok := sk.(*rsa.PrivateKey)
+						assert.True(t, ok, "expected RSA key")
+					},
+				)
+			}
+		},
+	)
 
-	t.Run("RSA without key length", func(t *testing.T) {
-		sk, err := generatePrivateKey(jwa.RS256(), 0)
-		assert.Error(t, err)
-		assert.Nil(t, sk)
-		assert.Contains(t, err.Error(), "no valid RSA key len")
-	})
+	t.Run(
+		"RSA without key length", func(t *testing.T) {
+			sk, err := generatePrivateKey(jwa.RS256(), 0)
+			assert.Error(t, err)
+			assert.Nil(t, sk)
+			assert.Contains(t, err.Error(), "no valid RSA key len")
+		},
+	)
 
-	t.Run("RSA with negative key length", func(t *testing.T) {
-		sk, err := generatePrivateKey(jwa.RS256(), -1)
-		assert.Error(t, err)
-		assert.Nil(t, sk)
-	})
+	t.Run(
+		"RSA with negative key length", func(t *testing.T) {
+			sk, err := generatePrivateKey(jwa.RS256(), -1)
+			assert.Error(t, err)
+			assert.Nil(t, sk)
+		},
+	)
 
-	t.Run("EC algorithms", func(t *testing.T) {
-		ecAlgs := []jwa.SignatureAlgorithm{
-			jwa.ES256(), jwa.ES384(), jwa.ES512(),
-		}
-		for _, alg := range ecAlgs {
-			t.Run(alg.String(), func(t *testing.T) {
-				sk, err := generatePrivateKey(alg, 0)
-				require.NoError(t, err)
-				assert.NotNil(t, sk)
-				_, ok := sk.(*ecdsa.PrivateKey)
-				assert.True(t, ok, "expected ECDSA key")
-			})
-		}
-	})
+	t.Run(
+		"EC algorithms", func(t *testing.T) {
+			ecAlgs := []jwa.SignatureAlgorithm{
+				jwa.ES256(),
+				jwa.ES384(),
+				jwa.ES512(),
+			}
+			for _, alg := range ecAlgs {
+				t.Run(
+					alg.String(), func(t *testing.T) {
+						sk, err := generatePrivateKey(alg, 0)
+						require.NoError(t, err)
+						assert.NotNil(t, sk)
+						_, ok := sk.(*ecdsa.PrivateKey)
+						assert.True(t, ok, "expected ECDSA key")
+					},
+				)
+			}
+		},
+	)
 
-	t.Run("EdDSA", func(t *testing.T) {
-		sk, err := generatePrivateKey(jwa.EdDSA(), 0)
-		require.NoError(t, err)
-		assert.NotNil(t, sk)
-		_, ok := sk.(ed25519.PrivateKey)
-		assert.True(t, ok, "expected Ed25519 key")
-	})
+	t.Run(
+		"EdDSA", func(t *testing.T) {
+			sk, err := generatePrivateKey(jwa.EdDSA(), 0)
+			require.NoError(t, err)
+			assert.NotNil(t, sk)
+			_, ok := sk.(ed25519.PrivateKey)
+			assert.True(t, ok, "expected Ed25519 key")
+		},
+	)
 
-	t.Run("unknown algorithm", func(t *testing.T) {
-		sk, err := generatePrivateKey(jwa.SignatureAlgorithm{}, 0)
-		assert.Error(t, err)
-		assert.Nil(t, sk)
-		assert.Contains(t, err.Error(), "unknown signing algorithm")
-	})
+	t.Run(
+		"ES256K", func(t *testing.T) {
+			sk, err := generatePrivateKey(es256k.ES256K(), 0)
+			require.NoError(t, err)
+			assert.NotNil(t, sk)
+			ecKey, ok := sk.(*ecdsa.PrivateKey)
+			assert.True(t, ok, "expected ECDSA key")
+			assert.Equal(t, "secp256k1", ecKey.Curve.Params().Name)
+		},
+	)
+
+	t.Run(
+		"Ed448", func(t *testing.T) {
+			sk, err := generatePrivateKey(ed448ext.EdDSAEd448(), 0)
+			require.NoError(t, err)
+			assert.NotNil(t, sk)
+			_, ok := sk.(ed448.PrivateKey)
+			assert.True(t, ok, "expected Ed448 key")
+		},
+	)
+
+	t.Run(
+		"ML-DSA-44", func(t *testing.T) {
+			sk, err := generatePrivateKey(jwxmldsa.MLDSA44(), 0)
+			require.NoError(t, err)
+			assert.NotNil(t, sk)
+			mlKey, ok := sk.(*mldsa.PrivateKey)
+			assert.True(t, ok, "expected *mldsa.PrivateKey")
+			assert.Equal(t, "ML-DSA-44", mlKey.PublicKey().Parameters().String())
+		},
+	)
+
+	t.Run(
+		"ML-DSA-65", func(t *testing.T) {
+			sk, err := generatePrivateKey(jwxmldsa.MLDSA65(), 0)
+			require.NoError(t, err)
+			assert.NotNil(t, sk)
+			mlKey, ok := sk.(*mldsa.PrivateKey)
+			assert.True(t, ok, "expected *mldsa.PrivateKey")
+			assert.Equal(t, "ML-DSA-65", mlKey.PublicKey().Parameters().String())
+		},
+	)
+
+	t.Run(
+		"ML-DSA-87", func(t *testing.T) {
+			sk, err := generatePrivateKey(jwxmldsa.MLDSA87(), 0)
+			require.NoError(t, err)
+			assert.NotNil(t, sk)
+			mlKey, ok := sk.(*mldsa.PrivateKey)
+			assert.True(t, ok, "expected *mldsa.PrivateKey")
+			assert.Equal(t, "ML-DSA-87", mlKey.PublicKey().Parameters().String())
+		},
+	)
+
+	t.Run(
+		"Compsig ML-DSA-44-ES256", func(t *testing.T) {
+			sk, err := generatePrivateKey(compsig.MLDSA44ES256(), 0)
+			require.NoError(t, err)
+			assert.NotNil(t, sk)
+			w, ok := sk.(*compsigSigningKey)
+			assert.True(t, ok, "expected *compsigSigningKey")
+			assert.Equal(t, "ML-DSA-44-ES256", w.sk.Algorithm().String())
+		},
+	)
+
+	t.Run(
+		"Compsig ML-DSA-65-Ed25519", func(t *testing.T) {
+			sk, err := generatePrivateKey(compsig.MLDSA65Ed25519(), 0)
+			require.NoError(t, err)
+			assert.NotNil(t, sk)
+			w, ok := sk.(*compsigSigningKey)
+			assert.True(t, ok, "expected *compsigSigningKey")
+			assert.Equal(t, "ML-DSA-65-Ed25519", w.sk.Algorithm().String())
+		},
+	)
+
+	t.Run(
+		"Compsig ML-DSA-87-Ed448", func(t *testing.T) {
+			sk, err := generatePrivateKey(compsig.MLDSA87Ed448(), 0)
+			require.NoError(t, err)
+			assert.NotNil(t, sk)
+			w, ok := sk.(*compsigSigningKey)
+			assert.True(t, ok, "expected *compsigSigningKey")
+			assert.Equal(t, "ML-DSA-87-Ed448", w.sk.Algorithm().String())
+		},
+	)
+
+	t.Run(
+		"unknown algorithm", func(t *testing.T) {
+			sk, err := generatePrivateKey(jwa.SignatureAlgorithm{}, 0)
+			assert.Error(t, err)
+			assert.Nil(t, sk)
+			assert.Contains(t, err.Error(), "unknown signing algorithm")
+		},
+	)
 }
 
 func TestExportPrivateKeyAsPem(t *testing.T) {
-	t.Run("RSA key", func(t *testing.T) {
-		sk := testKey(t, jwa.RS256())
-		pemData := exportPrivateKeyAsPem(sk)
-		require.NotNil(t, pemData)
+	t.Run(
+		"RSA key", func(t *testing.T) {
+			sk := testKey(t, jwa.RS256())
+			pemData := exportPrivateKeyAsPem(sk)
+			require.NotNil(t, pemData)
 
-		block, _ := pem.Decode(pemData)
-		require.NotNil(t, block)
-		assert.Equal(t, "RSA PRIVATE KEY", block.Type)
-	})
+			block, _ := pem.Decode(pemData)
+			require.NotNil(t, block)
+			assert.Equal(t, "RSA PRIVATE KEY", block.Type)
+		},
+	)
 
-	t.Run("ECDSA key", func(t *testing.T) {
-		sk := testKey(t, jwa.ES256())
-		pemData := exportPrivateKeyAsPem(sk)
-		require.NotNil(t, pemData)
+	t.Run(
+		"ECDSA key", func(t *testing.T) {
+			sk := testKey(t, jwa.ES256())
+			pemData := exportPrivateKeyAsPem(sk)
+			require.NotNil(t, pemData)
 
-		block, _ := pem.Decode(pemData)
-		require.NotNil(t, block)
-		assert.Equal(t, "EC PRIVATE KEY", block.Type)
-	})
+			block, _ := pem.Decode(pemData)
+			require.NotNil(t, block)
+			assert.Equal(t, "EC PRIVATE KEY", block.Type)
+		},
+	)
 
-	t.Run("Ed25519 key", func(t *testing.T) {
-		sk := testKey(t, jwa.EdDSA())
-		pemData := exportPrivateKeyAsPem(sk)
-		require.NotNil(t, pemData)
+	t.Run(
+		"Ed25519 key", func(t *testing.T) {
+			sk := testKey(t, jwa.EdDSA())
+			pemData := exportPrivateKeyAsPem(sk)
+			require.NotNil(t, pemData)
 
-		block, _ := pem.Decode(pemData)
-		require.NotNil(t, block)
-		assert.Equal(t, "PRIVATE KEY", block.Type)
-	})
+			block, _ := pem.Decode(pemData)
+			require.NotNil(t, block)
+			assert.Equal(t, "PRIVATE KEY", block.Type)
+		},
+	)
 
-	t.Run("unsupported key type", func(t *testing.T) {
-		pemData := exportPrivateKeyAsPem(mockSigner{})
-		assert.Nil(t, pemData)
-	})
+	t.Run(
+		"ES256K key", func(t *testing.T) {
+			sk := testKey(t, es256k.ES256K())
+			pemData := exportPrivateKeyAsPem(sk)
+			require.NotNil(t, pemData)
+
+			block, _ := pem.Decode(pemData)
+			require.NotNil(t, block)
+			assert.Equal(t, "PRIVATE KEY", block.Type)
+
+			parsed, err := parseSecp256k1PKCS8PrivateKey(block.Bytes)
+			require.NoError(t, err)
+			assert.Equal(t, "secp256k1", parsed.Curve.Params().Name)
+			assert.Equal(t, sk.(*ecdsa.PrivateKey).D, parsed.D)
+		},
+	)
+
+	t.Run(
+		"Ed448 key", func(t *testing.T) {
+			sk := testKey(t, ed448ext.EdDSAEd448())
+			pemData := exportPrivateKeyAsPem(sk)
+			require.NotNil(t, pemData)
+
+			block, _ := pem.Decode(pemData)
+			require.NotNil(t, block)
+			assert.Equal(t, "PRIVATE KEY", block.Type)
+
+			parsed, err := parseEd448PKCS8PrivateKey(block.Bytes)
+			require.NoError(t, err)
+			assert.Equal(t, sk.(ed448.PrivateKey).Seed(), parsed.Seed())
+		},
+	)
+
+	t.Run(
+		"ML-DSA-44 key", func(t *testing.T) {
+			sk := testKey(t, jwxmldsa.MLDSA44())
+			pemData := exportPrivateKeyAsPem(sk)
+			require.NotNil(t, pemData)
+
+			block, _ := pem.Decode(pemData)
+			require.NotNil(t, block)
+			assert.Equal(t, "PRIVATE KEY", block.Type)
+
+			parsed, err := parseMLDSAPKCS8PrivateKey(block.Bytes)
+			require.NoError(t, err)
+			assert.Equal(t, sk.(*mldsa.PrivateKey).Bytes(), parsed.Bytes())
+		},
+	)
+
+	t.Run(
+		"ML-DSA-65 key", func(t *testing.T) {
+			sk := testKey(t, jwxmldsa.MLDSA65())
+			pemData := exportPrivateKeyAsPem(sk)
+			require.NotNil(t, pemData)
+
+			block, _ := pem.Decode(pemData)
+			require.NotNil(t, block)
+			assert.Equal(t, "PRIVATE KEY", block.Type)
+
+			parsed, err := parseMLDSAPKCS8PrivateKey(block.Bytes)
+			require.NoError(t, err)
+			assert.Equal(t, sk.(*mldsa.PrivateKey).Bytes(), parsed.Bytes())
+		},
+	)
+
+	t.Run(
+		"ML-DSA-87 key", func(t *testing.T) {
+			sk := testKey(t, jwxmldsa.MLDSA87())
+			pemData := exportPrivateKeyAsPem(sk)
+			require.NotNil(t, pemData)
+
+			block, _ := pem.Decode(pemData)
+			require.NotNil(t, block)
+			assert.Equal(t, "PRIVATE KEY", block.Type)
+
+			parsed, err := parseMLDSAPKCS8PrivateKey(block.Bytes)
+			require.NoError(t, err)
+			assert.Equal(t, sk.(*mldsa.PrivateKey).Bytes(), parsed.Bytes())
+		},
+	)
+
+	t.Run(
+		"unsupported key type", func(t *testing.T) {
+			pemData := exportPrivateKeyAsPem(mockSigner{})
+			assert.Nil(t, pemData)
+		},
+	)
 }
 
 // mockSigner is a minimal crypto.Signer for testing unsupported types
@@ -183,33 +387,37 @@ func TestExportEDDSAPrivateKeyAsPem(t *testing.T) {
 
 func TestSignerToPublicJWK(t *testing.T) {
 	algs := []jwa.SignatureAlgorithm{
-		jwa.RS256(), jwa.ES256(), jwa.EdDSA(),
+		jwa.RS256(),
+		jwa.ES256(),
+		jwa.EdDSA(),
 	}
 
 	for _, alg := range algs {
-		t.Run(alg.String(), func(t *testing.T) {
-			sk := testKey(t, alg)
-			pk, kid, err := SignerToPublicJWK(sk, alg)
+		t.Run(
+			alg.String(), func(t *testing.T) {
+				sk := testKey(t, alg)
+				pk, kid, err := SignerToPublicJWK(sk, alg)
 
-			require.NoError(t, err)
-			assert.NotNil(t, pk)
-			assert.NotEmpty(t, kid)
+				require.NoError(t, err)
+				assert.NotNil(t, pk)
+				assert.NotEmpty(t, kid)
 
-			// Verify kid is set
-			keyID, ok := pk.KeyID()
-			assert.True(t, ok)
-			assert.Equal(t, kid, keyID)
+				// Verify kid is set
+				keyID, ok := pk.KeyID()
+				assert.True(t, ok)
+				assert.Equal(t, kid, keyID)
 
-			// Verify algorithm is set
-			algVal, ok := pk.Algorithm()
-			assert.True(t, ok)
-			assert.Equal(t, alg, algVal)
+				// Verify algorithm is set
+				algVal, ok := pk.Algorithm()
+				assert.True(t, ok)
+				assert.Equal(t, alg, algVal)
 
-			// Verify key use is set
-			useVal, ok := pk.KeyUsage()
-			assert.True(t, ok)
-			assert.Equal(t, string(jwk.ForSignature), useVal)
-		})
+				// Verify key use is set
+				useVal, ok := pk.KeyUsage()
+				assert.True(t, ok)
+				assert.Equal(t, string(jwk.ForSignature), useVal)
+			},
+		)
 	}
 }
 
@@ -218,36 +426,87 @@ func TestGenerateKeyPair(t *testing.T) {
 		alg       jwa.SignatureAlgorithm
 		rsaKeyLen int
 	}{
-		{jwa.RS256(), 2048},
-		{jwa.ES256(), 0},
-		{jwa.ES384(), 0},
-		{jwa.ES512(), 0},
-		{jwa.EdDSA(), 0},
+		{
+			jwa.RS256(),
+			2048,
+		},
+		{
+			jwa.ES256(),
+			0,
+		},
+		{
+			jwa.ES384(),
+			0,
+		},
+		{
+			jwa.ES512(),
+			0,
+		},
+		{
+			es256k.ES256K(),
+			0,
+		},
+		{
+			jwa.EdDSA(),
+			0,
+		},
+		{
+			ed448ext.EdDSAEd448(),
+			0,
+		},
+		{
+			jwxmldsa.MLDSA44(),
+			0,
+		},
+		{
+			jwxmldsa.MLDSA65(),
+			0,
+		},
+		{
+			jwxmldsa.MLDSA87(),
+			0,
+		},
+		{
+			compsig.MLDSA44ES256(),
+			0,
+		},
+		{
+			compsig.MLDSA65Ed25519(),
+			0,
+		},
+		{
+			compsig.MLDSA87Ed448(),
+			0,
+		},
 	}
 
 	for _, tc := range testCases {
-		t.Run(tc.alg.String(), func(t *testing.T) {
-			sk, pk, kid, err := GenerateKeyPair(tc.alg, tc.rsaKeyLen)
+		t.Run(
+			tc.alg.String(), func(t *testing.T) {
+				sk, pk, kid, err := GenerateKeyPair(tc.alg, tc.rsaKeyLen)
 
-			require.NoError(t, err)
-			assert.NotNil(t, sk)
-			assert.NotNil(t, pk)
-			assert.NotEmpty(t, kid)
+				require.NoError(t, err)
+				assert.NotNil(t, sk)
+				assert.NotNil(t, pk)
+				assert.NotEmpty(t, kid)
 
-			// Verify kid matches
-			keyID, ok := pk.KeyID()
-			assert.True(t, ok)
-			assert.Equal(t, kid, keyID)
-		})
+				// Verify kid matches
+				keyID, ok := pk.KeyID()
+				assert.True(t, ok)
+				assert.Equal(t, kid, keyID)
+			},
+		)
 	}
 
-	t.Run("invalid algorithm", func(t *testing.T) {
-		sk, pk, kid, err := GenerateKeyPair(jwa.SignatureAlgorithm{}, 0)
-		assert.Error(t, err)
-		assert.Nil(t, sk)
-		assert.Nil(t, pk)
-		assert.Empty(t, kid)
-	})
+	t.Run(
+		"invalid algorithm", func(t *testing.T) {
+			sk, pk, kid, err := GenerateKeyPair(jwa.SignatureAlgorithm{}, 0)
+			assert.Error(t, err)
+			assert.Nil(t, sk)
+			assert.Nil(t, pk)
+			assert.Empty(t, kid)
+		},
+	)
 }
 
 // =============================================================================
@@ -261,59 +520,71 @@ func TestNewJWKS(t *testing.T) {
 }
 
 func TestJWKS_MarshalJSON(t *testing.T) {
-	t.Run("empty JWKS", func(t *testing.T) {
-		jwks := NewJWKS()
-		data, err := json.Marshal(jwks)
-		require.NoError(t, err)
-		assert.Contains(t, string(data), "keys")
-	})
+	t.Run(
+		"empty JWKS", func(t *testing.T) {
+			jwks := NewJWKS()
+			data, err := json.Marshal(jwks)
+			require.NoError(t, err)
+			assert.Contains(t, string(data), "keys")
+		},
+	)
 
-	t.Run("JWKS with key", func(t *testing.T) {
-		sk := testKey(t, jwa.ES256())
-		jwks, err := KeyToJWKS(sk.Public(), jwa.ES256())
-		require.NoError(t, err)
+	t.Run(
+		"JWKS with key", func(t *testing.T) {
+			sk := testKey(t, jwa.ES256())
+			jwks, err := KeyToJWKS(sk.Public(), jwa.ES256())
+			require.NoError(t, err)
 
-		data, err := json.Marshal(jwks)
-		require.NoError(t, err)
-		assert.Contains(t, string(data), "keys")
-		assert.Contains(t, string(data), "ES256")
-	})
+			data, err := json.Marshal(jwks)
+			require.NoError(t, err)
+			assert.Contains(t, string(data), "keys")
+			assert.Contains(t, string(data), "ES256")
+		},
+	)
 }
 
 func TestJWKS_UnmarshalJSON(t *testing.T) {
-	t.Run("valid JSON", func(t *testing.T) {
-		sk := testKey(t, jwa.ES256())
-		original, err := KeyToJWKS(sk.Public(), jwa.ES256())
-		require.NoError(t, err)
+	t.Run(
+		"valid JSON", func(t *testing.T) {
+			sk := testKey(t, jwa.ES256())
+			original, err := KeyToJWKS(sk.Public(), jwa.ES256())
+			require.NoError(t, err)
 
-		data, err := json.Marshal(original)
-		require.NoError(t, err)
+			data, err := json.Marshal(original)
+			require.NoError(t, err)
 
-		var jwks JWKS
-		err = json.Unmarshal(data, &jwks)
-		require.NoError(t, err)
-		assert.Equal(t, original.Len(), jwks.Len())
-	})
+			var jwks JWKS
+			err = json.Unmarshal(data, &jwks)
+			require.NoError(t, err)
+			assert.Equal(t, original.Len(), jwks.Len())
+		},
+	)
 
-	t.Run("null JSON", func(t *testing.T) {
-		var jwks JWKS
-		err := json.Unmarshal([]byte("null"), &jwks)
-		require.NoError(t, err)
-		assert.Nil(t, jwks.Set)
-	})
+	t.Run(
+		"null JSON", func(t *testing.T) {
+			var jwks JWKS
+			err := json.Unmarshal([]byte("null"), &jwks)
+			require.NoError(t, err)
+			assert.Nil(t, jwks.Set)
+		},
+	)
 
-	t.Run("empty keys array", func(t *testing.T) {
-		var jwks JWKS
-		err := json.Unmarshal([]byte(`{"keys":[]}`), &jwks)
-		require.NoError(t, err)
-		assert.Nil(t, jwks.Set)
-	})
+	t.Run(
+		"empty keys array", func(t *testing.T) {
+			var jwks JWKS
+			err := json.Unmarshal([]byte(`{"keys":[]}`), &jwks)
+			require.NoError(t, err)
+			assert.Nil(t, jwks.Set)
+		},
+	)
 
-	t.Run("invalid JSON", func(t *testing.T) {
-		var jwks JWKS
-		err := json.Unmarshal([]byte(`{invalid`), &jwks)
-		assert.Error(t, err)
-	})
+	t.Run(
+		"invalid JSON", func(t *testing.T) {
+			var jwks JWKS
+			err := json.Unmarshal([]byte(`{invalid`), &jwks)
+			assert.Error(t, err)
+		},
+	)
 }
 
 func TestJWKS_JSONRoundTrip(t *testing.T) {
@@ -403,72 +674,82 @@ func TestJWKS_MsgpackRoundTrip(t *testing.T) {
 }
 
 func TestJWKS_MinimalExpirationTime(t *testing.T) {
-	t.Run("no keys", func(t *testing.T) {
-		jwks := NewJWKS()
-		exp := jwks.MinimalExpirationTime()
-		assert.True(t, exp.IsZero())
-	})
+	t.Run(
+		"no keys", func(t *testing.T) {
+			jwks := NewJWKS()
+			exp := jwks.MinimalExpirationTime()
+			assert.True(t, exp.IsZero())
+		},
+	)
 
-	t.Run("keys without exp", func(t *testing.T) {
-		sk := testKey(t, jwa.ES256())
-		jwks, err := KeyToJWKS(sk.Public(), jwa.ES256())
-		require.NoError(t, err)
+	t.Run(
+		"keys without exp", func(t *testing.T) {
+			sk := testKey(t, jwa.ES256())
+			jwks, err := KeyToJWKS(sk.Public(), jwa.ES256())
+			require.NoError(t, err)
 
-		exp := jwks.MinimalExpirationTime()
-		assert.True(t, exp.IsZero())
-	})
+			exp := jwks.MinimalExpirationTime()
+			assert.True(t, exp.IsZero())
+		},
+	)
 
-	t.Run("keys with exp", func(t *testing.T) {
-		jwks := NewJWKS()
+	t.Run(
+		"keys with exp", func(t *testing.T) {
+			jwks := NewJWKS()
 
-		exp1 := time.Now().Add(time.Hour)
-		exp2 := time.Now().Add(2 * time.Hour)
+			exp1 := time.Now().Add(time.Hour)
+			exp2 := time.Now().Add(2 * time.Hour)
 
-		sk1 := testKey(t, jwa.ES256())
-		pk1, err := jwk.PublicKeyOf(sk1.Public())
-		require.NoError(t, err)
-		require.NoError(t, pk1.Set("exp", unixtime.Unixtime{Time: exp1}))
-		require.NoError(t, jwks.AddKey(pk1))
+			sk1 := testKey(t, jwa.ES256())
+			pk1, err := jwk.PublicKeyOf(sk1.Public())
+			require.NoError(t, err)
+			require.NoError(t, pk1.Set("exp", unixtime.Unixtime{Time: exp1}))
+			require.NoError(t, jwks.AddKey(pk1))
 
-		sk2 := testKey(t, jwa.ES256())
-		pk2, err := jwk.PublicKeyOf(sk2.Public())
-		require.NoError(t, err)
-		require.NoError(t, pk2.Set("exp", unixtime.Unixtime{Time: exp2}))
-		require.NoError(t, jwks.AddKey(pk2))
+			sk2 := testKey(t, jwa.ES256())
+			pk2, err := jwk.PublicKeyOf(sk2.Public())
+			require.NoError(t, err)
+			require.NoError(t, pk2.Set("exp", unixtime.Unixtime{Time: exp2}))
+			require.NoError(t, jwks.AddKey(pk2))
 
-		minExp := jwks.MinimalExpirationTime()
-		assert.True(t, minExp.Unix() <= exp1.Unix()+1)
-	})
+			minExp := jwks.MinimalExpirationTime()
+			assert.True(t, minExp.Unix() <= exp1.Unix()+1)
+		},
+	)
 }
 
 func TestJWKS_MaximalExpirationTime(t *testing.T) {
-	t.Run("no keys", func(t *testing.T) {
-		jwks := NewJWKS()
-		exp := jwks.MaximalExpirationTime()
-		assert.True(t, exp.IsZero())
-	})
+	t.Run(
+		"no keys", func(t *testing.T) {
+			jwks := NewJWKS()
+			exp := jwks.MaximalExpirationTime()
+			assert.True(t, exp.IsZero())
+		},
+	)
 
-	t.Run("keys with exp", func(t *testing.T) {
-		jwks := NewJWKS()
+	t.Run(
+		"keys with exp", func(t *testing.T) {
+			jwks := NewJWKS()
 
-		exp1 := time.Now().Add(time.Hour)
-		exp2 := time.Now().Add(2 * time.Hour)
+			exp1 := time.Now().Add(time.Hour)
+			exp2 := time.Now().Add(2 * time.Hour)
 
-		sk1 := testKey(t, jwa.ES256())
-		pk1, err := jwk.PublicKeyOf(sk1.Public())
-		require.NoError(t, err)
-		require.NoError(t, pk1.Set("exp", unixtime.Unixtime{Time: exp1}))
-		require.NoError(t, jwks.AddKey(pk1))
+			sk1 := testKey(t, jwa.ES256())
+			pk1, err := jwk.PublicKeyOf(sk1.Public())
+			require.NoError(t, err)
+			require.NoError(t, pk1.Set("exp", unixtime.Unixtime{Time: exp1}))
+			require.NoError(t, jwks.AddKey(pk1))
 
-		sk2 := testKey(t, jwa.ES256())
-		pk2, err := jwk.PublicKeyOf(sk2.Public())
-		require.NoError(t, err)
-		require.NoError(t, pk2.Set("exp", unixtime.Unixtime{Time: exp2}))
-		require.NoError(t, jwks.AddKey(pk2))
+			sk2 := testKey(t, jwa.ES256())
+			pk2, err := jwk.PublicKeyOf(sk2.Public())
+			require.NoError(t, err)
+			require.NoError(t, pk2.Set("exp", unixtime.Unixtime{Time: exp2}))
+			require.NoError(t, jwks.AddKey(pk2))
 
-		maxExp := jwks.MaximalExpirationTime()
-		assert.True(t, maxExp.Unix() >= exp2.Unix()-1)
-	})
+			maxExp := jwks.MaximalExpirationTime()
+			assert.True(t, maxExp.Unix() >= exp2.Unix()-1)
+		},
+	)
 }
 
 func TestKeyToJWKS(t *testing.T) {
@@ -496,6 +777,107 @@ func TestKeyToJWKS(t *testing.T) {
 }
 
 // =============================================================================
+// MergeJWKS Tests (jwks.go)
+// =============================================================================
+
+// testKeyWithKID creates a public JWK with a specific KID for testing
+func testKeyWithKID(t *testing.T, kid string) jwk.Key {
+	t.Helper()
+	sk := testKey(t, jwa.ES256())
+	pk, err := jwk.PublicKeyOf(sk.Public())
+	require.NoError(t, err)
+	require.NoError(t, pk.Set(jwk.KeyIDKey, kid))
+	return pk
+}
+
+func TestMergeJWKS_NoOverlap(t *testing.T) {
+	jwks1 := NewJWKS()
+	jwks2 := NewJWKS()
+
+	require.NoError(t, jwks1.AddKey(testKeyWithKID(t, "key-a")))
+	require.NoError(t, jwks2.AddKey(testKeyWithKID(t, "key-b")))
+
+	merged := MergeJWKS(jwks1, jwks2)
+	assert.Equal(t, 2, merged.Len())
+
+	kids := map[string]bool{}
+	for _, k := range merged.All() {
+		if kid, ok := k.KeyID(); ok {
+			kids[kid] = true
+		}
+	}
+	assert.True(t, kids["key-a"])
+	assert.True(t, kids["key-b"])
+}
+
+func TestMergeJWKS_KIDOverlap_PrimaryWins(t *testing.T) {
+	jwks1 := NewJWKS()
+	jwks2 := NewJWKS()
+
+	pk1 := testKeyWithKID(t, "shared-kid")
+	pk2 := testKeyWithKID(t, "shared-kid")
+
+	require.NoError(t, jwks1.AddKey(pk1))
+	require.NoError(t, jwks2.AddKey(pk2))
+
+	merged := MergeJWKS(jwks1, jwks2)
+	assert.Equal(t, 1, merged.Len())
+
+	k, _ := merged.Key(0)
+	assert.Equal(t, pk1, k)
+}
+
+func TestMergeJWKS_KeysWithoutKID_AllKept(t *testing.T) {
+	jwks1 := NewJWKS()
+	jwks2 := NewJWKS()
+
+	sk1 := testKey(t, jwa.ES256())
+	pk1, err := jwk.PublicKeyOf(sk1.Public())
+	require.NoError(t, err)
+
+	sk2 := testKey(t, jwa.ES256())
+	pk2, err := jwk.PublicKeyOf(sk2.Public())
+	require.NoError(t, err)
+
+	require.NoError(t, jwks1.AddKey(pk1))
+	require.NoError(t, jwks2.AddKey(pk2))
+
+	merged := MergeJWKS(jwks1, jwks2)
+	assert.Equal(t, 2, merged.Len())
+}
+
+func TestMergeJWKS_EmptyPrimary(t *testing.T) {
+	jwks1 := NewJWKS()
+	jwks2 := NewJWKS()
+
+	require.NoError(t, jwks2.AddKey(testKeyWithKID(t, "key-b")))
+
+	merged := MergeJWKS(jwks1, jwks2)
+	assert.Equal(t, 1, merged.Len())
+}
+
+func TestMergeJWKS_EmptySecondary(t *testing.T) {
+	jwks1 := NewJWKS()
+	jwks2 := NewJWKS()
+
+	require.NoError(t, jwks1.AddKey(testKeyWithKID(t, "key-a")))
+
+	merged := MergeJWKS(jwks1, jwks2)
+	assert.Equal(t, 1, merged.Len())
+}
+
+func TestMergeJWKS_BothEmpty(t *testing.T) {
+	merged := MergeJWKS(NewJWKS(), NewJWKS())
+	assert.Equal(t, 0, merged.Len())
+}
+
+func TestMergeJWKS_NilSets(t *testing.T) {
+	merged := MergeJWKS(JWKS{}, JWKS{})
+	assert.NotNil(t, merged.Set)
+	assert.Equal(t, 0, merged.Len())
+}
+
+// =============================================================================
 // JWT Signing Tests (jwtsigning.go)
 // =============================================================================
 
@@ -514,27 +896,33 @@ func TestGeneralJWTSigner_JWT(t *testing.T) {
 
 	payload := map[string]string{"hello": "world"}
 
-	t.Run("sign with default alg", func(t *testing.T) {
-		jwt, err := signer.JWT(payload, "test+jwt")
-		require.NoError(t, err)
-		assert.NotEmpty(t, jwt)
+	t.Run(
+		"sign with default alg", func(t *testing.T) {
+			jwt, err := signer.JWT(payload, "test+jwt")
+			require.NoError(t, err)
+			assert.NotEmpty(t, jwt)
 
-		parts := strings.Split(string(jwt), ".")
-		assert.Len(t, parts, 3)
-	})
+			parts := strings.Split(string(jwt), ".")
+			assert.Len(t, parts, 3)
+		},
+	)
 
-	t.Run("sign with specific alg", func(t *testing.T) {
-		jwt, err := signer.JWT(payload, "test+jwt", "ES256")
-		require.NoError(t, err)
-		assert.NotEmpty(t, jwt)
-	})
+	t.Run(
+		"sign with specific alg", func(t *testing.T) {
+			jwt, err := signer.JWT(payload, "test+jwt", "ES256")
+			require.NoError(t, err)
+			assert.NotEmpty(t, jwt)
+		},
+	)
 
-	t.Run("no compatible key", func(t *testing.T) {
-		jwt, err := signer.JWT(payload, "test+jwt", "RS256")
-		assert.Error(t, err)
-		assert.Nil(t, jwt)
-		assert.Contains(t, err.Error(), "no compatible signing key")
-	})
+	t.Run(
+		"no compatible key", func(t *testing.T) {
+			jwt, err := signer.JWT(payload, "test+jwt", "RS256")
+			assert.Error(t, err)
+			assert.Nil(t, jwt)
+			assert.Contains(t, err.Error(), "no compatible signing key")
+		},
+	)
 }
 
 func TestGeneralJWTSigner_JWTWithHeaders(t *testing.T) {
@@ -544,20 +932,24 @@ func TestGeneralJWTSigner_JWTWithHeaders(t *testing.T) {
 
 	payload := map[string]string{"hello": "world"}
 
-	t.Run("with custom headers", func(t *testing.T) {
-		headers := jws.NewHeaders()
-		require.NoError(t, headers.Set("custom", "value"))
+	t.Run(
+		"with custom headers", func(t *testing.T) {
+			headers := jws.NewHeaders()
+			require.NoError(t, headers.Set("custom", "value"))
 
-		jwt, err := signer.JWTWithHeaders(payload, headers, "test+jwt")
-		require.NoError(t, err)
-		assert.NotEmpty(t, jwt)
-	})
+			jwt, err := signer.JWTWithHeaders(payload, headers, "test+jwt")
+			require.NoError(t, err)
+			assert.NotEmpty(t, jwt)
+		},
+	)
 
-	t.Run("with nil headers", func(t *testing.T) {
-		jwt, err := signer.JWTWithHeaders(payload, nil, "test+jwt")
-		require.NoError(t, err)
-		assert.NotEmpty(t, jwt)
-	})
+	t.Run(
+		"with nil headers", func(t *testing.T) {
+			jwt, err := signer.JWTWithHeaders(payload, nil, "test+jwt")
+			require.NoError(t, err)
+			assert.NotEmpty(t, jwt)
+		},
+	)
 }
 
 func TestGeneralJWTSigner_JWKS(t *testing.T) {
@@ -599,24 +991,30 @@ func TestEntityStatementSigner(t *testing.T) {
 
 	payload := map[string]string{"iss": "https://example.com"}
 
-	t.Run("JWT", func(t *testing.T) {
-		jwt, err := signer.JWT(payload)
-		require.NoError(t, err)
-		assert.NotEmpty(t, jwt)
-	})
+	t.Run(
+		"JWT", func(t *testing.T) {
+			jwt, err := signer.JWT(payload)
+			require.NoError(t, err)
+			assert.NotEmpty(t, jwt)
+		},
+	)
 
-	t.Run("JWTWithHeaders", func(t *testing.T) {
-		headers := jws.NewHeaders()
-		jwt, err := signer.JWTWithHeaders(payload, headers)
-		require.NoError(t, err)
-		assert.NotEmpty(t, jwt)
-	})
+	t.Run(
+		"JWTWithHeaders", func(t *testing.T) {
+			headers := jws.NewHeaders()
+			jwt, err := signer.JWTWithHeaders(payload, headers)
+			require.NoError(t, err)
+			assert.NotEmpty(t, jwt)
+		},
+	)
 
-	t.Run("JWKS", func(t *testing.T) {
-		jwks, err := signer.JWKS()
-		require.NoError(t, err)
-		assert.NotNil(t, jwks.Set)
-	})
+	t.Run(
+		"JWKS", func(t *testing.T) {
+			jwks, err := signer.JWKS()
+			require.NoError(t, err)
+			assert.NotNil(t, jwks.Set)
+		},
+	)
 }
 
 func TestTrustMarkSigner(t *testing.T) {
@@ -659,43 +1057,51 @@ func TestSignWithType(t *testing.T) {
 	sk := testKey(t, jwa.ES256())
 	payload := []byte(`{"hello":"world"}`)
 
-	t.Run("with nil headers", func(t *testing.T) {
-		jwt, err := SignWithType(payload, nil, oidfedconst.JWTTypeEntityStatement, jwa.ES256(), sk)
-		require.NoError(t, err)
-		assert.NotEmpty(t, jwt)
-	})
+	t.Run(
+		"with nil headers", func(t *testing.T) {
+			jwt, err := SignWithType(payload, nil, oidfedconst.JWTTypeEntityStatement, jwa.ES256(), sk)
+			require.NoError(t, err)
+			assert.NotEmpty(t, jwt)
+		},
+	)
 
-	t.Run("with existing headers", func(t *testing.T) {
-		headers := jws.NewHeaders()
-		require.NoError(t, headers.Set("custom", "value"))
+	t.Run(
+		"with existing headers", func(t *testing.T) {
+			headers := jws.NewHeaders()
+			require.NoError(t, headers.Set("custom", "value"))
 
-		jwt, err := SignWithType(payload, headers, oidfedconst.JWTTypeEntityStatement, jwa.ES256(), sk)
-		require.NoError(t, err)
-		assert.NotEmpty(t, jwt)
-	})
+			jwt, err := SignWithType(payload, headers, oidfedconst.JWTTypeEntityStatement, jwa.ES256(), sk)
+			require.NoError(t, err)
+			assert.NotEmpty(t, jwt)
+		},
+	)
 }
 
 func TestSignPayload(t *testing.T) {
 	sk := testKey(t, jwa.ES256())
 	payload := []byte(`{"hello":"world"}`)
 
-	t.Run("with nil headers", func(t *testing.T) {
-		jwt, err := SignPayload(payload, jwa.ES256(), sk, nil)
-		require.NoError(t, err)
-		assert.NotEmpty(t, jwt)
+	t.Run(
+		"with nil headers", func(t *testing.T) {
+			jwt, err := SignPayload(payload, jwa.ES256(), sk, nil)
+			require.NoError(t, err)
+			assert.NotEmpty(t, jwt)
 
-		parts := strings.Split(string(jwt), ".")
-		assert.Len(t, parts, 3)
-	})
+			parts := strings.Split(string(jwt), ".")
+			assert.Len(t, parts, 3)
+		},
+	)
 
-	t.Run("with headers", func(t *testing.T) {
-		headers := jws.NewHeaders()
-		require.NoError(t, headers.Set("custom", "value"))
+	t.Run(
+		"with headers", func(t *testing.T) {
+			headers := jws.NewHeaders()
+			require.NoError(t, headers.Set("custom", "value"))
 
-		jwt, err := SignPayload(payload, jwa.ES256(), sk, headers)
-		require.NoError(t, err)
-		assert.NotEmpty(t, jwt)
-	})
+			jwt, err := SignPayload(payload, jwa.ES256(), sk, headers)
+			require.NoError(t, err)
+			assert.NotEmpty(t, jwt)
+		},
+	)
 }
 
 // =============================================================================
@@ -712,29 +1118,37 @@ func TestSingleKeySigner_Signer(t *testing.T) {
 	sk := testKey(t, jwa.ES256())
 	signer := NewSingleKeyVersatileSigner(sk, jwa.ES256())
 
-	t.Run("matching algorithm", func(t *testing.T) {
-		s, alg := signer.Signer("ES256")
-		assert.NotNil(t, s)
-		assert.Equal(t, jwa.ES256(), alg)
-	})
+	t.Run(
+		"matching algorithm", func(t *testing.T) {
+			s, alg := signer.Signer("ES256")
+			assert.NotNil(t, s)
+			assert.Equal(t, jwa.ES256(), alg)
+		},
+	)
 
-	t.Run("matching algorithm among multiple", func(t *testing.T) {
-		s, alg := signer.Signer("RS256", "ES256", "EdDSA")
-		assert.NotNil(t, s)
-		assert.Equal(t, jwa.ES256(), alg)
-	})
+	t.Run(
+		"matching algorithm among multiple", func(t *testing.T) {
+			s, alg := signer.Signer("RS256", "ES256", "EdDSA")
+			assert.NotNil(t, s)
+			assert.Equal(t, jwa.ES256(), alg)
+		},
+	)
 
-	t.Run("no matching algorithm", func(t *testing.T) {
-		s, alg := signer.Signer("RS256", "RS384")
-		assert.Nil(t, s)
-		assert.Equal(t, jwa.SignatureAlgorithm{}, alg)
-	})
+	t.Run(
+		"no matching algorithm", func(t *testing.T) {
+			s, alg := signer.Signer("RS256", "RS384")
+			assert.Nil(t, s)
+			assert.Equal(t, jwa.SignatureAlgorithm{}, alg)
+		},
+	)
 
-	t.Run("empty algs list", func(t *testing.T) {
-		s, alg := signer.Signer()
-		assert.Nil(t, s)
-		assert.Equal(t, jwa.SignatureAlgorithm{}, alg)
-	})
+	t.Run(
+		"empty algs list", func(t *testing.T) {
+			s, alg := signer.Signer()
+			assert.Nil(t, s)
+			assert.Equal(t, jwa.SignatureAlgorithm{}, alg)
+		},
+	)
 }
 
 func TestSingleKeySigner_DefaultSigner(t *testing.T) {
@@ -761,17 +1175,371 @@ func TestSingleKeySigner_JWKS(t *testing.T) {
 // Algorithms Tests (algs.go)
 // =============================================================================
 
+func TestES256K_SignAndVerify(t *testing.T) {
+	sk, pk, _, err := GenerateKeyPair(es256k.ES256K(), 0)
+	require.NoError(t, err)
+	payload := []byte(`{"hello":"secp256k1"}`)
+
+	signed, err := SignWithType(payload, nil, oidfedconst.JWTTypeEntityStatement, es256k.ES256K(), sk)
+	require.NoError(t, err)
+	assert.NotEmpty(t, signed)
+
+	verified, err := jws.Verify(signed, jws.WithKey(es256k.ES256K(), pk))
+	require.NoError(t, err)
+	assert.Equal(t, payload, verified)
+}
+
+func TestES256K_PEMRoundTrip(t *testing.T) {
+	sk := testKey(t, es256k.ES256K()).(*ecdsa.PrivateKey)
+
+	pemData := exportSecp256k1PrivateKeyAsPem(sk)
+	require.NotNil(t, pemData)
+
+	block, _ := pem.Decode(pemData)
+	require.NotNil(t, block)
+	assert.Equal(t, "PRIVATE KEY", block.Type)
+
+	parsed, err := parseSecp256k1PKCS8PrivateKey(block.Bytes)
+	require.NoError(t, err)
+	assert.Equal(t, sk.D, parsed.D)
+	assert.Equal(t, sk.X, parsed.X)
+	assert.Equal(t, sk.Y, parsed.Y)
+}
+
+func TestEd448_SignAndVerify(t *testing.T) {
+	sk, pk, _, err := GenerateKeyPair(ed448ext.EdDSAEd448(), 0)
+	require.NoError(t, err)
+	payload := []byte(`{"hello":"ed448"}`)
+
+	signed, err := SignWithType(payload, nil, oidfedconst.JWTTypeEntityStatement, ed448ext.EdDSAEd448(), sk)
+	require.NoError(t, err)
+	assert.NotEmpty(t, signed)
+
+	verified, err := jws.Verify(signed, jws.WithKey(ed448ext.EdDSAEd448(), pk))
+	require.NoError(t, err)
+	assert.Equal(t, payload, verified)
+}
+
+func TestEd448_PEMRoundTrip(t *testing.T) {
+	sk := testKey(t, ed448ext.EdDSAEd448()).(ed448.PrivateKey)
+
+	pemData := exportEd448PrivateKeyAsPem(sk)
+	require.NotNil(t, pemData)
+
+	block, _ := pem.Decode(pemData)
+	require.NotNil(t, block)
+	assert.Equal(t, "PRIVATE KEY", block.Type)
+
+	parsed, err := parseEd448PKCS8PrivateKey(block.Bytes)
+	require.NoError(t, err)
+	assert.Equal(t, sk.Seed(), parsed.Seed())
+}
+
+func TestMLDSA44_SignAndVerify(t *testing.T) {
+	sk, pk, _, err := GenerateKeyPair(jwxmldsa.MLDSA44(), 0)
+	require.NoError(t, err)
+	payload := []byte(`{"hello":"mldsa44"}`)
+
+	signed, err := SignWithType(payload, nil, oidfedconst.JWTTypeEntityStatement, jwxmldsa.MLDSA44(), sk)
+	require.NoError(t, err)
+	assert.NotEmpty(t, signed)
+
+	verified, err := jws.Verify(signed, jws.WithKey(jwxmldsa.MLDSA44(), pk))
+	require.NoError(t, err)
+	assert.Equal(t, payload, verified)
+}
+
+func TestMLDSA44_PEMRoundTrip(t *testing.T) {
+	sk := testKey(t, jwxmldsa.MLDSA44()).(*mldsa.PrivateKey)
+
+	pemData := exportMLDSAPrivateKeyAsPem(sk)
+	require.NotNil(t, pemData)
+
+	block, _ := pem.Decode(pemData)
+	require.NotNil(t, block)
+	assert.Equal(t, "PRIVATE KEY", block.Type)
+
+	parsed, err := parseMLDSAPKCS8PrivateKey(block.Bytes)
+	require.NoError(t, err)
+	assert.Equal(t, sk.Bytes(), parsed.Bytes())
+	assert.True(t, sk.PublicKey().Equal(parsed.PublicKey()))
+}
+
+func TestMLDSA65_SignAndVerify(t *testing.T) {
+	sk, pk, _, err := GenerateKeyPair(jwxmldsa.MLDSA65(), 0)
+	require.NoError(t, err)
+	payload := []byte(`{"hello":"mldsa65"}`)
+
+	signed, err := SignWithType(payload, nil, oidfedconst.JWTTypeEntityStatement, jwxmldsa.MLDSA65(), sk)
+	require.NoError(t, err)
+	assert.NotEmpty(t, signed)
+
+	verified, err := jws.Verify(signed, jws.WithKey(jwxmldsa.MLDSA65(), pk))
+	require.NoError(t, err)
+	assert.Equal(t, payload, verified)
+}
+
+func TestMLDSA65_PEMRoundTrip(t *testing.T) {
+	sk := testKey(t, jwxmldsa.MLDSA65()).(*mldsa.PrivateKey)
+
+	pemData := exportMLDSAPrivateKeyAsPem(sk)
+	require.NotNil(t, pemData)
+
+	block, _ := pem.Decode(pemData)
+	require.NotNil(t, block)
+	assert.Equal(t, "PRIVATE KEY", block.Type)
+
+	parsed, err := parseMLDSAPKCS8PrivateKey(block.Bytes)
+	require.NoError(t, err)
+	assert.Equal(t, sk.Bytes(), parsed.Bytes())
+	assert.True(t, sk.PublicKey().Equal(parsed.PublicKey()))
+}
+
+func TestMLDSA87_SignAndVerify(t *testing.T) {
+	sk, pk, _, err := GenerateKeyPair(jwxmldsa.MLDSA87(), 0)
+	require.NoError(t, err)
+	payload := []byte(`{"hello":"mldsa87"}`)
+
+	signed, err := SignWithType(payload, nil, oidfedconst.JWTTypeEntityStatement, jwxmldsa.MLDSA87(), sk)
+	require.NoError(t, err)
+	assert.NotEmpty(t, signed)
+
+	verified, err := jws.Verify(signed, jws.WithKey(jwxmldsa.MLDSA87(), pk))
+	require.NoError(t, err)
+	assert.Equal(t, payload, verified)
+}
+
+func TestMLDSA87_PEMRoundTrip(t *testing.T) {
+	sk := testKey(t, jwxmldsa.MLDSA87()).(*mldsa.PrivateKey)
+
+	pemData := exportMLDSAPrivateKeyAsPem(sk)
+	require.NotNil(t, pemData)
+
+	block, _ := pem.Decode(pemData)
+	require.NotNil(t, block)
+	assert.Equal(t, "PRIVATE KEY", block.Type)
+
+	parsed, err := parseMLDSAPKCS8PrivateKey(block.Bytes)
+	require.NoError(t, err)
+	assert.Equal(t, sk.Bytes(), parsed.Bytes())
+	assert.True(t, sk.PublicKey().Equal(parsed.PublicKey()))
+}
+
+func TestCompsig_MLDSA44ES256_SignAndVerify(t *testing.T) {
+	sk, pk, _, err := GenerateKeyPair(compsig.MLDSA44ES256(), 0)
+	require.NoError(t, err)
+	payload := []byte(`{"hello":"compsig-44-es256"}`)
+
+	signed, err := SignWithType(payload, nil, oidfedconst.JWTTypeEntityStatement, compsig.MLDSA44ES256(), sk)
+	require.NoError(t, err)
+	assert.NotEmpty(t, signed)
+
+	verified, err := jws.Verify(signed, jws.WithKey(compsig.MLDSA44ES256(), pk))
+	require.NoError(t, err)
+	assert.Equal(t, payload, verified)
+}
+
+func TestCompsig_MLDSA44ES256_PEMRoundTrip(t *testing.T) {
+	sk := testKey(t, compsig.MLDSA44ES256()).(*compsigSigningKey)
+
+	pemData := exportCompsigPrivateKeyAsPem(sk.sk)
+	require.NotNil(t, pemData)
+
+	block, _ := pem.Decode(pemData)
+	require.NotNil(t, block)
+	assert.Equal(t, "PRIVATE KEY", block.Type)
+
+	parsed, err := parseCompsigPKCS8PrivateKey(block.Bytes)
+	require.NoError(t, err)
+	rawOrig, _ := sk.sk.MarshalBinary()
+	rawParsed, _ := parsed.MarshalBinary()
+	assert.Equal(t, rawOrig, rawParsed)
+}
+
+func TestCompsig_MLDSA65ES256_SignAndVerify(t *testing.T) {
+	sk, pk, _, err := GenerateKeyPair(compsig.MLDSA65ES256(), 0)
+	require.NoError(t, err)
+	payload := []byte(`{"hello":"compsig-65-es256"}`)
+
+	signed, err := SignWithType(payload, nil, oidfedconst.JWTTypeEntityStatement, compsig.MLDSA65ES256(), sk)
+	require.NoError(t, err)
+	assert.NotEmpty(t, signed)
+
+	verified, err := jws.Verify(signed, jws.WithKey(compsig.MLDSA65ES256(), pk))
+	require.NoError(t, err)
+	assert.Equal(t, payload, verified)
+}
+
+func TestCompsig_MLDSA65ES256_PEMRoundTrip(t *testing.T) {
+	sk := testKey(t, compsig.MLDSA65ES256()).(*compsigSigningKey)
+
+	pemData := exportCompsigPrivateKeyAsPem(sk.sk)
+	require.NotNil(t, pemData)
+
+	block, _ := pem.Decode(pemData)
+	require.NotNil(t, block)
+	assert.Equal(t, "PRIVATE KEY", block.Type)
+
+	parsed, err := parseCompsigPKCS8PrivateKey(block.Bytes)
+	require.NoError(t, err)
+	rawOrig, _ := sk.sk.MarshalBinary()
+	rawParsed, _ := parsed.MarshalBinary()
+	assert.Equal(t, rawOrig, rawParsed)
+}
+
+func TestCompsig_MLDSA87ES384_SignAndVerify(t *testing.T) {
+	sk, pk, _, err := GenerateKeyPair(compsig.MLDSA87ES384(), 0)
+	require.NoError(t, err)
+	payload := []byte(`{"hello":"compsig-87-es384"}`)
+
+	signed, err := SignWithType(payload, nil, oidfedconst.JWTTypeEntityStatement, compsig.MLDSA87ES384(), sk)
+	require.NoError(t, err)
+	assert.NotEmpty(t, signed)
+
+	verified, err := jws.Verify(signed, jws.WithKey(compsig.MLDSA87ES384(), pk))
+	require.NoError(t, err)
+	assert.Equal(t, payload, verified)
+}
+
+func TestCompsig_MLDSA87ES384_PEMRoundTrip(t *testing.T) {
+	sk := testKey(t, compsig.MLDSA87ES384()).(*compsigSigningKey)
+
+	pemData := exportCompsigPrivateKeyAsPem(sk.sk)
+	require.NotNil(t, pemData)
+
+	block, _ := pem.Decode(pemData)
+	require.NotNil(t, block)
+	assert.Equal(t, "PRIVATE KEY", block.Type)
+
+	parsed, err := parseCompsigPKCS8PrivateKey(block.Bytes)
+	require.NoError(t, err)
+	rawOrig, _ := sk.sk.MarshalBinary()
+	rawParsed, _ := parsed.MarshalBinary()
+	assert.Equal(t, rawOrig, rawParsed)
+}
+
+func TestCompsig_MLDSA44Ed25519_SignAndVerify(t *testing.T) {
+	sk, pk, _, err := GenerateKeyPair(compsig.MLDSA44Ed25519(), 0)
+	require.NoError(t, err)
+	payload := []byte(`{"hello":"compsig-44-ed25519"}`)
+
+	signed, err := SignWithType(payload, nil, oidfedconst.JWTTypeEntityStatement, compsig.MLDSA44Ed25519(), sk)
+	require.NoError(t, err)
+	assert.NotEmpty(t, signed)
+
+	verified, err := jws.Verify(signed, jws.WithKey(compsig.MLDSA44Ed25519(), pk))
+	require.NoError(t, err)
+	assert.Equal(t, payload, verified)
+}
+
+func TestCompsig_MLDSA44Ed25519_PEMRoundTrip(t *testing.T) {
+	sk := testKey(t, compsig.MLDSA44Ed25519()).(*compsigSigningKey)
+
+	pemData := exportCompsigPrivateKeyAsPem(sk.sk)
+	require.NotNil(t, pemData)
+
+	block, _ := pem.Decode(pemData)
+	require.NotNil(t, block)
+	assert.Equal(t, "PRIVATE KEY", block.Type)
+
+	parsed, err := parseCompsigPKCS8PrivateKey(block.Bytes)
+	require.NoError(t, err)
+	rawOrig, _ := sk.sk.MarshalBinary()
+	rawParsed, _ := parsed.MarshalBinary()
+	assert.Equal(t, rawOrig, rawParsed)
+}
+
+func TestCompsig_MLDSA65Ed25519_SignAndVerify(t *testing.T) {
+	sk, pk, _, err := GenerateKeyPair(compsig.MLDSA65Ed25519(), 0)
+	require.NoError(t, err)
+	payload := []byte(`{"hello":"compsig-65-ed25519"}`)
+
+	signed, err := SignWithType(payload, nil, oidfedconst.JWTTypeEntityStatement, compsig.MLDSA65Ed25519(), sk)
+	require.NoError(t, err)
+	assert.NotEmpty(t, signed)
+
+	verified, err := jws.Verify(signed, jws.WithKey(compsig.MLDSA65Ed25519(), pk))
+	require.NoError(t, err)
+	assert.Equal(t, payload, verified)
+}
+
+func TestCompsig_MLDSA65Ed25519_PEMRoundTrip(t *testing.T) {
+	sk := testKey(t, compsig.MLDSA65Ed25519()).(*compsigSigningKey)
+
+	pemData := exportCompsigPrivateKeyAsPem(sk.sk)
+	require.NotNil(t, pemData)
+
+	block, _ := pem.Decode(pemData)
+	require.NotNil(t, block)
+	assert.Equal(t, "PRIVATE KEY", block.Type)
+
+	parsed, err := parseCompsigPKCS8PrivateKey(block.Bytes)
+	require.NoError(t, err)
+	rawOrig, _ := sk.sk.MarshalBinary()
+	rawParsed, _ := parsed.MarshalBinary()
+	assert.Equal(t, rawOrig, rawParsed)
+}
+
+func TestCompsig_MLDSA87Ed448_SignAndVerify(t *testing.T) {
+	sk, pk, _, err := GenerateKeyPair(compsig.MLDSA87Ed448(), 0)
+	require.NoError(t, err)
+	payload := []byte(`{"hello":"compsig-87-ed448"}`)
+
+	signed, err := SignWithType(payload, nil, oidfedconst.JWTTypeEntityStatement, compsig.MLDSA87Ed448(), sk)
+	require.NoError(t, err)
+	assert.NotEmpty(t, signed)
+
+	verified, err := jws.Verify(signed, jws.WithKey(compsig.MLDSA87Ed448(), pk))
+	require.NoError(t, err)
+	assert.Equal(t, payload, verified)
+}
+
+func TestCompsig_MLDSA87Ed448_PEMRoundTrip(t *testing.T) {
+	sk := testKey(t, compsig.MLDSA87Ed448()).(*compsigSigningKey)
+
+	pemData := exportCompsigPrivateKeyAsPem(sk.sk)
+	require.NotNil(t, pemData)
+
+	block, _ := pem.Decode(pemData)
+	require.NotNil(t, block)
+	assert.Equal(t, "PRIVATE KEY", block.Type)
+
+	parsed, err := parseCompsigPKCS8PrivateKey(block.Bytes)
+	require.NoError(t, err)
+	rawOrig, _ := sk.sk.MarshalBinary()
+	rawParsed, _ := parsed.MarshalBinary()
+	assert.Equal(t, rawOrig, rawParsed)
+}
+
 func TestSupportedAlgs(t *testing.T) {
 	algs := SupportedAlgs()
 
 	assert.NotEmpty(t, algs)
-	assert.Len(t, algs, 10)
+	assert.Len(t, algs, 22)
 
 	expectedAlgs := []jwa.SignatureAlgorithm{
-		jwa.ES256(), jwa.ES384(), jwa.ES512(),
+		jwa.ES256(),
+		jwa.ES384(),
+		jwa.ES512(),
+		es256k.ES256K(),
 		jwa.EdDSA(),
-		jwa.RS256(), jwa.RS384(), jwa.RS512(),
-		jwa.PS256(), jwa.PS384(), jwa.PS512(),
+		jwa.EdDSAEd25519(),
+		ed448ext.EdDSAEd448(),
+		jwa.RS256(),
+		jwa.RS384(),
+		jwa.RS512(),
+		jwa.PS256(),
+		jwa.PS384(),
+		jwa.PS512(),
+		jwxmldsa.MLDSA44(),
+		jwxmldsa.MLDSA65(),
+		jwxmldsa.MLDSA87(),
+		compsig.MLDSA44ES256(),
+		compsig.MLDSA65ES256(),
+		compsig.MLDSA87ES384(),
+		compsig.MLDSA44Ed25519(),
+		compsig.MLDSA65Ed25519(),
+		compsig.MLDSA87Ed448(),
 	}
 
 	for _, expected := range expectedAlgs {
