@@ -142,7 +142,7 @@ func (p *TAJWKSRefresher) Start() error {
 		// Initialize poll state
 		p.mu.Lock()
 		p.taState[ta.EntityID] = &pollState{
-			LastKnownKIDs: extractKIDs(jwks),
+			LastKnownKIDs: ExtractKIDs(jwks),
 			backoff:       initialBackoff,
 			stopCh:        make(chan struct{}),
 		}
@@ -218,7 +218,7 @@ func (p *TAJWKSRefresher) Add(ta *TrustAnchor) error {
 	// Initialize poll state and start polling.
 	p.mu.Lock()
 	p.taState[ta.EntityID] = &pollState{
-		LastKnownKIDs: extractKIDs(ta.JWKS()),
+		LastKnownKIDs: ExtractKIDs(ta.JWKS()),
 		backoff:       initialBackoff,
 		stopCh:        make(chan struct{}),
 	}
@@ -377,8 +377,8 @@ func (p *TAJWKSRefresher) pollAndMaybeUpdate(ta *TrustAnchor) (time.Duration, er
 	state.mu.Lock()
 	p.mu.Unlock()
 	state.backoff = initialBackoff
-	newKIDs := extractKIDs(ec.JWKS)
-	changed, added, removed := hasJWKSChanged(state.LastKnownKIDs, newKIDs)
+	newKIDs := ExtractKIDs(ec.JWKS)
+	changed, added, removed := HasJWKSChanged(state.LastKnownKIDs, newKIDs)
 
 	if changed {
 		// Update storage
@@ -417,37 +417,4 @@ func (p *TAJWKSRefresher) pollAndMaybeUpdate(ta *TrustAnchor) (time.Duration, er
 
 	// Fallback default
 	return defaultPollInterval, nil
-}
-
-// hasJWKSChanged compares two JWKS and returns whether they differ based on KIDs
-// Returns: changed, addedKIDs, removedKIDs
-func hasJWKSChanged(oldJWKS, newJWKS *strset.Set) (bool, []string, []string) {
-	removed := strset.Difference(oldJWKS, newJWKS).List()
-	added := strset.Difference(newJWKS, oldJWKS).List()
-	change := false
-	if len(added) > 0 {
-		change = true
-	} else {
-		added = nil
-	}
-	if len(removed) > 0 {
-		change = true
-	} else {
-		removed = nil
-	}
-	return change, added, removed
-}
-
-// extractKIDs extracts all KIDs from a JWKS
-func extractKIDs(jwks jwx.JWKS) *strset.Set {
-	kids := strset.New()
-	if jwks.Set == nil {
-		return kids
-	}
-	for _, key := range jwks.All() {
-		if kid, ok := key.KeyID(); ok && kid != "" {
-			kids.Add(kid)
-		}
-	}
-	return kids
 }

@@ -129,7 +129,7 @@ func TestHasJWKSChanged_NoChange(t *testing.T) {
 	jwks1 := jwx.NewJWKS()
 	jwks2 := jwx.NewJWKS()
 
-	changed, added, removed := hasJWKSChanged(extractKIDs(jwks1), extractKIDs(jwks2))
+	changed, added, removed := HasJWKSChanged(ExtractKIDs(jwks1), ExtractKIDs(jwks2))
 	assert.False(t, changed)
 	assert.Empty(t, added)
 	assert.Empty(t, removed)
@@ -153,7 +153,7 @@ func TestHasJWKSChanged_KeyAdded(t *testing.T) {
 	err := jwks2.UnmarshalJSON([]byte(jwksData))
 	require.NoError(t, err)
 
-	changed, added, removed := hasJWKSChanged(extractKIDs(jwks1), extractKIDs(jwks2))
+	changed, added, removed := HasJWKSChanged(ExtractKIDs(jwks1), ExtractKIDs(jwks2))
 	assert.True(t, changed)
 	assert.Contains(t, added, "new-key")
 	assert.Empty(t, removed)
@@ -177,7 +177,7 @@ func TestHasJWKSChanged_KeyRemoved(t *testing.T) {
 	err := jwks1.UnmarshalJSON([]byte(jwksData))
 	require.NoError(t, err)
 
-	changed, added, removed := hasJWKSChanged(extractKIDs(jwks1), extractKIDs(jwks2))
+	changed, added, removed := HasJWKSChanged(ExtractKIDs(jwks1), ExtractKIDs(jwks2))
 	assert.True(t, changed)
 	assert.Empty(t, added)
 	assert.Contains(t, removed, "old-key")
