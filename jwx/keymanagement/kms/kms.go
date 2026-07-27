@@ -71,6 +71,10 @@ type KMSConfig struct {
 	DefaultAlg   jwa.SignatureAlgorithm
 	RSAKeyLen    int
 	KeyRotation  KeyRotationConfig
+	// EntityID is the entity identifier of the entity that owns the keys
+	// managed by this KMS. It is passed to KeyRotationHook callbacks as part
+	// of the KeyRotationEvent. May be empty if hooks are not used.
+	EntityID string `yaml:"entity_id" json:"entity_id"`
 }
 
 // KeyRotationConfig is a type holding configuration for key rollover / key rotation
@@ -81,6 +85,11 @@ type KeyRotationConfig struct {
 	KeyAnnouncementLeadTime             duration.DurationOption       `yaml:"key_announcement_lead_time" json:"key_announcement_lead_time"`
 	KeyAnnouncementLeadTimeECMultiplier float64                       `yaml:"key_announcement_lead_time_ec_multiplier" json:"key_announcement_lead_time_ec_multiplier"`
 	EntityConfigurationLifetimeFunc     func() (time.Duration, error) `yaml:"-" json:"-"`
+	// Hooks are callbacks invoked after a signing key is generated or rotated.
+	// Hooks run in separate goroutines; errors and panics are logged and never
+	// propagated, so a failing hook never blocks or aborts key rotation or
+	// other hooks.
+	Hooks []KeyRotationHook `yaml:"-" json:"-"`
 }
 
 // ecLifetime safely calls EntityConfigurationLifetimeFunc.

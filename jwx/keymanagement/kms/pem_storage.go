@@ -306,9 +306,14 @@ func (kms *PEMStorageKMS) Load() error {
 			)
 		}
 		log.Info("PEMStorageKMS: generating new signing key")
-		if _, err = kms.generateNewSigner(alg, nbfModeNow); err != nil {
+		pke, err := kms.generateNewSigner(alg, nbfModeNow)
+		if err != nil {
 			return err
 		}
+		fireKeyRotationHooks(
+			kms.KeyRotation.Hooks, kms.EntityID, kms.PKs,
+			[]string{pke.KID}, nil, false, "",
+		)
 	}
 	return nil
 }
@@ -433,8 +438,15 @@ func (kms *PEMStorageKMS) ensureFutureKey(alg jwa.SignatureAlgorithm, effectiveA
 			}
 		}
 	}
-	_, err = kms.generateNewSignerAt(alg, effectiveAt)
-	return err
+	pke, err := kms.generateNewSignerAt(alg, effectiveAt)
+	if err != nil {
+		return err
+	}
+	fireKeyRotationHooks(
+		kms.KeyRotation.Hooks, kms.EntityID, kms.PKs,
+		[]string{pke.KID}, nil, false, "",
+	)
+	return nil
 }
 
 // ChangeAlgsAt schedules a change of the algorithm set at a specific time.
@@ -586,6 +598,10 @@ func (kms *PEMStorageKMS) rotateKeys(kids []string, revoked bool, reason string)
 		Str("alg", signingAlg.String()).
 		Str("new_kid", pk.KID).
 		Msg("PEMStorageKMS: rotation: completed")
+	fireKeyRotationHooks(
+		kms.KeyRotation.Hooks, kms.EntityID, kms.PKs,
+		[]string{pk.KID}, kids, revoked, reason,
+	)
 	return nil
 }
 
@@ -611,11 +627,16 @@ func (kms *PEMStorageKMS) RotateAllKeys(revoked bool, reason string) error {
 	for _, alg := range kms.Algs {
 		algPKs, ok := pksByAlg[alg]
 		if !ok || len(algPKs) == 0 {
-			if _, err = kms.generateNewSigner(alg, nbfModeNow); err != nil {
+			pke, err := kms.generateNewSigner(alg, nbfModeNow)
+			if err != nil {
 				return err
 			}
 			log.Logger().Info().Str("alg", alg.String()).
 				Msg("PEMStorageKMS: rotation: seeded new key for alg with no active keys")
+			fireKeyRotationHooks(
+				kms.KeyRotation.Hooks, kms.EntityID, kms.PKs,
+				[]string{pke.KID}, nil, false, "",
+			)
 		}
 
 		kids := make([]string, len(algPKs))
@@ -778,11 +799,16 @@ func (kms *PEMStorageKMS) rotationEvaluationForAlg(
 			}
 			return wait, false
 		}
-		if _, err := kms.generateNewSigner(alg, nbfModeNow); err != nil {
+		pke, err := kms.generateNewSigner(alg, nbfModeNow)
+		if err != nil {
 			log.Logger().Error().Err(err).Msg("PEMStorageKMS: automatic rotation: failed to seed key for alg")
 			return minSleep, false
 		}
 		log.Logger().Info().Str("alg", alg.String()).Msg("PEMStorageKMS: automatic rotation: seeded new key for alg")
+		fireKeyRotationHooks(
+			kms.KeyRotation.Hooks, kms.EntityID, kms.PKs,
+			[]string{pke.KID}, nil, false, "",
+		)
 		return 0, true
 	}
 

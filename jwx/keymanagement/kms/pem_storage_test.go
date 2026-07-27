@@ -1,6 +1,7 @@
 package kms
 
 import (
+	"context"
 	"crypto"
 	"crypto/ecdsa"
 	"crypto/ed25519"
@@ -8,6 +9,7 @@ import (
 	"crypto/rand"
 	"crypto/rsa"
 	"io"
+	"sync"
 	"testing"
 	"time"
 
@@ -514,9 +516,9 @@ func TestKeyAnnouncementLeadTimeDuration_MultiplierNoECLifetimeFunc_Error(t *tes
 // clock (now) used by GetActive/GetValid filtering. It actually persists Add
 // and Update so rotation logic can be exercised deterministically.
 type memPKStorage struct {
-	now      time.Time
-	entries  map[string]public.PublicKeyEntry
-	order    []string
+	now     time.Time
+	entries map[string]public.PublicKeyEntry
+	order   []string
 }
 
 func newMemPKStorage(now time.Time) *memPKStorage {
@@ -824,4 +826,128 @@ func TestRotationStep_BUG_RegeneratesOldAlgWhenOrderIsWrong(t *testing.T) {
 		t, 2, pks.countForAlg(jwa.ES256()),
 		"bug reproduction: old ordering regenerates an ES256 key",
 	)
+}
+
+// TestPEMStorageKMS_RotateKey_FiresHook verifies that a configured
+// KeyRotationHook is invoked when RotateKey is called, with the correct event
+// fields.
+func TestPEMStorageKMS_RotateKey_FiresHook(t *testing.T) {
+	now := time.Now()
+	pks := newMemPKStorage(now)
+	pem := newMemPEMStorer()
+	state := &memStateStorer{}
+
+	// Pre-seed an initial key so RotateKey has something to rotate.
+	_, pkJWK, kid, err := jwx.GenerateKeyPair(jwa.RS256(), 2048)
+	require.NoError(t, err)
+	nbf := unixtime.Unixtime{Time: now.Add(-1 * time.Hour)}
+	exp := unixtime.Unixtime{Time: now.Add(2 * time.Hour)}
+	require.NoError(t, pks.Add(public.PublicKeyEntry{
+		KID:       kid,
+		Key:       public.JWKKey{Key: pkJWK},
+		NotBefore: &nbf,
+		UpdateablePublicKeyMetadata: public.UpdateablePublicKeyMetadata{
+			ExpiresAt: &exp,
+		},
+	}))
+
+	var (
+		gotEvent  KeyRotationEvent
+		gotCalled bool
+		eventMu   sync.Mutex
+	)
+	hook := func(_ context.Context, event KeyRotationEvent) error {
+		eventMu.Lock()
+		gotEvent = event
+		gotCalled = true
+		eventMu.Unlock()
+		return nil
+	}
+
+	kms := &PEMStorageKMS{
+		KMSConfig: KMSConfig{
+			GenerateKeys: true,
+			RSAKeyLen:    2048,
+			Algs:         []jwa.SignatureAlgorithm{jwa.RS256()},
+			DefaultAlg:   jwa.RS256(),
+			EntityID:     "https://my-entity.example",
+			KeyRotation: KeyRotationConfig{
+				Enabled:                             true,
+				Overlap:                             duration.DurationOption(10 * time.Minute),
+				KeyAnnouncementLeadTimeECMultiplier: 1.0,
+				EntityConfigurationLifetimeFunc: func() (time.Duration, error) {
+					return time.Hour, nil
+				},
+				Hooks: []KeyRotationHook{hook},
+			},
+		},
+		signers:     make(map[string]jwx.SigningKey),
+		pemStorer:   pem,
+		stateStorer: state,
+		PKs:         pks,
+	}
+
+	require.NoError(t, kms.RotateKey(kid, false, ""))
+
+	// Wait for the hook goroutine to complete.
+	require.Eventually(t, func() bool {
+		eventMu.Lock()
+		defer eventMu.Unlock()
+		return gotCalled
+	}, 2*time.Second, 10*time.Millisecond)
+
+	eventMu.Lock()
+	defer eventMu.Unlock()
+	assert.Equal(t, "https://my-entity.example", gotEvent.EntityID)
+	assert.Contains(t, gotEvent.RotatedKIDs, kid)
+	assert.Len(t, gotEvent.AddedKIDs, 1)
+	assert.False(t, gotEvent.Revoked)
+	assert.NotNil(t, gotEvent.NewJWKS.Set)
+	assert.GreaterOrEqual(t, gotEvent.NewJWKS.Len(), 1)
+}
+
+// TestPEMStorageKMS_Load_FiresHook verifies that hooks fire on initial key
+// generation during Load (seeding).
+func TestPEMStorageKMS_Load_FiresHook(t *testing.T) {
+	now := time.Now()
+	pks := newMemPKStorage(now)
+	pem := newMemPEMStorer()
+	state := &memStateStorer{}
+
+	var (
+		gotCalled bool
+		eventMu   sync.Mutex
+	)
+	hook := func(_ context.Context, event KeyRotationEvent) error {
+		eventMu.Lock()
+		gotCalled = true
+		eventMu.Unlock()
+		return nil
+	}
+
+	kms := &PEMStorageKMS{
+		KMSConfig: KMSConfig{
+			GenerateKeys: true,
+			RSAKeyLen:    2048,
+			Algs:         []jwa.SignatureAlgorithm{jwa.RS256()},
+			DefaultAlg:   jwa.RS256(),
+			EntityID:     "https://my-entity.example",
+			KeyRotation: KeyRotationConfig{
+				Hooks: []KeyRotationHook{hook},
+			},
+		},
+		signers:     make(map[string]jwx.SigningKey),
+		pemStorer:   pem,
+		stateStorer: state,
+		PKs:         pks,
+	}
+
+	require.NoError(t, kms.Load())
+
+	// Wait for the hook goroutine to complete.
+	require.Eventually(t, func() bool {
+		eventMu.Lock()
+		defer eventMu.Unlock()
+		return gotCalled
+	}, 2*time.Second, 10*time.Millisecond)
 }
