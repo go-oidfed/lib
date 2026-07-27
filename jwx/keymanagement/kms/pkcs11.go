@@ -18,7 +18,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/ThalesGroup/crypto11"
+	"github.com/eclipse-keypont/crypto11"
 	"github.com/google/uuid"
 	"github.com/lestrrat-go/jwx/v4/jwa"
 	"github.com/lestrrat-go/jwx/v4/jwk"

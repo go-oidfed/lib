@@ -1,7 +1,5 @@
 filippo.io/mldsa v0.0.0-20260215214346-43d0283efc3e h1:VsUbObBMxXlc23Eb9VeeJYE4jvTs87qa5RqSN2U5FJU=
 filippo.io/mldsa v0.0.0-20260215214346-43d0283efc3e/go.mod h1:32qQ5yj3R24Eu03iWFWchdC3OB653wPvoepWejkefbY=
-github.com/ThalesGroup/crypto11 v1.6.2 h1:X+JsrOlKanaIlHgwV/3MJ/cFivbEaQ8kpXRPoiC2T+c=
-github.com/ThalesGroup/crypto11 v1.6.2/go.mod h1:fQ61t02lJdXD2HrG7upt/VRlDECsipwtqpPcZJEjBKg=
 github.com/TwiN/gocache/v2 v2.4.0 h1:BZ/TqvhipDQE23MFFTjC0MiI1qZ7GEVtSdOFVVXyr18=
 github.com/TwiN/gocache/v2 v2.4.0/go.mod h1:Cl1c0qNlQlXzJhTpAARVqpQDSuGDM5RhtzPYAM1x17g=
 github.com/adam-hanna/arrayOperations v1.0.1 h1:iAot3I2p4yKrFk8eRhEkuHj0ttOrfFJMWAo7Is/rHwk=
@@ -23,6 +21,8 @@ github.com/davecgh/go-spew v1.1.1 h1:vj9j/u1bqnvCEfJOwUhtlOARqs3+rkHYY13jYWTU97c
 github.com/davecgh/go-spew v1.1.1/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
 github.com/decred/dcrd/dcrec/secp256k1/v4 v4.4.1 h1:5RVFMOWjMyRy8cARdy79nAmgYw3hK/4HUq48LQ6Wwqo=
 github.com/decred/dcrd/dcrec/secp256k1/v4 v4.4.1/go.mod h1:ZXNYxsqcloTdSy/rNShjYzMhyjf0LaoftYK0p+A3h40=
+github.com/eclipse-keypont/crypto11 v1.6.5 h1:m5m6c1ttIYNsG4ZeuHcV1sBXk8KBday/HPYHFO17zGs=
+github.com/eclipse-keypont/crypto11 v1.6.5/go.mod h1:NIBgfiTuqvCyaktz22yE33PB4Aa0dU0M2Uf6QUTfDFk=
 github.com/fatih/set v0.2.1 h1:nn2CaJyknWE/6txyUDGwysr3G5QC6xWB/PtVjPBbeaA=
 github.com/fatih/set v0.2.1/go.mod h1:+RKtMCH+favT2+3YecHGxcc0b4KyVWA1QWWJUs4E0CI=
 github.com/fatih/structs v1.1.0 h1:Q7juDM0QtcnhCpeyLGQKyg4TOIghuNXrkL32pHAUMxo=
