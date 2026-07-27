@@ -752,6 +752,109 @@ func TestJWKS_MaximalExpirationTime(t *testing.T) {
 	)
 }
 
+func TestJWKS_WithoutExpired(t *testing.T) {
+	now := time.Now()
+
+	t.Run(
+		"empty input", func(t *testing.T) {
+			got := NewJWKS().WithoutExpired(now)
+			assert.Equal(t, 0, got.Len())
+		},
+	)
+
+	t.Run(
+		"key without exp is kept", func(t *testing.T) {
+			jwks := NewJWKS()
+			require.NoError(t, jwks.AddKey(testKeyWithKID(t, "no-exp")))
+			got := jwks.WithoutExpired(now)
+			assert.Equal(t, 1, got.Len())
+		},
+	)
+
+	t.Run(
+		"future-exp key is kept", func(t *testing.T) {
+			jwks := NewJWKS()
+			k := testKeyWithKID(t, "future")
+			require.NoError(t, k.Set("exp", unixtime.Unixtime{Time: now.Add(time.Hour)}))
+			require.NoError(t, jwks.AddKey(k))
+			got := jwks.WithoutExpired(now)
+			assert.Equal(t, 1, got.Len())
+		},
+	)
+
+	t.Run(
+		"past-exp key is dropped", func(t *testing.T) {
+			jwks := NewJWKS()
+			k := testKeyWithKID(t, "past")
+			require.NoError(t, k.Set("exp", unixtime.Unixtime{Time: now.Add(-time.Hour)}))
+			require.NoError(t, jwks.AddKey(k))
+			got := jwks.WithoutExpired(now)
+			assert.Equal(t, 0, got.Len())
+		},
+	)
+
+	t.Run(
+		"boundary exp == now is kept", func(t *testing.T) {
+			jwks := NewJWKS()
+			k := testKeyWithKID(t, "now")
+			require.NoError(t, k.Set("exp", unixtime.Unixtime{Time: now}))
+			require.NoError(t, jwks.AddKey(k))
+			got := jwks.WithoutExpired(now)
+			assert.Equal(t, 1, got.Len(), "exp == now should be considered valid (inclusive)")
+		},
+	)
+
+	t.Run(
+		"mixed", func(t *testing.T) {
+			jwks := NewJWKS()
+			expired := testKeyWithKID(t, "expired")
+			require.NoError(t, expired.Set("exp", unixtime.Unixtime{Time: now.Add(-time.Hour)}))
+			valid := testKeyWithKID(t, "valid")
+			require.NoError(t, valid.Set("exp", unixtime.Unixtime{Time: now.Add(time.Hour)}))
+			noExp := testKeyWithKID(t, "no-exp")
+			require.NoError(t, jwks.AddKey(expired))
+			require.NoError(t, jwks.AddKey(valid))
+			require.NoError(t, jwks.AddKey(noExp))
+
+			got := jwks.WithoutExpired(now)
+			assert.Equal(t, 2, got.Len())
+
+			kids := make(map[string]bool)
+			for _, k := range got.All() {
+				if kid, ok := k.KeyID(); ok {
+					kids[kid] = true
+				}
+			}
+			assert.True(t, kids["valid"])
+			assert.True(t, kids["no-exp"])
+			assert.False(t, kids["expired"])
+		},
+	)
+
+	t.Run(
+		"does not mutate input", func(t *testing.T) {
+			jwks := NewJWKS()
+			expired := testKeyWithKID(t, "expired")
+			require.NoError(t, expired.Set("exp", unixtime.Unixtime{Time: now.Add(-time.Hour)}))
+			valid := testKeyWithKID(t, "valid")
+			require.NoError(t, valid.Set("exp", unixtime.Unixtime{Time: now.Add(time.Hour)}))
+			require.NoError(t, jwks.AddKey(expired))
+			require.NoError(t, jwks.AddKey(valid))
+
+			_ = jwks.WithoutExpired(now)
+			assert.Equal(t, 2, jwks.Len(), "input JWKS must not be mutated")
+			inputKIDs := make(map[string]bool)
+			for _, k := range jwks.All() {
+				if kid, ok := k.KeyID(); ok {
+					inputKIDs[kid] = true
+				}
+			}
+			assert.True(t, inputKIDs["expired"], "expired key must still be present in the original set")
+			assert.True(t, inputKIDs["valid"])
+		},
+	)
+}
+
 func TestKeyToJWKS(t *testing.T) {
 	sk := testKey(t, jwa.ES256())
 

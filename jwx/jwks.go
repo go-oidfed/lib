@@ -3,6 +3,7 @@ package jwx
 import (
 	"bytes"
 	"encoding/json"
+	"time"
 
 	"github.com/lestrrat-go/jwx/v4/jwa"
 	"github.com/lestrrat-go/jwx/v4/jwk"
@@ -131,6 +132,30 @@ func (jwks JWKS) MaximalExpirationTime() unixtime.Unixtime {
 		}
 	}
 	return exp
+}
+
+// WithoutExpired returns a new JWKS containing only keys that are not expired
+// at the given time. A key is considered expired if it has an `exp` claim that
+// is strictly before `now` (matching unixtime.VerifyTime, so `exp == now` is
+// still valid). Keys without an `exp` claim (or with a zero `exp`) are always
+// kept. The input JWKS is not modified.
+func (jwks JWKS) WithoutExpired(now time.Time) JWKS {
+	filtered := jwk.NewSet()
+	if jwks.Set == nil {
+		return JWKS{filtered}
+	}
+	for _, k := range jwks.All() {
+		exp, err := jwk.Get[unixtime.Unixtime](k, "exp")
+		if err != nil || exp.IsZero() {
+			_ = filtered.AddKey(k)
+			continue
+		}
+		if exp.Before(now) {
+			continue
+		}
+		_ = filtered.AddKey(k)
+	}
+	return JWKS{filtered}
 }
 
 // MergeJWKS merges two JWKS into a new one, deduplicating by KID.
