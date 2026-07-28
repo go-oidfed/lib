@@ -366,6 +366,90 @@ func TestReflectIsSupersetOf(t *testing.T) {
 	})
 }
 
+func TestReflectDifference(t *testing.T) {
+	t.Run("both empty", func(t *testing.T) {
+		result := ReflectDifference([]string{}, []string{})
+		assert.Empty(t, result)
+	})
+
+	t.Run("first empty", func(t *testing.T) {
+		result := ReflectDifference([]string{}, []string{"a", "b"})
+		assert.Empty(t, result)
+	})
+
+	t.Run("second empty", func(t *testing.T) {
+		result := ReflectDifference([]string{"a", "b"}, []string{})
+		assert.ElementsMatch(t, []string{"a", "b"}, result)
+	})
+
+	t.Run("no overlap", func(t *testing.T) {
+		result := ReflectDifference([]string{"a", "b"}, []string{"c", "d"})
+		assert.ElementsMatch(t, []string{"a", "b"}, result)
+	})
+
+	t.Run("partial overlap", func(t *testing.T) {
+		result := ReflectDifference([]string{"a", "b", "c"}, []string{"b", "c", "d"})
+		assert.Equal(t, []string{"a"}, result)
+	})
+
+	t.Run("complete overlap", func(t *testing.T) {
+		result := ReflectDifference([]string{"a", "b"}, []string{"a", "b"})
+		assert.Empty(t, result)
+	})
+
+	t.Run("preserves order", func(t *testing.T) {
+		result := ReflectDifference([]string{"a", "b", "c", "d"}, []string{"b", "d"})
+		assert.Equal(t, []string{"a", "c"}, result)
+	})
+
+	t.Run("single values (slicified)", func(t *testing.T) {
+		result := ReflectDifference("a", []string{"b"})
+		assert.ElementsMatch(t, []string{"a"}, result)
+	})
+
+	t.Run("int slices", func(t *testing.T) {
+		result := ReflectDifference([]int{1, 2, 3}, []int{2, 3, 4})
+		assert.ElementsMatch(t, []int{1}, result)
+	})
+
+	t.Run("interface slice operand", func(t *testing.T) {
+		result := ReflectDifference([]string{"a", "b", "c"}, []any{"b"})
+		assert.Equal(t, []string{"a", "c"}, result)
+	})
+}
+
+func TestReflectDisjoint(t *testing.T) {
+	t.Run("both empty", func(t *testing.T) {
+		assert.True(t, ReflectDisjoint([]string{}, []string{}))
+	})
+
+	t.Run("first empty", func(t *testing.T) {
+		assert.True(t, ReflectDisjoint([]string{}, []string{"a"}))
+	})
+
+	t.Run("no overlap", func(t *testing.T) {
+		assert.True(t, ReflectDisjoint([]string{"a", "b"}, []string{"c", "d"}))
+	})
+
+	t.Run("partial overlap", func(t *testing.T) {
+		assert.False(t, ReflectDisjoint([]string{"a", "b", "c"}, []string{"b", "d"}))
+	})
+
+	t.Run("complete overlap", func(t *testing.T) {
+		assert.False(t, ReflectDisjoint([]string{"a", "b"}, []string{"a", "b"}))
+	})
+
+	t.Run("single values (slicified)", func(t *testing.T) {
+		assert.False(t, ReflectDisjoint("a", []string{"a", "b"}))
+		assert.True(t, ReflectDisjoint("a", []string{"b", "c"}))
+	})
+
+	t.Run("interface slice operand", func(t *testing.T) {
+		assert.False(t, ReflectDisjoint([]string{"a", "b"}, []any{"a"}))
+		assert.True(t, ReflectDisjoint([]string{"a", "b"}, []any{"c"}))
+	})
+}
+
 func TestSliceEqual(t *testing.T) {
 	t.Run("nil equals nil", func(t *testing.T) {
 		assert.True(t, SliceEqual(nil, nil))

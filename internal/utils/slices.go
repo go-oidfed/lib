@@ -133,6 +133,41 @@ func ReflectIntersect(a, b any) any {
 	return out.Interface()
 }
 
+// ReflectDifference uses reflection to compute the set difference of two slices:
+// the elements of a that are not contained in b, preserving the order of a.
+func ReflectDifference(a, b any) any {
+	as := Slicify(a)
+	bs := Slicify(b)
+	aV := reflect.ValueOf(as)
+	if aV.Type() != reflect.ValueOf(bs).Type() {
+		bs = ReflectSliceCast(bs, as)
+	}
+	out := reflect.New(reflect.TypeOf(as)).Elem()
+	for i := 0; i < aV.Len(); i++ {
+		v := aV.Index(i)
+		if !ReflectSliceContains(v.Interface(), bs) {
+			out = reflect.Append(out, v)
+		}
+	}
+	return out.Interface()
+}
+
+// ReflectDisjoint uses reflection to check if two slices have no elements in common
+func ReflectDisjoint(a, b any) bool {
+	as := Slicify(a)
+	bs := Slicify(b)
+	aV := reflect.ValueOf(as)
+	if aV.Type() != reflect.ValueOf(bs).Type() {
+		bs = ReflectSliceCast(bs, as)
+	}
+	for i := 0; i < aV.Len(); i++ {
+		if ReflectSliceContains(aV.Index(i).Interface(), bs) {
+			return false
+		}
+	}
+	return true
+}
+
 // ReflectIsSubsetOf uses reflection to check if a slice is a subset of another
 func ReflectIsSubsetOf(is, of any) bool {
 	is = Slicify(is)

@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"os"
 	"testing"
+
+	"github.com/go-oidfed/lib/internal/utils"
 )
 
 type testVector struct {
@@ -319,5 +321,104 @@ func TestMetadataPoliciesExtraRoundTrip(t *testing.T) {
 		if len(decodedVal) != len(v) {
 			t.Fatalf("Extra[%q] length mismatch: expected %d, got %d", k, len(v), len(decodedVal))
 		}
+	}
+}
+
+func TestExceptOperatorExample1ExcludingAlgorithms(t *testing.T) {
+	policy := MetadataPolicy{
+		"id_token_signing_alg_values_supported": MetadataPolicyEntry{
+			PolicyOperatorSubsetOf: []string{"RS256", "RS384", "RS512", "ES256", "ES384", "ES512"},
+			PolicyOperatorExcept:   []string{"RS256", "RS384"},
+		},
+	}
+	var metadata OpenIDProviderMetadata
+	if err := json.Unmarshal(
+		[]byte(`{"id_token_signing_alg_values_supported":["RS256","RS512","ES256","ES512"]}`),
+		&metadata,
+	); err != nil {
+		t.Fatalf("failed to unmarshal metadata: %v", err)
+	}
+
+	result, err := applyPolicy(&metadata, policy, "openid_provider")
+	if err != nil {
+		t.Fatalf("did not expect error: %v", err)
+	}
+	resolved, ok := result.(*OpenIDProviderMetadata)
+	if !ok {
+		t.Fatalf("expected *OpenIDProviderMetadata, got %T", result)
+	}
+	expected := []string{"RS512", "ES256", "ES512"}
+	if len(resolved.IDTokenSigningAlgValuesSupported) != len(expected) {
+		t.Fatalf(
+			"expected %+q, got %+q", expected, resolved.IDTokenSigningAlgValuesSupported,
+		)
+	}
+	for i, v := range expected {
+		if resolved.IDTokenSigningAlgValuesSupported[i] != v {
+			t.Fatalf(
+				"expected %+q, got %+q", expected, resolved.IDTokenSigningAlgValuesSupported,
+			)
+		}
+	}
+}
+
+func TestExceptOperatorExample2ValueConflict(t *testing.T) {
+	policy := MetadataPolicy{
+		"token_endpoint_auth_method": MetadataPolicyEntry{
+			PolicyOperatorValue:  "client_secret_basic",
+			PolicyOperatorExcept: []string{"client_secret_basic"},
+		},
+	}
+	var metadata OAuthClientMetadata
+	if err := json.Unmarshal(
+		[]byte(`{"token_endpoint_auth_method":"private_key_jwt"}`),
+		&metadata,
+	); err != nil {
+		t.Fatalf("failed to unmarshal metadata: %v", err)
+	}
+
+	if err := policy.Verify("oauth_client"); err == nil {
+		t.Fatal("expected policy verification error for value/except conflict, but got none")
+	}
+
+	if _, err := applyPolicy(&metadata, policy, "oauth_client"); err == nil {
+		t.Fatal("expected apply error for value/except conflict, but got none")
+	}
+}
+
+func TestExceptOperatorMergeUnion(t *testing.T) {
+	parent := MetadataPolicy{
+		"id_token_signing_alg_values_supported": MetadataPolicyEntry{
+			PolicyOperatorExcept: []string{"RS256"},
+		},
+	}
+	sub := MetadataPolicy{
+		"id_token_signing_alg_values_supported": MetadataPolicyEntry{
+			PolicyOperatorExcept: []string{"RS384"},
+		},
+	}
+	combined, err := combineMetadataPolicy(parent, sub, "openid_provider")
+	if err != nil {
+		t.Fatalf("did not expect merge error: %v", err)
+	}
+	exceptV, ok := combined["id_token_signing_alg_values_supported"][PolicyOperatorExcept]
+	if !ok {
+		t.Fatal("expected except operator in combined policy")
+	}
+	if !utils.SliceEqual([]string{"RS256", "RS384"}, exceptV) {
+		t.Fatalf("expected except to be union [RS256 RS384], got %+v", exceptV)
+	}
+}
+
+func TestExceptOperatorCombineWithOtherOperators(t *testing.T) {
+	policy := MetadataPolicy{
+		"id_token_signing_alg_values_supported": MetadataPolicyEntry{
+			PolicyOperatorSubsetOf:  []string{"RS256", "RS384", "RS512", "ES256"},
+			PolicyOperatorExcept:    []string{"RS256"},
+			PolicyOperatorEssential: true,
+		},
+	}
+	if err := policy.Verify("openid_provider"); err != nil {
+		t.Fatalf("expected subset_of+except+essential to be a valid combination, but got: %v", err)
 	}
 }

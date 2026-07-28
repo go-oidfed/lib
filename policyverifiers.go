@@ -124,6 +124,63 @@ func policyVerifySubsetOfAndValue(p MetadataPolicyEntry, pathInfo string) error 
 
 }
 
+func policyVerifyValueNotInExcept(p MetadataPolicyEntry, pathInfo string) error {
+	valueV, valueSet := p[PolicyOperatorValue]
+	exceptV, exceptSet := p[PolicyOperatorExcept]
+	if !valueSet || !exceptSet {
+		return nil
+	}
+	if !utils.ReflectDisjoint(valueV, exceptV) {
+		return errors.Errorf(
+			"after combining policies '%s' the '%s' operator value '%v' is excluded by the '%s' operator '%v'",
+			pathInfo,
+			PolicyOperatorValue,
+			valueV,
+			PolicyOperatorExcept,
+			exceptV,
+		)
+	}
+	return nil
+}
+
+func policyVerifyAddNotInExcept(p MetadataPolicyEntry, pathInfo string) error {
+	addV, addSet := p[PolicyOperatorAdd]
+	exceptV, exceptSet := p[PolicyOperatorExcept]
+	if !addSet || !exceptSet {
+		return nil
+	}
+	if !utils.ReflectDisjoint(addV, exceptV) {
+		return errors.Errorf(
+			"after combining policies '%s' the '%s' operator value '%v' is excluded by the '%s' operator '%v'",
+			pathInfo,
+			PolicyOperatorAdd,
+			addV,
+			PolicyOperatorExcept,
+			exceptV,
+		)
+	}
+	return nil
+}
+
+func policyVerifySupersetOfNotInExcept(p MetadataPolicyEntry, pathInfo string) error {
+	superV, superset := p[PolicyOperatorSupersetOf]
+	exceptV, exceptSet := p[PolicyOperatorExcept]
+	if !superset || !exceptSet {
+		return nil
+	}
+	if !utils.ReflectDisjoint(superV, exceptV) {
+		return errors.Errorf(
+			"after combining policies '%s' the '%s' operator value '%v' is excluded by the '%s' operator '%v'",
+			pathInfo,
+			PolicyOperatorSupersetOf,
+			superV,
+			PolicyOperatorExcept,
+			exceptV,
+		)
+	}
+	return nil
+}
+
 func policyVerifyDefaultInSubset(p MetadataPolicyEntry, pathInfo string) error {
 	subsetV, subset := p[PolicyOperatorSubsetOf]
 	defaultV, defaultSet := p[PolicyOperatorDefault]
@@ -247,4 +304,7 @@ func init() {
 	RegisterPolicyVerifier(policyVerifyOneOfStillHasValues)
 	RegisterPolicyVerifier(policyVerifySubsetOfAndValue)
 	RegisterPolicyVerifier(policyVerifyDefaultAndValue)
+	RegisterPolicyVerifier(policyVerifyValueNotInExcept)
+	RegisterPolicyVerifier(policyVerifyAddNotInExcept)
+	RegisterPolicyVerifier(policyVerifySupersetOfNotInExcept)
 }
