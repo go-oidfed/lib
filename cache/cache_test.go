@@ -403,7 +403,10 @@ type mockCacheImpl struct {
 	data map[string]any
 }
 
-func (m *mockCacheImpl) Get(key string, target any) (bool, error) {
+// Get reports whether key exists but does not populate target. This is
+// sufficient for TestSetCache, which only verifies that SetCache swaps the
+// active implementation; it never inspects deserialized values via Get.
+func (m *mockCacheImpl) Get(key string, _ any) (bool, error) {
 	_, ok := m.data[key]
 	return ok, nil
 }
