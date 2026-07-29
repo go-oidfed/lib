@@ -641,8 +641,8 @@ func (m *Metadata) FindEntityMetadata(entityType string, metadata any) error {
 	v := reflect.ValueOf(m)
 	t := v.Elem().Type()
 
-	for i := 0; i < t.NumField(); i++ {
-		j, ok := t.Field(i).Tag.Lookup("json")
+	for field := range t.Fields() {
+		j, ok := field.Tag.Lookup("json")
 		if !ok {
 			continue
 		}
@@ -651,7 +651,7 @@ func (m *Metadata) FindEntityMetadata(entityType string, metadata any) error {
 			continue
 		}
 
-		value := v.Elem().FieldByName(t.Field(i).Name)
+		value := v.Elem().FieldByName(field.Name)
 		if value.IsZero() {
 			continue
 		}
