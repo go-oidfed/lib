@@ -39,11 +39,8 @@ federation entity to support higher level functionality.
 ### Implementation State
 
 The library is not considered stable and some features might be missing. We encourage everybody to give feedback on 
-things that are missing, not working, or weird, also suggestions for improvements and of course we are open for pull 
+things that are missing, not working, or weird, also suggestions for improvements – and of course we are open for pull 
 requests.
-
-We try to be up-to-date with the latest version of the spec, but this might not
-always be the case.
 
 
 Here we try to sum up the current implementation state, (but it's very likely
@@ -57,6 +54,7 @@ that the list is not complete)
 | Applying Metadata Policies                                                                     | Yes     | Yes         |
 | Applying Metadata from Superiors                                                               | Yes     | Yes         |
 | Support for Custom Metadata Policy Operators                                                   | Yes     | Yes         |
+| `except` Metadata Policy Operator                                                              | Yes     | Yes         |
 | Filter Trust Chains                                                                            | Yes     | Yes         |
 | Configure Trust Anchors                                                                        | Yes     | Yes         |
 | Set Authority Hints                                                                            | N/A     | Yes         |
@@ -65,15 +63,15 @@ that the list is not complete)
 | IA Listing Endpoint                                                                            |         | Yes         |
 | Trust Mark Endpoint                                                                            |         | Yes         |
 | Trust Marked Entities Endpoint                                                                 |         | Yes         |
-| Trust Mark Status Endpoint                                                                     |         | Outdated    |
+| Trust Mark Status Endpoint                                                                     |         | Yes         |
 | Trust Mark Owner Delegation                                                                    | Yes     | Yes         |
 | Trust Mark JWT Verification                                                                    | Yes     | Yes         |
 | Trust Mark JWT Verification including Delegation                                               | Yes     | Yes         |
 | Trust Mark Verification through Trust Mark Status Endpoint                                     | No      | No          |
 | JWT Type Verification                                                                          | Yes     | Yes         |
 | Requests using GET                                                                             |         | Yes         |
-| Requests using POST                                                                            |         | No          |
-| Client Authentication                                                                          |         | No          |
+| Requests using POST                                                                            |         | Yes         |
+| Client Authentication                                                                          | Yes     | Yes         |
 | Automatic Client Registration                                                                  | Yes     | Yes         |
 | Authorization Code Flow with Automatic Client Registration using oidc key from jwks            |         | Yes         |
 | Authorization Code Flow with Automatic Client Registration using oidc key from jwks_uri        |         | No          |
@@ -82,6 +80,14 @@ that the list is not complete)
 | Constraints                                                                                    | Yes     | Yes         |
 | Federation Historical Keys Endpoint                                                            | Yes     | Yes         |
 | Automatic Key Rollover                                                                         |         | Yes         |
+| Key Rotation Hooks (Cmd / HTTP)                                                                | Yes     | Yes         |
+| Federation JWKS Update / Trigger Endpoints (POST)                                              |         | Yes         |
+| Trust Anchor JWKS Refresher                                                                    | Yes     | Yes         |
+| Subordinate JWKS Refresher                                                                     | Yes     | Yes         |
+| Proactive Resolver                                                                             | Yes     | Yes         |
+| Periodic Entity Collector                                                                      | Yes     | Yes         |
+| Entity Collection Endpoint                                                                     | Yes     | Yes         |
+| Post-Quantum Signing Algorithms                                                                | Yes     | Yes         |
 | Enrollment of Entities                                                                         |         | Yes         |
 | Configurable Checks for Enrollment                                                             |         | Yes         |
 | Custom Checks for Enrollment                                                                   |         | Yes         |
@@ -89,7 +95,7 @@ that the list is not complete)
 | Configurable Checks for Trust Mark Issuance                                                    |         | Yes         |
 | Custom Checks for Trust Mark Issuance                                                          |         | Yes         |
 | Request to become entitled for a Trust Mark                                                    |         | Yes         |
-| Automatically refresh trust marks in Entity Configuration                                      |         | Yes         |
+| Automatically refresh trust marks in Entity Configuration                                      | Yes     | Yes         |
 
 
 
