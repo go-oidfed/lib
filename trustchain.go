@@ -1,6 +1,7 @@
 package oidfed
 
 import (
+	"maps"
 	"reflect"
 
 	"github.com/pkg/errors"
@@ -146,9 +147,7 @@ func mergeMetadata(target, source *Metadata) {
 		if target.Extra == nil {
 			target.Extra = make(map[string]any)
 		}
-		for k, v := range source.Extra {
-			target.Extra[k] = v
-		}
+		maps.Copy(target.Extra, source.Extra)
 	}
 }
 

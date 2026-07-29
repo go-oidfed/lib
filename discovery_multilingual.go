@@ -1,6 +1,7 @@
 package oidfed
 
 import (
+	"maps"
 	"reflect"
 	"strings"
 )
@@ -141,9 +142,7 @@ func convertToMultilingualUIInfo(info UIInfo) MultilingualUIInfo {
 
 	// Copy the Extra map
 	if info.Extra != nil {
-		for k, v := range info.Extra {
-			multiInfo.Extra[k] = v
-		}
+		maps.Copy(multiInfo.Extra, info.Extra)
 	}
 
 	// Initialize MultilingualString fields with default values from UIInfo
@@ -199,9 +198,7 @@ func convertToUIInfo(multiInfo MultilingualUIInfo) UIInfo {
 
 	// Copy the Extra map
 	if multiInfo.Extra != nil {
-		for k, v := range multiInfo.Extra {
-			info.Extra[k] = v
-		}
+		maps.Copy(info.Extra, multiInfo.Extra)
 	}
 
 	// Convert MultilingualString fields to string (using default/untagged values)

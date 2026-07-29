@@ -1,6 +1,7 @@
 package oidfed
 
 import (
+	"maps"
 	"slices"
 
 	"github.com/go-oidfed/lib/apimodel"
@@ -169,9 +170,7 @@ func mergeExtras(dst *UIInfo, extras map[string]any) {
 	if dst.Extra == nil {
 		dst.Extra = make(map[string]any)
 	}
-	for k, v := range extras {
-		dst.Extra[k] = v
-	}
+	maps.Copy(dst.Extra, extras)
 }
 
 func isEmptyUIInfo(i UIInfo) bool {
