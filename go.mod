@@ -14,7 +14,7 @@ require (
 	github.com/gofiber/fiber/v2 v2.52.14
 	github.com/google/go-querystring v1.2.0
 	github.com/google/uuid v1.6.0
-	github.com/jarcoal/httpmock v1.4.1
+	github.com/jarcoal/httpmock v1.4.2
 	github.com/jwx-go/ed448/v4 v4.0.3
 	github.com/jwx-go/es256k/v4 v4.0.3
 	github.com/jwx-go/mldsa/v4 v4.0.3
