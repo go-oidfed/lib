@@ -55,7 +55,7 @@ func (tms TrustMarkInfos) Find(matcher func(info TrustMarkInfo) bool) *TrustMark
 }
 
 // FindByID returns the (first) TrustMarkInfo with the passed id
-// DEPRECATED: use FindByType instead
+// Deprecated: use FindByType instead
 func (tms TrustMarkInfos) FindByID(id string) *TrustMarkInfo {
 	return tms.FindByType(id)
 }
