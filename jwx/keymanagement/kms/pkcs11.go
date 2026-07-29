@@ -788,7 +788,6 @@ func (kms *PKCS11KMS) generateNewSignerAt(
 		return nil, err
 	}
 	_ = pk.Set(jwk.KeyIDKey, label)
-	now := unixtime.Now()
 	nbf := &unixtime.Unixtime{Time: nbfAt}
 	var exp *unixtime.Unixtime
 	if kms.KeyRotation.Enabled {
@@ -797,7 +796,7 @@ func (kms *PKCS11KMS) generateNewSignerAt(
 	pke := public.PublicKeyEntry{
 		KID:       label,
 		Key:       public.JWKKey{Key: pk},
-		IssuedAt:  &now,
+		IssuedAt:  new(unixtime.Now()),
 		NotBefore: nbf,
 		UpdateablePublicKeyMetadata: public.UpdateablePublicKeyMetadata{
 			ExpiresAt: exp,
@@ -916,8 +915,7 @@ func (kms *PKCS11KMS) rotateKeys(kids []string, revoked bool, reason string) err
 	newExpForOldKey := &unixtime.Unixtime{Time: pk.NotBefore.Add(kms.KeyRotation.Overlap.Duration())}
 	for _, k := range ks {
 		if revoked {
-			now := unixtime.Now()
-			k.RevokedAt = &now
+			k.RevokedAt = new(unixtime.Now())
 			k.Reason = reason
 		}
 		// Ensure continuous coverage by setting old expiration to new.nbf + overlap
@@ -962,7 +960,9 @@ func (kms *PKCS11KMS) RotateAllKeys(revoked bool, reason string) error {
 			if err != nil {
 				return err
 			}
-			log.Logger().Info().Str("alg", alg.String()).Msg("pkcs#11 KMS: rotation: seeded new key for alg with no active keys")
+			log.Logger().Info().Str(
+				"alg", alg.String(),
+			).Msg("pkcs#11 KMS: rotation: seeded new key for alg with no active keys")
 			fireKeyRotationHooks(
 				kms.KeyRotation.Hooks, kms.EntityID, kms.PKs,
 				[]string{pke.KID}, nil, false, "",

@@ -397,7 +397,6 @@ func (kms *PEMStorageKMS) generateNewSignerAt(
 	if err != nil {
 		return nil, err
 	}
-	now := unixtime.Now()
 	nbf := &unixtime.Unixtime{Time: nbfAt}
 	var exp *unixtime.Unixtime
 	if kms.KeyRotation.Enabled {
@@ -406,7 +405,7 @@ func (kms *PEMStorageKMS) generateNewSignerAt(
 	pke := public.PublicKeyEntry{
 		KID:       kid,
 		Key:       public.JWKKey{Key: pk},
-		IssuedAt:  &now,
+		IssuedAt:  new(unixtime.Now()),
 		NotBefore: nbf,
 		UpdateablePublicKeyMetadata: public.UpdateablePublicKeyMetadata{
 			ExpiresAt: exp,
@@ -583,8 +582,7 @@ func (kms *PEMStorageKMS) rotateKeys(kids []string, revoked bool, reason string)
 	newExpForOldKey := &unixtime.Unixtime{Time: pk.NotBefore.Add(kms.KeyRotation.Overlap.Duration())}
 	for _, k := range ks {
 		if revoked {
-			now := unixtime.Now()
-			k.RevokedAt = &now
+			k.RevokedAt = new(unixtime.Now())
 			k.Reason = reason
 		}
 		if k.ExpiresAt == nil || k.ExpiresAt.IsZero() || newExpForOldKey.Before(k.ExpiresAt.Time) {

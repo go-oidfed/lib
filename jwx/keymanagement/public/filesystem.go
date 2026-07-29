@@ -225,8 +225,7 @@ func (fs *FilesystemPublicKeyStorage) Revoke(kid, reason string) error {
 	if k == nil {
 		return NotFoundError{KID: kid}
 	}
-	now := unixtime.Now()
-	k.RevokedAt = &now
+	k.RevokedAt = new(unixtime.Now())
 	k.Reason = reason
 	return fs.Update(kid, k.UpdateablePublicKeyMetadata)
 

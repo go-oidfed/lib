@@ -522,7 +522,10 @@ type memPKStorage struct {
 }
 
 func newMemPKStorage(now time.Time) *memPKStorage {
-	return &memPKStorage{now: now, entries: make(map[string]public.PublicKeyEntry)}
+	return &memPKStorage{
+		now:     now,
+		entries: make(map[string]public.PublicKeyEntry),
+	}
 }
 
 func (m *memPKStorage) Load() error                                       { return nil }
@@ -620,8 +623,7 @@ func (m *memPKStorage) Revoke(kid, reason string) error {
 	if !ok {
 		return errors.New("not found: " + kid)
 	}
-	now := unixtime.Now()
-	e.RevokedAt = &now
+	e.RevokedAt = new(unixtime.Now())
 	e.Reason = reason
 	m.entries[kid] = e
 	return nil
@@ -842,14 +844,18 @@ func TestPEMStorageKMS_RotateKey_FiresHook(t *testing.T) {
 	require.NoError(t, err)
 	nbf := unixtime.Unixtime{Time: now.Add(-1 * time.Hour)}
 	exp := unixtime.Unixtime{Time: now.Add(2 * time.Hour)}
-	require.NoError(t, pks.Add(public.PublicKeyEntry{
-		KID:       kid,
-		Key:       public.JWKKey{Key: pkJWK},
-		NotBefore: &nbf,
-		UpdateablePublicKeyMetadata: public.UpdateablePublicKeyMetadata{
-			ExpiresAt: &exp,
-		},
-	}))
+	require.NoError(
+		t, pks.Add(
+			public.PublicKeyEntry{
+				KID:       kid,
+				Key:       public.JWKKey{Key: pkJWK},
+				NotBefore: &nbf,
+				UpdateablePublicKeyMetadata: public.UpdateablePublicKeyMetadata{
+					ExpiresAt: &exp,
+				},
+			},
+		),
+	)
 
 	var (
 		gotEvent  KeyRotationEvent
@@ -890,11 +896,13 @@ func TestPEMStorageKMS_RotateKey_FiresHook(t *testing.T) {
 	require.NoError(t, kms.RotateKey(kid, false, ""))
 
 	// Wait for the hook goroutine to complete.
-	require.Eventually(t, func() bool {
-		eventMu.Lock()
-		defer eventMu.Unlock()
-		return gotCalled
-	}, 2*time.Second, 10*time.Millisecond)
+	require.Eventually(
+		t, func() bool {
+			eventMu.Lock()
+			defer eventMu.Unlock()
+			return gotCalled
+		}, 2*time.Second, 10*time.Millisecond,
+	)
 
 	eventMu.Lock()
 	defer eventMu.Unlock()
@@ -945,9 +953,11 @@ func TestPEMStorageKMS_Load_FiresHook(t *testing.T) {
 	require.NoError(t, kms.Load())
 
 	// Wait for the hook goroutine to complete.
-	require.Eventually(t, func() bool {
-		eventMu.Lock()
-		defer eventMu.Unlock()
-		return gotCalled
-	}, 2*time.Second, 10*time.Millisecond)
+	require.Eventually(
+		t, func() bool {
+			eventMu.Lock()
+			defer eventMu.Unlock()
+			return gotCalled
+		}, 2*time.Second, 10*time.Millisecond,
+	)
 }
