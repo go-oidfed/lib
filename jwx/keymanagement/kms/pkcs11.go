@@ -1133,10 +1133,7 @@ func (kms *PKCS11KMS) rotationEvaluationForAlg(
 		}
 		if hasFuture {
 			// sleep until future key becomes active
-			wait := time.Until(earliestNbf)
-			if wait < minSleep {
-				wait = minSleep
-			}
+			wait := max(time.Until(earliestNbf), minSleep)
 			return wait, false
 		}
 		// no active and no future key; seed immediately
@@ -1215,10 +1212,7 @@ func (kms *PKCS11KMS) rotationEvaluationForAlg(
 			shortenExpirationUntilFuture(
 				kms.PKs, algPKs, earliestNbf, kms.KeyRotation.Overlap.Duration(), "pkcs#11 KMS",
 			)
-			wait := time.Until(earliestNbf)
-			if wait < minSleep {
-				wait = minSleep
-			}
+			wait := max(time.Until(earliestNbf), minSleep)
 			return wait, false
 		}
 		if err := kms.rotateKeys(kids, false, ""); err != nil {
@@ -1228,10 +1222,7 @@ func (kms *PKCS11KMS) rotationEvaluationForAlg(
 		return 0, true
 	}
 	// schedule rotation when threshold is reached
-	wait := time.Until(threshold)
-	if wait < minSleep {
-		wait = minSleep
-	}
+	wait := max(time.Until(threshold), minSleep)
 	return wait, false
 }
 

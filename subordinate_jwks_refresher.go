@@ -367,9 +367,6 @@ func (p *SubordinateJWKSRefresher) pollAndMaybeUpdate(sub *SubordinateJWKSInfo) 
 	if sub.JWKSPollInterval != nil && *sub.JWKSPollInterval > 0 {
 		return time.Duration(*sub.JWKSPollInterval) * time.Second, nil
 	}
-	interval := time.Until(ec.ExpiresAt.Time) + subPollBuffer
-	if interval < SubMinPollInterval {
-		interval = SubMinPollInterval
-	}
+	interval := max(time.Until(ec.ExpiresAt.Time)+subPollBuffer, SubMinPollInterval)
 	return interval, nil
 }

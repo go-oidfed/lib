@@ -127,10 +127,9 @@ func (c KeyRotationConfig) KeyAnnouncementLeadTimeDuration() (time.Duration, err
 		if err != nil {
 			leadTime = defaultKeyAnnouncementLeadTime
 		} else {
-			leadTime = time.Duration(defaultKeyAnnouncementLeadTimeMultiplier) * ecLifetime
-			if leadTime < defaultKeyAnnouncementLeadTime {
-				leadTime = defaultKeyAnnouncementLeadTime
-			}
+			leadTime = max(
+				time.Duration(defaultKeyAnnouncementLeadTimeMultiplier)*ecLifetime, defaultKeyAnnouncementLeadTime,
+			)
 		}
 	}
 

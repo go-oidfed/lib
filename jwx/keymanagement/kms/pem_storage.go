@@ -791,10 +791,7 @@ func (kms *PEMStorageKMS) rotationEvaluationForAlg(
 			return 0, false
 		}
 		if hasFuture {
-			wait := time.Until(earliestNbf)
-			if wait < minSleep {
-				wait = minSleep
-			}
+			wait := max(time.Until(earliestNbf), minSleep)
 			return wait, false
 		}
 		pke, err := kms.generateNewSigner(alg, nbfModeNow)
@@ -864,10 +861,7 @@ func (kms *PEMStorageKMS) rotationEvaluationForAlg(
 			shortenExpirationUntilFuture(
 				kms.PKs, algPKs, earliestNbf, kms.KeyRotation.Overlap.Duration(), "PEMStorageKMS",
 			)
-			wait := time.Until(earliestNbf)
-			if wait < minSleep {
-				wait = minSleep
-			}
+			wait := max(time.Until(earliestNbf), minSleep)
 			return wait, false
 		}
 		if err := kms.rotateKeys(kids, false, ""); err != nil {
@@ -876,10 +870,7 @@ func (kms *PEMStorageKMS) rotationEvaluationForAlg(
 		}
 		return 0, true
 	}
-	wait := time.Until(threshold)
-	if wait < minSleep {
-		wait = minSleep
-	}
+	wait := max(time.Until(threshold), minSleep)
 	return wait, false
 }
 

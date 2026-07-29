@@ -171,10 +171,10 @@ func (c *EntityConfigurationTrustMarkConfig) refresh() error {
 	// Exponential backoff: base * 2^failures, capped at 1 hour
 	backoffDelay := baseDelay
 	if failures > 0 {
-		backoffDelay = baseDelay * time.Duration(1<<min(failures, 6)) // Cap at 2^6 = 64x
-		if backoffDelay > time.Hour {
-			backoffDelay = time.Hour
-		}
+		backoffDelay = min(
+			// Cap at 2^6 = 64x
+			baseDelay*time.Duration(1<<min(failures, 6)), time.Hour,
+		)
 	}
 
 	if time.Since(lastTried.Time) < backoffDelay {
