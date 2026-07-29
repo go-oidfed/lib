@@ -1999,3 +1999,176 @@ func TestPolicyOperatorEssentialApply(t *testing.T) {
 		)
 	}
 }
+
+func TestPolicyOperatorExceptMerge(t *testing.T) {
+	tests := []struct {
+		name        string
+		a           any
+		b           any
+		pathInfo    string
+		expected    any
+		errExpected bool
+	}{
+		{
+			name:        "both nil",
+			a:           nil,
+			b:           nil,
+			pathInfo:    "test",
+			expected:    nil,
+			errExpected: false,
+		},
+		{
+			name:        "a nil",
+			a:           nil,
+			b:           []string{"a", "b"},
+			pathInfo:    "test",
+			expected:    []string{"a", "b"},
+			errExpected: false,
+		},
+		{
+			name:        "b nil",
+			a:           []string{"a", "b"},
+			b:           nil,
+			pathInfo:    "test",
+			expected:    []string{"a", "b"},
+			errExpected: false,
+		},
+		{
+			name:        "both empty",
+			a:           []string{},
+			b:           []string{},
+			pathInfo:    "test",
+			expected:    []string{},
+			errExpected: false,
+		},
+		{
+			name:        "disjoint (union)",
+			a:           []string{"a", "b"},
+			b:           []string{"c", "d"},
+			pathInfo:    "test",
+			expected:    []string{"a", "b", "c", "d"},
+			errExpected: false,
+		},
+		{
+			name:        "overlapping (union, no duplicates)",
+			a:           []string{"a", "b"},
+			b:           []string{"b", "c"},
+			pathInfo:    "test",
+			expected:    []string{"a", "b", "c"},
+			errExpected: false,
+		},
+	}
+	op := policyOperatorExcept
+	for _, test := range tests {
+		t.Run(
+			test.name, func(t *testing.T) {
+				merged, err := op.Merge(test.a, test.b, test.pathInfo)
+				if err != nil {
+					if test.errExpected {
+						return
+					}
+					t.Errorf("did not expect error, but did not verify correctly")
+				} else if test.errExpected {
+					t.Errorf("expected error, but verified correctly")
+				}
+				if !utils.SliceEqual(test.expected, merged) {
+					t.Errorf("expected merged object to be '%+q', but got '%+q' instead", test.expected, merged)
+				}
+			},
+		)
+	}
+}
+
+func TestPolicyOperatorExceptApply(t *testing.T) {
+	tests := []struct {
+		name        string
+		value       any
+		valueSet    bool
+		policyValue any
+		pathInfo    string
+		expected    any
+		errExpected bool
+	}{
+		{
+			name:        "value not set",
+			value:       nil,
+			valueSet:    false,
+			policyValue: []string{"a"},
+			pathInfo:    "test",
+			expected:    nil,
+			errExpected: false,
+		},
+		{
+			name:        "policy nil",
+			value:       []string{"a", "b"},
+			valueSet:    true,
+			policyValue: nil,
+			pathInfo:    "test",
+			expected:    []string{"a", "b"},
+			errExpected: false,
+		},
+		{
+			name:        "multi-valued removal partial",
+			value:       []string{"RS256", "RS512", "ES256", "ES512"},
+			valueSet:    true,
+			policyValue: []string{"RS256", "RS384"},
+			pathInfo:    "test",
+			expected:    []string{"RS512", "ES256", "ES512"},
+			errExpected: false,
+		},
+		{
+			name:        "multi-valued removal all (empty result)",
+			value:       []string{"RS256", "RS384"},
+			valueSet:    true,
+			policyValue: []string{"RS256", "RS384"},
+			pathInfo:    "test",
+			expected:    []string{},
+			errExpected: false,
+		},
+		{
+			name:        "multi-valued removal none present (silently ignored)",
+			value:       []string{"RS512", "ES256"},
+			valueSet:    true,
+			policyValue: []string{"RS256", "RS384"},
+			pathInfo:    "test",
+			expected:    []string{"RS512", "ES256"},
+			errExpected: false,
+		},
+		{
+			name:        "single-valued not excluded (passthrough)",
+			value:       "RS512",
+			valueSet:    true,
+			policyValue: []string{"RS256", "RS384"},
+			pathInfo:    "test",
+			expected:    "RS512",
+			errExpected: false,
+		},
+		{
+			name:        "single-valued excluded (error)",
+			value:       "client_secret_basic",
+			valueSet:    true,
+			policyValue: []string{"client_secret_basic"},
+			pathInfo:    "test",
+			errExpected: true,
+		},
+	}
+	op := policyOperatorExcept
+	for _, test := range tests {
+		t.Run(
+			test.name, func(t *testing.T) {
+				result, _, err := op.Apply(test.value, test.valueSet, test.policyValue, false, test.pathInfo)
+				if err != nil {
+					if test.errExpected {
+						return
+					}
+					t.Errorf("did not expect error, but did not verify correctly")
+				} else if test.errExpected {
+					t.Errorf("expected error, but verified correctly")
+				}
+				if !utils.SliceEqual(test.expected, result) {
+					t.Errorf("expected resulting object to be '%+q', but got '%+q' instead", test.expected, result)
+				}
+			},
+		)
+	}
+}

@@ -255,9 +255,13 @@ const maxCollectWorkers = 128
 
 func (d *SimpleEntityCollector) collect(
 	req apimodel.EntityCollectionRequest,
-	authorities ...TrustAnchor,
+	authorities ...*TrustAnchor,
 ) []*CollectedEntity {
-	internal.Logf("Discovery: Discovering Entities for authorities: %+q", authorities)
+	entityIDs := make([]string, len(authorities))
+	for i, ta := range authorities {
+		entityIDs[i] = ta.EntityID
+	}
+	internal.Logf("Discovery: Discovering Entities for authorities: %+q", entityIDs)
 
 	result := &collectorResult{
 		seen:       make(map[string]bool),

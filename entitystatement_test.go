@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/lestrrat-go/jwx/v3/jwa"
+	"github.com/lestrrat-go/jwx/v4/jwa"
 	"github.com/luci/go-render/render"
 	"github.com/vmihailenco/msgpack/v5"
 	zutils "github.com/zachmann/go-utils"

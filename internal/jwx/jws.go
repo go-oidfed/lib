@@ -1,7 +1,7 @@
 package jwx
 
 import (
-	"github.com/lestrrat-go/jwx/v3/jws"
+	"github.com/lestrrat-go/jwx/v4/jws"
 	"github.com/pkg/errors"
 	"github.com/vmihailenco/msgpack/v5"
 

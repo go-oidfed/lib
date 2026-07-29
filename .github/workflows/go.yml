@@ -22,10 +22,12 @@ jobs:
     - name: Set up Go
       uses: actions/setup-go@v4
       with:
-        go-version: '1.25'
+        go-version: '1.26'
 
     - name: Build
       run: go build -v ./...
+      env:
+        GOEXPERIMENT: jsonv2
 
     - name: Test
       run: |
@@ -34,5 +36,6 @@ jobs:
         curl https://deepsource.io/cli | sh
         ./bin/deepsource report --analyzer test-coverage --key go --value-file ./cover.out
       env:
+        GOEXPERIMENT: jsonv2
         DEEPSOURCE_DSN: ${{ secrets.DEEPSOURCE_DSN }}
 

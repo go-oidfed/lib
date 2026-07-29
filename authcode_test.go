@@ -377,7 +377,11 @@ func newTestFederationLeaf(t *testing.T) *FederationLeaf {
 	leaf, err := NewFederationLeaf(
 		rp1.EntityID,
 		[]string{ta1.EntityID},
-		TrustAnchors{{EntityID: ta1.EntityID, JWKS: ta1.data.JWKS}},
+		func() TrustAnchors {
+			tas := TrustAnchors{{EntityID: ta1.EntityID}}
+			tas[0].SetJWKS(ta1.data.JWKS)
+			return tas
+		}(),
 		&Metadata{
 			RelyingParty: &OpenIDRelyingPartyMetadata{
 				ClientRegistrationTypes: []string{"automatic"},
@@ -619,7 +623,11 @@ func TestFederationLeaf_GetAuthorizationURL_Extended(t *testing.T) {
 		leaf, err := NewFederationLeaf(
 			rp1.EntityID,
 			[]string{ta1.EntityID},
-			TrustAnchors{{EntityID: ta1.EntityID, JWKS: ta1.data.JWKS}},
+			func() TrustAnchors {
+				tas := TrustAnchors{{EntityID: ta1.EntityID}}
+				tas[0].SetJWKS(ta1.data.JWKS)
+				return tas
+			}(),
 			&Metadata{
 				RelyingParty: &OpenIDRelyingPartyMetadata{
 					ClientRegistrationTypes: []string{"automatic"},

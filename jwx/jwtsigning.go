@@ -1,32 +1,31 @@
 package jwx
 
 import (
-	"crypto"
 	"encoding/json"
 
-	"github.com/lestrrat-go/jwx/v3/jwa"
-	"github.com/lestrrat-go/jwx/v3/jwk"
-	"github.com/lestrrat-go/jwx/v3/jws"
+	"github.com/lestrrat-go/jwx/v4/jwa"
+	"github.com/lestrrat-go/jwx/v4/jwk"
+	"github.com/lestrrat-go/jwx/v4/jws"
 	"github.com/pkg/errors"
 
 	"github.com/go-oidfed/lib/oidfedconst"
 )
 
-// VersatileSigner is an interface type for obtaining a crypto.Signer for a specific jwa.
+// VersatileSigner is an interface type for obtaining a SigningKey for a specific jwa.
 // SignatureAlgorithm and the corresponding (full) jwks.JWKS
 // The purpose of this interface is to enable:
 // (1) easy usage of signing with potentially multiple algs,
 // e.g. in oidc the public_key_jwt client auth method might use one alg with one OP and another alg with another OP;
-// this requires different crypto.Signer but we still want to easily access a single combined jwks.JWKS
-// (2) key rotation; by using a function to obtain the crypto.Signer it is possible that the used crypto.
+// this requires different SigningKey but we still want to easily access a single combined jwks.JWKS
+// (2) key rotation; by using a function to obtain the SigningKey it is possible that the used crypto.
 // Signer changes over time
 type VersatileSigner interface {
 	// Signer takes a list of acceptable signature algorithms and returns a
-	// usable crypto.Signer or nil as well as the corresponding
+	// usable SigningKey or nil as well as the corresponding
 	// jwa.SignatureAlgorithm
-	Signer(algs ...string) (crypto.Signer, jwa.SignatureAlgorithm)
-	// DefaultSigner returns a crypto.Signer and the corresponding jwa.SignatureAlgorithm
-	DefaultSigner() (crypto.Signer, jwa.SignatureAlgorithm)
+	Signer(algs ...string) (SigningKey, jwa.SignatureAlgorithm)
+	// DefaultSigner returns a SigningKey and the corresponding jwa.SignatureAlgorithm
+	DefaultSigner() (SigningKey, jwa.SignatureAlgorithm)
 	// JWKS returns the jwks.JWKS containing all public keys of this VersatileSigner
 	JWKS() (JWKS, error)
 }
@@ -65,7 +64,7 @@ func (s GeneralJWTSigner) JWT(i any, headerType string, algs ...string) (jwt []b
 func (s GeneralJWTSigner) JWTWithHeaders(i any, headers jws.Headers, headerType string, algs ...string) (
 	jwt []byte, err error,
 ) {
-	var signer crypto.Signer
+	var signer SigningKey
 	var alg jwa.SignatureAlgorithm
 	if len(algs) == 0 {
 		signer, alg = s.signer.DefaultSigner()
@@ -228,7 +227,7 @@ func (s TypedJWTSigner) JWT(i any) (jwt []byte, err error) {
 // SignWithType creates a signed JWT of the passed type for the passed payload using the
 // passed crypto.Signer with the passed jwa.SignatureAlgorithm
 func SignWithType(
-	payload []byte, headers jws.Headers, typ string, signingAlg jwa.SignatureAlgorithm, key crypto.Signer,
+	payload []byte, headers jws.Headers, typ string, signingAlg jwa.SignatureAlgorithm, key SigningKey,
 ) ([]byte, error) {
 	if headers == nil {
 		headers = jws.NewHeaders()
@@ -240,7 +239,7 @@ func SignWithType(
 }
 
 // SignPayload signs a payload with the passed properties and adds the kid to the jwt header
-func SignPayload(payload []byte, signingAlg jwa.SignatureAlgorithm, key crypto.Signer, headers jws.Headers) (
+func SignPayload(payload []byte, signingAlg jwa.SignatureAlgorithm, key SigningKey, headers jws.Headers) (
 	[]byte,
 	error,
 ) {
@@ -264,5 +263,5 @@ func SignPayload(payload []byte, signingAlg jwa.SignatureAlgorithm, key crypto.S
 	if err := headers.Set(jws.KeyIDKey, keyID); err != nil {
 		return nil, err
 	}
-	return jws.Sign(payload, jws.WithKey(signingAlg, key, jws.WithProtectedHeaders(headers)))
+	return jws.Sign(payload, jws.WithKey(signingAlg, unwrapSigningKey(key), jws.WithProtectedHeaders(headers)))
 }

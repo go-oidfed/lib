@@ -1,9 +1,7 @@
 package kms
 
 import (
-	"crypto"
-
-	"github.com/lestrrat-go/jwx/v3/jwa"
+	"github.com/lestrrat-go/jwx/v4/jwa"
 
 	"github.com/go-oidfed/lib/jwx"
 )
@@ -17,7 +15,7 @@ type SingleSigningKeyFile struct {
 	// Path is the filesystem path to the PEM-encoded private key.
 	Path string
 
-	signer crypto.Signer
+	signer jwx.SigningKey
 }
 
 // GetDefaultAlg returns the configured algorithm.
@@ -41,7 +39,7 @@ func (s *SingleSigningKeyFile) Load() error {
 }
 
 // GetDefault returns the configured signer and its algorithm.
-func (s *SingleSigningKeyFile) GetDefault() (crypto.Signer, jwa.SignatureAlgorithm) {
+func (s *SingleSigningKeyFile) GetDefault() (jwx.SigningKey, jwa.SignatureAlgorithm) {
 	if s.signer == nil {
 		return nil, jwa.SignatureAlgorithm{}
 	}
@@ -50,7 +48,7 @@ func (s *SingleSigningKeyFile) GetDefault() (crypto.Signer, jwa.SignatureAlgorit
 
 // GetForAlgs returns the signer if the requested algorithms include the
 // configured algorithm; otherwise nil.
-func (s *SingleSigningKeyFile) GetForAlgs(algs ...string) (crypto.Signer, jwa.SignatureAlgorithm) {
+func (s *SingleSigningKeyFile) GetForAlgs(algs ...string) (jwx.SigningKey, jwa.SignatureAlgorithm) {
 	if s.signer == nil {
 		return nil, jwa.SignatureAlgorithm{}
 	}

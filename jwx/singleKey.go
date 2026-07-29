@@ -1,21 +1,20 @@
 package jwx
 
 import (
-	"crypto"
 	"slices"
 
-	"github.com/lestrrat-go/jwx/v3/jwa"
+	"github.com/lestrrat-go/jwx/v4/jwa"
 )
 
 // SingleKeySigner is a type implementing the oidfed.VersatileSigner interface but only
 // uses a single key / alg
 type SingleKeySigner struct {
-	sk  crypto.Signer
+	sk  SigningKey
 	alg jwa.SignatureAlgorithm
 }
 
 // NewSingleKeyVersatileSigner creates a new SingleKeySigner
-func NewSingleKeyVersatileSigner(sk crypto.Signer, alg jwa.SignatureAlgorithm) SingleKeySigner {
+func NewSingleKeyVersatileSigner(sk SigningKey, alg jwa.SignatureAlgorithm) SingleKeySigner {
 	return SingleKeySigner{
 		sk:  sk,
 		alg: alg,
@@ -23,17 +22,17 @@ func NewSingleKeyVersatileSigner(sk crypto.Signer, alg jwa.SignatureAlgorithm) S
 }
 
 // Signer takes a list of acceptable signature algorithms and returns a
-// usable crypto.Signer or nil as well as the corresponding
+// usable SigningKey or nil as well as the corresponding
 // jwa.SignatureAlgorithm
-func (s SingleKeySigner) Signer(algs ...string) (crypto.Signer, jwa.SignatureAlgorithm) {
+func (s SingleKeySigner) Signer(algs ...string) (SigningKey, jwa.SignatureAlgorithm) {
 	if slices.Contains(algs, s.alg.String()) {
 		return s.sk, s.alg
 	}
 	return nil, jwa.SignatureAlgorithm{}
 }
 
-// DefaultSigner returns a crypto.Signer and the corresponding jwa.SignatureAlgorithm
-func (s SingleKeySigner) DefaultSigner() (crypto.Signer, jwa.SignatureAlgorithm) {
+// DefaultSigner returns a SigningKey and the corresponding jwa.SignatureAlgorithm
+func (s SingleKeySigner) DefaultSigner() (SigningKey, jwa.SignatureAlgorithm) {
 	return s.sk, s.alg
 }
 

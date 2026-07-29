@@ -7,7 +7,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/lestrrat-go/jwx/v3/jwk"
+	"github.com/lestrrat-go/jwx/v4/jwk"
 	"github.com/pkg/errors"
 
 	log "github.com/go-oidfed/lib/internal"
@@ -40,9 +40,9 @@ func (fs *FilesystemPublicKeyStorage) Load() error {
 
 	data, err := os.ReadFile(fs.storageFilePath())
 	if err != nil {
-		log.WithError(err).WithField(
-			"filepath", fs.storageFilePath(),
-		).Warn("FilesystemPublicKeyStorage: could not read storage file")
+		log.Logger().Warn().Err(err).
+			Str("filepath", fs.storageFilePath()).
+			Msg("FilesystemPublicKeyStorage: could not read storage file")
 		return nil
 	}
 	if len(data) == 0 {
@@ -153,9 +153,7 @@ func (fs *FilesystemPublicKeyStorage) Add(key PublicKeyEntry) error {
 	defer fs.mu.Unlock()
 	if key.KID == "" {
 		// Attempt to derive KID from key if missing
-		var kid string
-		_ = key.Key.Get("kid", &kid)
-		key.KID = kid
+		key.KID, _ = jwk.Get[string](key.Key, "kid")
 	}
 	if key.KID == "" {
 		return errors.New("missing kid for public key entry")
@@ -173,9 +171,7 @@ func (fs *FilesystemPublicKeyStorage) AddAll(keys []PublicKeyEntry) error {
 	defer fs.mu.Unlock()
 	for _, key := range keys {
 		if key.KID == "" {
-			var kid string
-			_ = key.Key.Get("kid", &kid)
-			key.KID = kid
+			key.KID, _ = jwk.Get[string](key.Key, "kid")
 		}
 		if key.KID == "" {
 			continue
@@ -299,10 +295,9 @@ func NewFilesystemPublicKeyStorageFromLegacy(dir, typeID string) (*FilesystemPub
 		if set == nil || set.Len() == 0 {
 			return
 		}
-		for i := range set.Len() {
-			k, _ := set.Key(i)
+		for _, k := range set.All() {
 			var kid string
-			_ = k.Get("kid", &kid)
+			kid, _ = jwk.Get[string](k, "kid")
 			if kid == "" {
 				continue
 			}
@@ -312,9 +307,9 @@ func NewFilesystemPublicKeyStorageFromLegacy(dir, typeID string) (*FilesystemPub
 			}
 			// Extract timing metadata if present
 			var iat, nbf, exp unixtime.Unixtime
-			_ = k.Get("iat", &iat)
-			_ = k.Get("nbf", &nbf)
-			_ = k.Get("exp", &exp)
+			iat, _ = jwk.Get[unixtime.Unixtime](k, "iat")
+			nbf, _ = jwk.Get[unixtime.Unixtime](k, "nbf")
+			exp, _ = jwk.Get[unixtime.Unixtime](k, "exp")
 			entry := PublicKeyEntry{
 				KID: kid,
 				Key: JWKKey{cloned},
@@ -364,9 +359,7 @@ func NewFilesystemPublicKeyStorageFromStorage(dir, typeID string, src PublicKeyS
 	}
 	for _, e := range list {
 		if e.KID == "" && e.Key.Key != nil {
-			var kid string
-			_ = e.Key.Get("kid", &kid)
-			e.KID = kid
+			e.KID, _ = jwk.Get[string](e.Key, "kid")
 		}
 		if e.KID == "" || e.Key.Key == nil {
 			continue

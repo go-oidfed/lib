@@ -981,3 +981,186 @@ func TestPolicyVerifierPolicyVerifySubsetOfStillHasValues(t *testing.T) {
 		)
 	}
 }
+
+func TestPolicyVerifyValueNotInExcept(t *testing.T) {
+	tests := []struct {
+		name        string
+		pathInfo    string
+		policy      MetadataPolicyEntry
+		errExpected bool
+	}{
+		{
+			name:        "no except",
+			pathInfo:    "test",
+			policy:      MetadataPolicyEntry{PolicyOperatorValue: "a"},
+			errExpected: false,
+		},
+		{
+			name:        "no value",
+			pathInfo:    "test",
+			policy:      MetadataPolicyEntry{PolicyOperatorExcept: []string{"a"}},
+			errExpected: false,
+		},
+		{
+			name:     "disjoint",
+			pathInfo: "test",
+			policy: MetadataPolicyEntry{
+				PolicyOperatorValue:  "a",
+				PolicyOperatorExcept: []string{"b", "c"},
+			},
+			errExpected: false,
+		},
+		{
+			name:     "value slice disjoint",
+			pathInfo: "test",
+			policy: MetadataPolicyEntry{
+				PolicyOperatorValue:  []string{"a", "b"},
+				PolicyOperatorExcept: []string{"c", "d"},
+			},
+			errExpected: false,
+		},
+		{
+			name:     "value conflicts",
+			pathInfo: "test",
+			policy: MetadataPolicyEntry{
+				PolicyOperatorValue:  "client_secret_basic",
+				PolicyOperatorExcept: []string{"client_secret_basic"},
+			},
+			errExpected: true,
+		},
+		{
+			name:     "value slice conflicts",
+			pathInfo: "test",
+			policy: MetadataPolicyEntry{
+				PolicyOperatorValue:  []string{"a", "b"},
+				PolicyOperatorExcept: []string{"b"},
+			},
+			errExpected: true,
+		},
+	}
+	for _, test := range tests {
+		t.Run(
+			test.name, func(t *testing.T) {
+				if err := policyVerifyValueNotInExcept(
+					test.policy, test.pathInfo,
+				); err != nil != test.errExpected {
+					if test.errExpected {
+						t.Errorf("expected error, but verified correctly")
+					} else {
+						t.Errorf("did not expect error, but did not verify correctly")
+					}
+				}
+			},
+		)
+	}
+}
+
+func TestPolicyVerifyAddNotInExcept(t *testing.T) {
+	tests := []struct {
+		name        string
+		pathInfo    string
+		policy      MetadataPolicyEntry
+		errExpected bool
+	}{
+		{
+			name:        "no except",
+			pathInfo:    "test",
+			policy:      MetadataPolicyEntry{PolicyOperatorAdd: []string{"a"}},
+			errExpected: false,
+		},
+		{
+			name:        "no add",
+			pathInfo:    "test",
+			policy:      MetadataPolicyEntry{PolicyOperatorExcept: []string{"a"}},
+			errExpected: false,
+		},
+		{
+			name:     "disjoint",
+			pathInfo: "test",
+			policy: MetadataPolicyEntry{
+				PolicyOperatorAdd:    []string{"a", "b"},
+				PolicyOperatorExcept: []string{"c"},
+			},
+			errExpected: false,
+		},
+		{
+			name:     "conflict",
+			pathInfo: "test",
+			policy: MetadataPolicyEntry{
+				PolicyOperatorAdd:    []string{"a", "b"},
+				PolicyOperatorExcept: []string{"b"},
+			},
+			errExpected: true,
+		},
+	}
+	for _, test := range tests {
+		t.Run(
+			test.name, func(t *testing.T) {
+				if err := policyVerifyAddNotInExcept(
+					test.policy, test.pathInfo,
+				); err != nil != test.errExpected {
+					if test.errExpected {
+						t.Errorf("expected error, but verified correctly")
+					} else {
+						t.Errorf("did not expect error, but did not verify correctly")
+					}
+				}
+			},
+		)
+	}
+}
+
+func TestPolicyVerifySupersetOfNotInExcept(t *testing.T) {
+	tests := []struct {
+		name        string
+		pathInfo    string
+		policy      MetadataPolicyEntry
+		errExpected bool
+	}{
+		{
+			name:        "no except",
+			pathInfo:    "test",
+			policy:      MetadataPolicyEntry{PolicyOperatorSupersetOf: []string{"a"}},
+			errExpected: false,
+		},
+		{
+			name:        "no superset",
+			pathInfo:    "test",
+			policy:      MetadataPolicyEntry{PolicyOperatorExcept: []string{"a"}},
+			errExpected: false,
+		},
+		{
+			name:     "disjoint",
+			pathInfo: "test",
+			policy: MetadataPolicyEntry{
+				PolicyOperatorSupersetOf: []string{"a", "b"},
+				PolicyOperatorExcept:     []string{"c"},
+			},
+			errExpected: false,
+		},
+		{
+			name:     "conflict",
+			pathInfo: "test",
+			policy: MetadataPolicyEntry{
+				PolicyOperatorSupersetOf: []string{"a", "b"},
+				PolicyOperatorExcept:     []string{"b"},
+			},
+			errExpected: true,
+		},
+	}
+	for _, test := range tests {
+		t.Run(
+			test.name, func(t *testing.T) {
+				if err := policyVerifySupersetOfNotInExcept(
+					test.policy, test.pathInfo,
+				); err != nil != test.errExpected {
+					if test.errExpected {
+						t.Errorf("expected error, but verified correctly")
+					} else {
+						t.Errorf("did not expect error, but did not verify correctly")
+					}
+				}
+			},
+		)
+	}
+}

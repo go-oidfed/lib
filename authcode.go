@@ -1,7 +1,6 @@
 package oidfed
 
 import (
-	"crypto"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -9,8 +8,8 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/lestrrat-go/jwx/v3/jwa"
-	"github.com/lestrrat-go/jwx/v3/jws"
+	"github.com/lestrrat-go/jwx/v4/jwa"
+	"github.com/lestrrat-go/jwx/v4/jws"
 	"github.com/pkg/errors"
 
 	"github.com/go-oidfed/lib/apimodel"
@@ -102,7 +101,7 @@ func (rop RequestObjectProducer) RequestObject(requestValues map[string]any, hea
 }
 
 func (rop RequestObjectProducer) signPayload(data []byte, headers jws.Headers, algs ...string) ([]byte, error) {
-	var signer crypto.Signer
+	var signer jwx.SigningKey
 	var alg jwa.SignatureAlgorithm
 	if len(algs) == 0 {
 		signer, alg = rop.signer.DefaultSigner()
@@ -182,7 +181,7 @@ func (f FederationLeaf) GetAuthorizationURL(
 			},
 		)
 		if err != nil {
-			internal.WithError(err).Error("explicit client registration: could not resolve own trust chain")
+			internal.Logger().Error().Err(err).Msg("explicit client registration: could not resolve own trust chain")
 		} else if len(ownResolved.TrustChain) > 0 {
 			_ = headers.Set("trust_chain", ownResolved.TrustChain)
 			_ = headers.Set("peer_trust_chain", resolved.TrustChain)

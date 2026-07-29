@@ -633,7 +633,7 @@ func (t *trustTree) verifySignatures(anchors TrustAnchors) bool {
 		for _, ta := range anchors {
 			if ta.EntityID == t.Entity.Issuer {
 				// t is about a TA
-				jwks := ta.JWKS
+				jwks := ta.JWKS()
 				if jwks.Set == nil {
 					jwks = t.Entity.JWKS
 				}

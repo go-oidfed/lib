@@ -3,7 +3,7 @@ package oidfed
 import (
 	"time"
 
-	"github.com/lestrrat-go/jwx/v3/jws"
+	"github.com/lestrrat-go/jwx/v4/jws"
 	"github.com/pkg/errors"
 
 	"github.com/go-oidfed/lib/apimodel"

@@ -3,15 +3,25 @@ package jwx
 import (
 	"bytes"
 	"encoding/json"
+	"time"
 
-	"github.com/lestrrat-go/jwx/v3/jwa"
-	"github.com/lestrrat-go/jwx/v3/jwk"
+	"github.com/lestrrat-go/jwx/v4/jwa"
+	"github.com/lestrrat-go/jwx/v4/jwk"
 	"github.com/pkg/errors"
+	"github.com/scylladb/go-set/strset"
 	"github.com/vmihailenco/msgpack/v5"
 	"gopkg.in/yaml.v3"
 
 	"github.com/go-oidfed/lib/unixtime"
 )
+
+func init() {
+	for _, field := range []string{"exp", "iat", "nbf"} {
+		if err := jwk.RegisterCustomField[unixtime.Unixtime](field); err != nil {
+			panic(err)
+		}
+	}
+}
 
 // JWKS is a wrapper type for jwk.Set to implement custom marshaling
 type JWKS struct {
@@ -96,10 +106,9 @@ func (jwks *JWKS) UnmarshalMsgpack(data []byte) error {
 // expiration time of all keys
 func (jwks JWKS) MinimalExpirationTime() unixtime.Unixtime {
 	var exp unixtime.Unixtime
-	for i := range jwks.Len() {
-		k, _ := jwks.Key(i)
-		var e unixtime.Unixtime
-		if err := k.Get("exp", &e); err != nil {
+	for _, k := range jwks.All() {
+		e, err := jwk.Get[unixtime.Unixtime](k, "exp")
+		if err != nil {
 			continue
 		}
 		if exp.IsZero() || e.Before(exp.Time) {
@@ -113,10 +122,9 @@ func (jwks JWKS) MinimalExpirationTime() unixtime.Unixtime {
 // expiration time of all keys.
 func (jwks JWKS) MaximalExpirationTime() unixtime.Unixtime {
 	var exp unixtime.Unixtime
-	for i := range jwks.Len() {
-		k, _ := jwks.Key(i)
-		var e unixtime.Unixtime
-		if err := k.Get("exp", &e); err != nil {
+	for _, k := range jwks.All() {
+		e, err := jwk.Get[unixtime.Unixtime](k, "exp")
+		if err != nil {
 			continue
 		}
 		if exp.IsZero() || e.After(exp.Time) {
@@ -124,6 +132,61 @@ func (jwks JWKS) MaximalExpirationTime() unixtime.Unixtime {
 		}
 	}
 	return exp
+}
+
+// WithoutExpired returns a new JWKS containing only keys that are not expired
+// at the given time. A key is considered expired if it has an `exp` claim that
+// is strictly before `now` (matching unixtime.VerifyTime, so `exp == now` is
+// still valid). Keys without an `exp` claim (or with a zero `exp`) are always
+// kept. The input JWKS is not modified.
+func (jwks JWKS) WithoutExpired(now time.Time) JWKS {
+	filtered := jwk.NewSet()
+	if jwks.Set == nil {
+		return JWKS{filtered}
+	}
+	for _, k := range jwks.All() {
+		exp, err := jwk.Get[unixtime.Unixtime](k, "exp")
+		if err != nil || exp.IsZero() {
+			_ = filtered.AddKey(k)
+			continue
+		}
+		if exp.Before(now) {
+			continue
+		}
+		_ = filtered.AddKey(k)
+	}
+	return JWKS{filtered}
+}
+
+// MergeJWKS merges two JWKS into a new one, deduplicating by KID.
+// Keys from primary take priority on KID conflicts (i.e. if the same KID
+// appears in both, the primary's key is kept).
+// Keys without a KID are all kept from both sets.
+func MergeJWKS(primary, secondary JWKS) JWKS {
+	merged := jwk.NewSet()
+	seenKIDs := strset.New()
+
+	if primary.Set != nil {
+		for _, key := range primary.All() {
+			if kid, ok := key.KeyID(); ok && kid != "" {
+				seenKIDs.Add(kid)
+			}
+			_ = merged.AddKey(key)
+		}
+	}
+
+	if secondary.Set != nil {
+		for _, key := range secondary.All() {
+			if kid, ok := key.KeyID(); ok && kid != "" {
+				if seenKIDs.Has(kid) {
+					continue
+				}
+			}
+			_ = merged.AddKey(key)
+		}
+	}
+
+	return JWKS{merged}
 }
 
 var zeroJWKS JWKS

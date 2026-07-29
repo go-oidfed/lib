@@ -196,7 +196,7 @@ func (p *PeriodicEntityCollector) CollectEntities(req apimodel.EntityCollectionR
 		Next:        nextEntityID,
 	}
 	if err = cache.Set(cacheRequestKey, res, p.Interval); err != nil {
-		internal.WithError(err).Error("PeriodicEntityCollector cache set error")
+		internal.Logger().Error().Err(err).Msg("PeriodicEntityCollector cache set error")
 	}
 	return &res, nil
 }
@@ -223,11 +223,11 @@ func preparePaginatedResponses(
 		req.From = entities[0].EntityID
 		reqHash, err := utils.HashStruct(req)
 		if err != nil {
-			internal.WithError(err).Error("PeriodicEntityCollector: error while hashing request")
+			internal.Logger().Error().Err(err).Msg("PeriodicEntityCollector: error while hashing request")
 		}
 		cacheRequestKey := cache.Key(periodicCacheSubsystem, cacheSubSubSystemRequests, reqHash)
 		if err = cache.Set(cacheRequestKey, res, interval); err != nil {
-			internal.WithError(err).Error("PeriodicEntityCollector cache set error")
+			internal.Logger().Error().Err(err).Msg("PeriodicEntityCollector cache set error")
 		}
 		entities = others
 	}
@@ -251,7 +251,7 @@ func (p *PeriodicEntityCollector) runOnce() {
 	defer p.cacheMutex.Unlock()
 
 	if err := cache.Clear(periodicCacheSubsystem); err != nil {
-		internal.WithError(err).Error("PeriodicEntityCollector cache clear error")
+		internal.Logger().Error().Err(err).Msg("PeriodicEntityCollector cache clear error")
 	}
 
 	// Worker pool pattern with a buffered semaphore channel.
@@ -287,7 +287,7 @@ func (p *PeriodicEntityCollector) runOnce() {
 				},
 				p.Interval,
 			); err != nil {
-				internal.WithError(err).Error("PeriodicEntityCollector cache set error")
+				internal.Logger().Error().Err(err).Msg("PeriodicEntityCollector cache set error")
 			}
 
 			// Notify handler for proactive resolve generation.

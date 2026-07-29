@@ -38,16 +38,15 @@ func TestTrustResolver_ResolveToValidChains(t *testing.T) {
 		{
 			name: "empty starting entity",
 			resolver: TrustResolver{
-				TrustAnchors: TrustAnchors{
-					TrustAnchor{
-						EntityID: ta1.EntityID,
-						JWKS:     ta1.data.JWKS,
-					},
-					TrustAnchor{
-						EntityID: ta2.EntityID,
-						JWKS:     ta2.data.JWKS,
-					},
-				},
+				TrustAnchors: func() TrustAnchors {
+					tas := TrustAnchors{
+						{EntityID: ta1.EntityID},
+						{EntityID: ta2.EntityID},
+					}
+					tas[0].SetJWKS(ta1.data.JWKS)
+					tas[1].SetJWKS(ta2.data.JWKS)
+					return tas
+				}(),
 				StartingEntity: "",
 			},
 		},
@@ -61,12 +60,11 @@ func TestTrustResolver_ResolveToValidChains(t *testing.T) {
 		{
 			name: "rp1: ta1",
 			resolver: TrustResolver{
-				TrustAnchors: TrustAnchors{
-					TrustAnchor{
-						EntityID: ta1.EntityID,
-						JWKS:     ta1.data.JWKS,
-					},
-				},
+				TrustAnchors: func() TrustAnchors {
+					tas := TrustAnchors{{EntityID: ta1.EntityID}}
+					tas[0].SetJWKS(ta1.data.JWKS)
+					return tas
+				}(),
 				StartingEntity: rp1.EntityID,
 			},
 			expectedChains: ta1Chains,
@@ -74,12 +72,11 @@ func TestTrustResolver_ResolveToValidChains(t *testing.T) {
 		{
 			name: "cached rp1: ta1",
 			resolver: TrustResolver{
-				TrustAnchors: TrustAnchors{
-					TrustAnchor{
-						EntityID: ta1.EntityID,
-						JWKS:     ta1.data.JWKS,
-					},
-				},
+				TrustAnchors: func() TrustAnchors {
+					tas := TrustAnchors{{EntityID: ta1.EntityID}}
+					tas[0].SetJWKS(ta1.data.JWKS)
+					return tas
+				}(),
 				StartingEntity: rp1.EntityID,
 			},
 			expectedChains: ta1Chains,
@@ -87,12 +84,11 @@ func TestTrustResolver_ResolveToValidChains(t *testing.T) {
 		{
 			name: "rp1: ta2",
 			resolver: TrustResolver{
-				TrustAnchors: TrustAnchors{
-					TrustAnchor{
-						EntityID: ta2.EntityID,
-						JWKS:     ta2.data.JWKS,
-					},
-				},
+				TrustAnchors: func() TrustAnchors {
+					tas := TrustAnchors{{EntityID: ta2.EntityID}}
+					tas[0].SetJWKS(ta2.data.JWKS)
+					return tas
+				}(),
 				StartingEntity: rp1.EntityID,
 			},
 			expectedChains: ta2Chains,
@@ -100,16 +96,15 @@ func TestTrustResolver_ResolveToValidChains(t *testing.T) {
 		{
 			name: "rp1: ta1,ta2",
 			resolver: TrustResolver{
-				TrustAnchors: TrustAnchors{
-					TrustAnchor{
-						EntityID: ta1.EntityID,
-						JWKS:     ta1.data.JWKS,
-					},
-					TrustAnchor{
-						EntityID: ta2.EntityID,
-						JWKS:     ta2.data.JWKS,
-					},
-				},
+				TrustAnchors: func() TrustAnchors {
+					tas := TrustAnchors{
+						{EntityID: ta1.EntityID},
+						{EntityID: ta2.EntityID},
+					}
+					tas[0].SetJWKS(ta1.data.JWKS)
+					tas[1].SetJWKS(ta2.data.JWKS)
+					return tas
+				}(),
 				StartingEntity: rp1.EntityID,
 			},
 			expectedChains: allChains,
@@ -117,12 +112,11 @@ func TestTrustResolver_ResolveToValidChains(t *testing.T) {
 		{
 			name: "proxy: ta1",
 			resolver: TrustResolver{
-				TrustAnchors: TrustAnchors{
-					TrustAnchor{
-						EntityID: ta1.EntityID,
-						JWKS:     ta1.data.JWKS,
-					},
-				},
+				TrustAnchors: func() TrustAnchors {
+					tas := TrustAnchors{{EntityID: ta1.EntityID}}
+					tas[0].SetJWKS(ta1.data.JWKS)
+					return tas
+				}(),
 				StartingEntity: proxy.EntityID,
 			},
 			expectedChains: allProxyChains,
@@ -130,12 +124,11 @@ func TestTrustResolver_ResolveToValidChains(t *testing.T) {
 		{
 			name: "constraints: pathlen 1: op2",
 			resolver: TrustResolver{
-				TrustAnchors: TrustAnchors{
-					TrustAnchor{
-						EntityID: taConstraintsPathLen.EntityID,
-						JWKS:     taConstraintsPathLen.data.JWKS,
-					},
-				},
+				TrustAnchors: func() TrustAnchors {
+					tas := TrustAnchors{{EntityID: taConstraintsPathLen.EntityID}}
+					tas[0].SetJWKS(taConstraintsPathLen.data.JWKS)
+					return tas
+				}(),
 				StartingEntity: op2.EntityID,
 			},
 			expectedChains: TrustChains{
@@ -145,12 +138,11 @@ func TestTrustResolver_ResolveToValidChains(t *testing.T) {
 		{
 			name: "constraints: pathlen 1: op1",
 			resolver: TrustResolver{
-				TrustAnchors: TrustAnchors{
-					TrustAnchor{
-						EntityID: taConstraintsPathLen.EntityID,
-						JWKS:     taConstraintsPathLen.data.JWKS,
-					},
-				},
+				TrustAnchors: func() TrustAnchors {
+					tas := TrustAnchors{{EntityID: taConstraintsPathLen.EntityID}}
+					tas[0].SetJWKS(taConstraintsPathLen.data.JWKS)
+					return tas
+				}(),
 				StartingEntity: op1.EntityID,
 			},
 			expectedChains: TrustChains{
@@ -160,12 +152,11 @@ func TestTrustResolver_ResolveToValidChains(t *testing.T) {
 		{
 			name: "constraints: pathlen 1: op3",
 			resolver: TrustResolver{
-				TrustAnchors: TrustAnchors{
-					TrustAnchor{
-						EntityID: taConstraintsPathLen.EntityID,
-						JWKS:     taConstraintsPathLen.data.JWKS,
-					},
-				},
+				TrustAnchors: func() TrustAnchors {
+					tas := TrustAnchors{{EntityID: taConstraintsPathLen.EntityID}}
+					tas[0].SetJWKS(taConstraintsPathLen.data.JWKS)
+					return tas
+				}(),
 				StartingEntity: op3.EntityID,
 			},
 			expectedChains: nil,
@@ -173,12 +164,11 @@ func TestTrustResolver_ResolveToValidChains(t *testing.T) {
 		{
 			name: "constraints: entity_type op: op2",
 			resolver: TrustResolver{
-				TrustAnchors: TrustAnchors{
-					TrustAnchor{
-						EntityID: taConstraintsEntityTypes.EntityID,
-						JWKS:     taConstraintsEntityTypes.data.JWKS,
-					},
-				},
+				TrustAnchors: func() TrustAnchors {
+					tas := TrustAnchors{{EntityID: taConstraintsEntityTypes.EntityID}}
+					tas[0].SetJWKS(taConstraintsEntityTypes.data.JWKS)
+					return tas
+				}(),
 				StartingEntity: op2.EntityID,
 			},
 			expectedChains: TrustChains{
@@ -188,12 +178,11 @@ func TestTrustResolver_ResolveToValidChains(t *testing.T) {
 		{
 			name: "constraints: entity_type op: rp1",
 			resolver: TrustResolver{
-				TrustAnchors: TrustAnchors{
-					TrustAnchor{
-						EntityID: taConstraintsEntityTypes.EntityID,
-						JWKS:     taConstraintsEntityTypes.data.JWKS,
-					},
-				},
+				TrustAnchors: func() TrustAnchors {
+					tas := TrustAnchors{{EntityID: taConstraintsEntityTypes.EntityID}}
+					tas[0].SetJWKS(taConstraintsEntityTypes.data.JWKS)
+					return tas
+				}(),
 				StartingEntity: rp1.EntityID,
 			},
 			expectedChains: nil,
@@ -201,12 +190,11 @@ func TestTrustResolver_ResolveToValidChains(t *testing.T) {
 		{
 			name: "constraints: naming: op2",
 			resolver: TrustResolver{
-				TrustAnchors: TrustAnchors{
-					TrustAnchor{
-						EntityID: taConstraintsNaming.EntityID,
-						JWKS:     taConstraintsNaming.data.JWKS,
-					},
-				},
+				TrustAnchors: func() TrustAnchors {
+					tas := TrustAnchors{{EntityID: taConstraintsNaming.EntityID}}
+					tas[0].SetJWKS(taConstraintsNaming.data.JWKS)
+					return tas
+				}(),
 				StartingEntity: op2.EntityID,
 			},
 			expectedChains: nil,
@@ -214,12 +202,11 @@ func TestTrustResolver_ResolveToValidChains(t *testing.T) {
 		{
 			name: "constraints: naming: op3",
 			resolver: TrustResolver{
-				TrustAnchors: TrustAnchors{
-					TrustAnchor{
-						EntityID: taConstraintsNaming.EntityID,
-						JWKS:     taConstraintsNaming.data.JWKS,
-					},
-				},
+				TrustAnchors: func() TrustAnchors {
+					tas := TrustAnchors{{EntityID: taConstraintsNaming.EntityID}}
+					tas[0].SetJWKS(taConstraintsNaming.data.JWKS)
+					return tas
+				}(),
 				StartingEntity: op3.EntityID,
 			},
 			expectedChains: TrustChains{
@@ -229,12 +216,11 @@ func TestTrustResolver_ResolveToValidChains(t *testing.T) {
 		{
 			name: "constraints: naming: op1",
 			resolver: TrustResolver{
-				TrustAnchors: TrustAnchors{
-					TrustAnchor{
-						EntityID: taConstraintsNaming.EntityID,
-						JWKS:     taConstraintsNaming.data.JWKS,
-					},
-				},
+				TrustAnchors: func() TrustAnchors {
+					tas := TrustAnchors{{EntityID: taConstraintsNaming.EntityID}}
+					tas[0].SetJWKS(taConstraintsNaming.data.JWKS)
+					return tas
+				}(),
 				StartingEntity: op1.EntityID,
 			},
 			expectedChains: TrustChains{
@@ -245,12 +231,11 @@ func TestTrustResolver_ResolveToValidChains(t *testing.T) {
 		{
 			name: "constraints: naming: proxy",
 			resolver: TrustResolver{
-				TrustAnchors: TrustAnchors{
-					TrustAnchor{
-						EntityID: taConstraintsNaming.EntityID,
-						JWKS:     taConstraintsNaming.data.JWKS,
-					},
-				},
+				TrustAnchors: func() TrustAnchors {
+					tas := TrustAnchors{{EntityID: taConstraintsNaming.EntityID}}
+					tas[0].SetJWKS(taConstraintsNaming.data.JWKS)
+					return tas
+				}(),
 				StartingEntity: proxy.EntityID,
 			},
 			expectedChains: nil,
@@ -296,12 +281,11 @@ func TestTrustResolver_ResolveWithType(t *testing.T) {
 		{
 			name: "proxy: ta1",
 			resolver: TrustResolver{
-				TrustAnchors: TrustAnchors{
-					TrustAnchor{
-						EntityID: ta1.EntityID,
-						JWKS:     ta1.data.JWKS,
-					},
-				},
+				TrustAnchors: func() TrustAnchors {
+					tas := TrustAnchors{{EntityID: ta1.EntityID}}
+					tas[0].SetJWKS(ta1.data.JWKS)
+					return tas
+				}(),
 				StartingEntity: proxy.EntityID,
 			},
 			includedMetadata: []string{
@@ -313,12 +297,11 @@ func TestTrustResolver_ResolveWithType(t *testing.T) {
 		{
 			name: "proxy as op: ta1",
 			resolver: TrustResolver{
-				TrustAnchors: TrustAnchors{
-					TrustAnchor{
-						EntityID: ta1.EntityID,
-						JWKS:     ta1.data.JWKS,
-					},
-				},
+				TrustAnchors: func() TrustAnchors {
+					tas := TrustAnchors{{EntityID: ta1.EntityID}}
+					tas[0].SetJWKS(ta1.data.JWKS)
+					return tas
+				}(),
 				StartingEntity: proxy.EntityID,
 				Types:          []string{"openid_provider"},
 			},
@@ -327,12 +310,11 @@ func TestTrustResolver_ResolveWithType(t *testing.T) {
 		{
 			name: "proxy as rp: ta1",
 			resolver: TrustResolver{
-				TrustAnchors: TrustAnchors{
-					TrustAnchor{
-						EntityID: ta1.EntityID,
-						JWKS:     ta1.data.JWKS,
-					},
-				},
+				TrustAnchors: func() TrustAnchors {
+					tas := TrustAnchors{{EntityID: ta1.EntityID}}
+					tas[0].SetJWKS(ta1.data.JWKS)
+					return tas
+				}(),
 				StartingEntity: proxy.EntityID,
 				Types:          []string{"openid_relying_party"},
 			},
@@ -341,12 +323,11 @@ func TestTrustResolver_ResolveWithType(t *testing.T) {
 		{
 			name: "proxy as op_rp: ta1",
 			resolver: TrustResolver{
-				TrustAnchors: TrustAnchors{
-					TrustAnchor{
-						EntityID: ta1.EntityID,
-						JWKS:     ta1.data.JWKS,
-					},
-				},
+				TrustAnchors: func() TrustAnchors {
+					tas := TrustAnchors{{EntityID: ta1.EntityID}}
+					tas[0].SetJWKS(ta1.data.JWKS)
+					return tas
+				}(),
 				StartingEntity: proxy.EntityID,
 				Types: []string{
 					"openid_provider",

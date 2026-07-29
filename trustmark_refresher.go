@@ -6,7 +6,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/lestrrat-go/jwx/v3/jwt"
+	"github.com/lestrrat-go/jwx/v4/jwt"
 	"github.com/pkg/errors"
 	"github.com/zachmann/go-utils/duration"
 
@@ -63,7 +63,7 @@ func (c *EntityConfigurationTrustMarkConfig) Verify(
 		c.expiration = unixtime.Unixtime{Time: exp}
 		c.TrustMarkIssuer, _ = parsed.Issuer()
 		internal.Logf("TrustMarkRefresher: extracted trust mark issuer: %s", c.TrustMarkIssuer)
-		err = parsed.Get("trust_mark_type", &c.TrustMarkType)
+		c.TrustMarkType, err = jwt.Get[string](parsed, "trust_mark_type")
 		if err != nil {
 			return errors.Wrap(err, "trustmark id not found in JWT")
 		}
@@ -141,7 +141,7 @@ func (c *EntityConfigurationTrustMarkConfig) TrustMarkJWT() (string, error) {
 				go func() {
 					defer c.refreshing.Store(false)
 					if err := c.refresh(); err != nil {
-						internal.WithError(err).Warn("TrustMarkRefresher: background refresh failed")
+						internal.Logger().Warn().Err(err).Msg("TrustMarkRefresher: background refresh failed")
 					}
 				}()
 			}

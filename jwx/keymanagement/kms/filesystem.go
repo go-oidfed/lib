@@ -7,7 +7,7 @@ import (
 
 	log "github.com/go-oidfed/lib/internal"
 
-	"github.com/lestrrat-go/jwx/v3/jwa"
+	"github.com/lestrrat-go/jwx/v4/jwa"
 
 	"github.com/go-oidfed/lib/jwx"
 	"github.com/go-oidfed/lib/jwx/keymanagement/public"
@@ -33,7 +33,7 @@ func NewSingleAlgFilesystemKMS(
 		pks,
 	)
 	if err := kms.Load(); err != nil {
-		log.WithError(err).Error("Failed to load PEMStorageKMS")
+		log.Logger().Error().Err(err).Msg("Failed to load PEMStorageKMS")
 		return nil
 	}
 
@@ -199,7 +199,7 @@ func NewFilesystemKMSFromBasic(
 	}
 
 	if err := kms.Load(); err != nil {
-		log.WithError(err).Warn("NewFilesystemKMSFromBasic: Load encountered issues after migration")
+		log.Logger().Warn().Err(err).Msg("NewFilesystemKMSFromBasic: Load encountered issues after migration")
 	}
 
 	return &FilesystemKMS{PEMStorageKMS: kms}, nil

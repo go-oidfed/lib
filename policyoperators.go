@@ -28,6 +28,7 @@ const (
 	PolicyOperatorOneOf      PolicyOperatorName = "one_of"
 	PolicyOperatorSubsetOf   PolicyOperatorName = "subset_of"
 	PolicyOperatorSupersetOf PolicyOperatorName = "superset_of"
+	PolicyOperatorExcept     PolicyOperatorName = "except"
 	PolicyOperatorEssential  PolicyOperatorName = "essential"
 )
 
@@ -40,6 +41,7 @@ var OperatorOrder = []PolicyOperatorName{
 	PolicyOperatorOneOf,
 	PolicyOperatorSubsetOf,
 	PolicyOperatorSupersetOf,
+	PolicyOperatorExcept,
 	PolicyOperatorEssential,
 }
 
@@ -121,6 +123,7 @@ var policyOperatorAdd = NewPolicyOperator(
 		PolicyOperatorDefault,
 		PolicyOperatorSubsetOf,
 		PolicyOperatorSupersetOf,
+		PolicyOperatorExcept,
 		PolicyOperatorEssential,
 	},
 )
@@ -171,6 +174,7 @@ var policyOperatorSubsetOf = NewPolicyOperator(
 		PolicyOperatorAdd,
 		PolicyOperatorDefault,
 		PolicyOperatorSupersetOf,
+		PolicyOperatorExcept,
 		PolicyOperatorEssential,
 	},
 )
@@ -214,6 +218,7 @@ var policyOperatorOneOf = NewPolicyOperator(
 	[]PolicyOperatorName{
 		PolicyOperatorValue,
 		PolicyOperatorDefault,
+		PolicyOperatorExcept,
 		PolicyOperatorEssential,
 	},
 )
@@ -261,6 +266,7 @@ var policyOperatorSupersetOf = NewPolicyOperator(
 		PolicyOperatorAdd,
 		PolicyOperatorDefault,
 		PolicyOperatorSubsetOf,
+		PolicyOperatorExcept,
 		PolicyOperatorEssential,
 	},
 )
@@ -293,6 +299,7 @@ var policyOperatorValue = NewPolicyOperator(
 		PolicyOperatorOneOf,
 		PolicyOperatorSubsetOf,
 		PolicyOperatorSupersetOf,
+		PolicyOperatorExcept,
 		PolicyOperatorEssential,
 	},
 )
@@ -326,6 +333,7 @@ var policyOperatorDefault = NewPolicyOperator(
 		PolicyOperatorOneOf,
 		PolicyOperatorSubsetOf,
 		PolicyOperatorSupersetOf,
+		PolicyOperatorExcept,
 		PolicyOperatorEssential,
 	},
 )
@@ -362,6 +370,46 @@ var policyOperatorEssential = NewPolicyOperator(
 	nil,
 )
 
+var policyOperatorExcept = NewPolicyOperator(
+	PolicyOperatorExcept,
+	func(a, b any, _ string) (any, error) {
+		if a == nil {
+			return b, nil
+		}
+		if b == nil {
+			return a, nil
+		}
+		return utils.ReflectUnion(a, b), nil
+	},
+	func(value any, valueSet bool, policyValue any, _ bool, pathInfo string) (any, bool, error) {
+		if !valueSet {
+			return value, valueSet, nil
+		}
+		if policyValue == nil {
+			return value, valueSet, nil
+		}
+		if utils.IsSlice(value) {
+			return utils.ReflectDifference(value, policyValue), true, nil
+		}
+		if utils.ReflectSliceContains(value, utils.Slicify(policyValue)) {
+			return value, valueSet, errors.Errorf(
+				"policy operator check failed for '%s': '%+v' is excluded by the '%s' operator",
+				pathInfo, value, PolicyOperatorExcept,
+			)
+		}
+		return value, valueSet, nil
+	},
+	[]PolicyOperatorName{
+		PolicyOperatorValue,
+		PolicyOperatorAdd,
+		PolicyOperatorDefault,
+		PolicyOperatorOneOf,
+		PolicyOperatorSubsetOf,
+		PolicyOperatorSupersetOf,
+		PolicyOperatorEssential,
+	},
+)
+
 func init() {
 	operators = make(map[PolicyOperatorName]PolicyOperator)
 	RegisterPolicyOperator(policyOperatorSubsetOf)
@@ -370,5 +418,6 @@ func init() {
 	RegisterPolicyOperator(policyOperatorAdd)
 	RegisterPolicyOperator(policyOperatorValue)
 	RegisterPolicyOperator(policyOperatorDefault)
+	RegisterPolicyOperator(policyOperatorExcept)
 	RegisterPolicyOperator(policyOperatorEssential)
 }
