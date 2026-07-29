@@ -660,32 +660,32 @@ func (kms *PEMStorageKMS) StartAutomaticRotation() error {
 	}
 	log.Info("PEMStorageKMS: automatic rotation: starting")
 	kms.rotationStop = make(chan struct{})
-	kms.rotationWG.Add(1)
-	go func() {
-		defer kms.rotationWG.Done()
-		for {
-			nextSleep, didRotate := kms.rotationStep(time.Now())
-			if didRotate {
+	kms.rotationWG.Go(
+		func() {
+			for {
+				nextSleep, didRotate := kms.rotationStep(time.Now())
+				if didRotate {
+					select {
+					case <-kms.rotationStop:
+					default:
+					}
+					continue
+				}
+				if nextSleep <= 0 {
+					nextSleep = time.Second
+				}
+				timer := time.NewTimer(nextSleep)
 				select {
 				case <-kms.rotationStop:
-				default:
+					if !timer.Stop() {
+						<-timer.C
+					}
+					return
+				case <-timer.C:
 				}
-				continue
 			}
-			if nextSleep <= 0 {
-				nextSleep = time.Second
-			}
-			timer := time.NewTimer(nextSleep)
-			select {
-			case <-kms.rotationStop:
-				if !timer.Stop() {
-					<-timer.C
-				}
-				return
-			case <-timer.C:
-			}
-		}
-	}()
+		},
+	)
 	return nil
 }
 

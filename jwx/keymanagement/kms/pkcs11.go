@@ -991,36 +991,36 @@ func (kms *PKCS11KMS) StartAutomaticRotation() error {
 	}
 	log.Info("pkcs#11 KMS: automatic rotation: starting")
 	kms.rotationStop = make(chan struct{})
-	kms.rotationWG.Add(1)
-	go func() {
-		defer kms.rotationWG.Done()
-		for {
-			nextSleep, didRotate := kms.rotationStep(time.Now())
-			// If we rotated, loop again immediately unless asked to stop.
-			if didRotate {
+	kms.rotationWG.Go(
+		func() {
+			for {
+				nextSleep, didRotate := kms.rotationStep(time.Now())
+				// If we rotated, loop again immediately unless asked to stop.
+				if didRotate {
+					select {
+					case <-kms.rotationStop:
+						return
+					default:
+					}
+					continue
+				}
+				// Sleep until the next threshold or future key activation.
+				if nextSleep <= 0 {
+					nextSleep = time.Second
+				}
+				timer := time.NewTimer(nextSleep)
 				select {
 				case <-kms.rotationStop:
+					if !timer.Stop() {
+						<-timer.C
+					}
 					return
-				default:
+				case <-timer.C:
+					// loop
 				}
-				continue
 			}
-			// Sleep until the next threshold or future key activation.
-			if nextSleep <= 0 {
-				nextSleep = time.Second
-			}
-			timer := time.NewTimer(nextSleep)
-			select {
-			case <-kms.rotationStop:
-				if !timer.Stop() {
-					<-timer.C
-				}
-				return
-			case <-timer.C:
-				// loop
-			}
-		}
-	}()
+		},
+	)
 	return nil
 }
 

@@ -38,12 +38,12 @@ func (r *collectorResult) collectEntities() {
 
 func (r *collectorResult) runWorker(task func()) {
 	r.workerPool <- struct{}{} // acquire token
-	r.wg.Add(1)
-	go func() {
-		defer r.wg.Done()
-		defer func() { <-r.workerPool }() // release token
-		task()
-	}()
+	r.wg.Go(
+		func() {
+			defer func() { <-r.workerPool }() // release token
+			task()
+		},
+	)
 }
 
 func (r *collectorResult) processAuthority(
