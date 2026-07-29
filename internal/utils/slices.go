@@ -188,7 +188,7 @@ func ReflectIsSupersetOf(is, of any) bool {
 }
 
 // IsSlice uses reflection to check if an interface{} is a slice
-func IsSlice(v interface{}) bool {
+func IsSlice(v any) bool {
 	if !reflect.ValueOf(v).IsValid() {
 		return false
 	}
@@ -197,7 +197,7 @@ func IsSlice(v interface{}) bool {
 
 // SliceEqual uses reflection to check if two slices contain the same elements; order does not matter,
 // assumes no duplicate entries in a slice
-func SliceEqual(a, b interface{}) bool {
+func SliceEqual(a, b any) bool {
 	if a == nil || b == nil {
 		return a == b
 	}

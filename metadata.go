@@ -262,7 +262,7 @@ func (m Metadata) collectLanguageTaggedDisplayNames(result map[string]map[string
 		}
 
 		// Process language-tagged display names from Extra
-		extraMap := extraField.Interface().(map[string]interface{})
+		extraMap := extraField.Interface().(map[string]any)
 		for key, val := range extraMap {
 			if !strings.HasPrefix(key, "display_name#") {
 				continue
@@ -472,7 +472,7 @@ func (m Metadata) IterateMultilingualStringClaim(tag string, iterator func(entit
 
 			if hasExtra && !extraField.IsNil() {
 				// Look for language-tagged values in Extra
-				extraMap := extraField.Interface().(map[string]interface{})
+				extraMap := extraField.Interface().(map[string]any)
 				for key, val := range extraMap {
 					// Check if the key follows the pattern "tag#langTag"
 					if langTag, ok := strings.CutPrefix(key, tag+"#"); ok {
@@ -553,9 +553,9 @@ func (m Metadata) ApplyPolicy(p *MetadataPolicies) (*Metadata, error) {
 
 	// Iterate over extra metadata and associated policies
 	if len(m.Extra) > 0 {
-		out.Extra = map[string]interface{}{}
+		out.Extra = map[string]any{}
 		for entityType, metadata := range m.Extra {
-			var metadataToReturn interface{}
+			var metadataToReturn any
 			if policy, ok := p.Extra[entityType]; ok {
 				// Found a policy for the entity type, so apply it
 				applied, err := applyPolicy(metadata, policy, entityType)

@@ -99,7 +99,7 @@ var entitystatementMarshalData = map[string]marshalData{
 			ExpiresAt: unixtime.Unixtime{Time: time.Unix(200, 0)},
 			Issuer:    "issuer",
 			Subject:   "subject",
-			Extra: map[string]interface{}{
+			Extra: map[string]any{
 				"extra-field": "value",
 				"foo":         []any{"bar"},
 			},

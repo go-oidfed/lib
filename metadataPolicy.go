@@ -29,9 +29,9 @@ func (m MetadataPolicies) MarshalJSON() ([]byte, error) {
 		return nil, errors.WithStack(err)
 	}
 
-	interfaceMap := make(map[string]interface{})
+	interfaceMap := make(map[string]any)
 	for k, v := range m.Extra {
-		interfaceMap[k] = interface{}(v)
+		interfaceMap[k] = any(v)
 	}
 
 	return extraMarshalHelper(explicitFields, interfaceMap)

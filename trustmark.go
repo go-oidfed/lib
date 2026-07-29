@@ -67,9 +67,9 @@ func (tms TrustMarkInfos) FindByType(trustMarkType string) *TrustMarkInfo {
 
 // TrustMarkInfo is a type for holding a trust mark as represented in an EntityConfiguration
 type TrustMarkInfo struct {
-	TrustMarkType string                 `json:"trust_mark_type" yaml:"type"`
-	TrustMarkJWT  string                 `json:"trust_mark" yaml:"trust_mark"`
-	Extra         map[string]interface{} `json:"-" yaml:"-"`
+	TrustMarkType string         `json:"trust_mark_type" yaml:"type"`
+	TrustMarkJWT  string         `json:"trust_mark" yaml:"trust_mark"`
+	Extra         map[string]any `json:"-" yaml:"-"`
 	trustmark     *TrustMark
 }
 
@@ -156,15 +156,15 @@ func (tm *TrustMarkInfo) VerifyExternal(
 
 // TrustMark is a type for holding a trust mark
 type TrustMark struct {
-	Issuer        string                 `json:"iss"`
-	Subject       string                 `json:"sub"`
-	TrustMarkType string                 `json:"trust_mark_type"`
-	IssuedAt      unixtime.Unixtime      `json:"iat"`
-	LogoURI       string                 `json:"logo_uri,omitempty"`
-	ExpiresAt     *unixtime.Unixtime     `json:"exp,omitempty"`
-	Ref           string                 `json:"ref,omitempty"`
-	DelegationJWT string                 `json:"delegation,omitempty"`
-	Extra         map[string]interface{} `json:"-"`
+	Issuer        string             `json:"iss"`
+	Subject       string             `json:"sub"`
+	TrustMarkType string             `json:"trust_mark_type"`
+	IssuedAt      unixtime.Unixtime  `json:"iat"`
+	LogoURI       string             `json:"logo_uri,omitempty"`
+	ExpiresAt     *unixtime.Unixtime `json:"exp,omitempty"`
+	Ref           string             `json:"ref,omitempty"`
+	DelegationJWT string             `json:"delegation,omitempty"`
+	Extra         map[string]any     `json:"-"`
 	jwtMsg        *jwxi.ParsedJWT
 	delegation    *DelegationJWT
 }
@@ -321,13 +321,13 @@ func (tm *TrustMark) VerifyExternal(jwks jwx.JWKS, tmo ...TrustMarkOwnerSpec) er
 
 // DelegationJWT is a type for holding information about a delegation jwt
 type DelegationJWT struct {
-	Issuer        string                 `json:"iss"`
-	Subject       string                 `json:"sub"`
-	TrustMarkType string                 `json:"trust_mark_type"`
-	IssuedAt      unixtime.Unixtime      `json:"iat"`
-	ExpiresAt     *unixtime.Unixtime     `json:"exp,omitempty"`
-	Ref           string                 `json:"ref,omitempty"`
-	Extra         map[string]interface{} `json:"-"`
+	Issuer        string             `json:"iss"`
+	Subject       string             `json:"sub"`
+	TrustMarkType string             `json:"trust_mark_type"`
+	IssuedAt      unixtime.Unixtime  `json:"iat"`
+	ExpiresAt     *unixtime.Unixtime `json:"exp,omitempty"`
+	Ref           string             `json:"ref,omitempty"`
+	Extra         map[string]any     `json:"-"`
 	jwtMsg        *jwxi.ParsedJWT
 }
 

@@ -49,7 +49,7 @@ func (v *SliceOrSingleValue[T]) UnmarshalYAML(value *yaml.Node) error {
 }
 
 // MarshalYAML implements the yaml.Marshaler interface
-func (v SliceOrSingleValue[T]) MarshalYAML() (interface{}, error) {
+func (v SliceOrSingleValue[T]) MarshalYAML() (any, error) {
 	if len(v) == 1 {
 		return v[0], nil
 	}

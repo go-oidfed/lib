@@ -15,6 +15,6 @@ func Equal[C comparable](v C, values ...C) bool {
 }
 
 // IsMap uses reflection to check if an interface{} is a map
-func IsMap(v interface{}) bool {
+func IsMap(v any) bool {
 	return reflect.TypeOf(v).Kind() == reflect.Map
 }

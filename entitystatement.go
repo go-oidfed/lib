@@ -83,7 +83,7 @@ type EntityStatementPayload struct {
 	TrustMarkOwners    TrustMarkOwners          `json:"trust_mark_owners,omitempty"`
 	SourceEndpoint     string                   `json:"source_endpoint,omitempty"`
 	TrustAnchor        string                   `json:"trust_anchor,omitempty"`
-	Extra              map[string]interface{}   `json:"-"`
+	Extra              map[string]any           `json:"-"`
 }
 
 // TimeValid checks if the EntityStatementPayload is already valid and not yet expired.
@@ -91,7 +91,7 @@ func (e EntityStatementPayload) TimeValid() bool {
 	return unixtime.VerifyTime(&e.IssuedAt, &e.ExpiresAt) == nil
 }
 
-func extraMarshalHelper(explicitFields []byte, extra map[string]interface{}) ([]byte, error) {
+func extraMarshalHelper(explicitFields []byte, extra map[string]any) ([]byte, error) {
 	var m map[string]json.RawMessage
 	if err := json.Unmarshal(explicitFields, &m); err != nil {
 		return nil, err
@@ -107,7 +107,7 @@ func extraMarshalHelper(explicitFields []byte, extra map[string]interface{}) ([]
 	return data, errors.WithStack(err)
 }
 
-func yamlExtraMarshalHelper(explicitFields []byte, extra map[string]interface{}) (any, error) {
+func yamlExtraMarshalHelper(explicitFields []byte, extra map[string]any) (any, error) {
 	var m map[string]*yaml.Node
 	if err := yaml.Unmarshal(explicitFields, &m); err != nil {
 		return nil, err
@@ -133,7 +133,7 @@ func (e EntityStatementPayload) MarshalJSON() ([]byte, error) {
 	return extraMarshalHelper(explicitFields, e.Extra)
 }
 
-func unmarshalWithExtraTyped[V any](data []byte, target interface{}) (map[string]V, error) {
+func unmarshalWithExtraTyped[V any](data []byte, target any) (map[string]V, error) {
 	if err := json.Unmarshal(data, target); err != nil {
 		return nil, errors.WithStack(err)
 	}
@@ -150,15 +150,15 @@ func unmarshalWithExtraTyped[V any](data []byte, target interface{}) (map[string
 	return extra, nil
 }
 
-func unmarshalWithExtra(data []byte, target interface{}) (map[string]interface{}, error) {
+func unmarshalWithExtra(data []byte, target any) (map[string]any, error) {
 	return unmarshalWithExtraTyped[any](data, target)
 }
 
-func yamlUnmarshalWithExtra(data *yaml.Node, target interface{}) (map[string]interface{}, error) {
+func yamlUnmarshalWithExtra(data *yaml.Node, target any) (map[string]any, error) {
 	if err := data.Decode(target); err != nil {
 		return nil, errors.WithStack(err)
 	}
-	extra := make(map[string]interface{})
+	extra := make(map[string]any)
 	if err := data.Decode(&extra); err != nil {
 		return nil, errors.WithStack(err)
 	}

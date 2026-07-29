@@ -20,7 +20,7 @@ func TestMergeStructFields(t *testing.T) {
 		MapField    map[string]int
 		PtrField    *NestedStruct
 		wasSet      map[string]bool
-		Extra       map[string]interface{}
+		Extra       map[string]any
 	}
 
 	strValue := "test"
@@ -105,19 +105,19 @@ func TestMergeStructFields(t *testing.T) {
 		{
 			name: "merge with Extra field",
 			target: TestStruct{
-				Extra: map[string]interface{}{
+				Extra: map[string]any{
 					"key1": "value1",
 					"key2": "value1",
 				},
 			},
 			source: TestStruct{
-				Extra: map[string]interface{}{
+				Extra: map[string]any{
 					"key2": "value2",
 					"key3": "value3",
 				},
 			},
 			expected: TestStruct{
-				Extra: map[string]interface{}{
+				Extra: map[string]any{
 					"key1": "value1",
 					"key2": "value2",
 					"key3": "value3",
@@ -479,7 +479,8 @@ func TestMergeMetadata_BothNonNil_NestedMergeAndMapsAndExtra(t *testing.T) {
 	}
 	if !reflect.DeepEqual(target.OpenIDProvider.MTLSEndpointAliases, wantMTLS) {
 		t.Fatalf(
-			"MTLSEndpointAliases merge mismatch: got %+v, want %+v", target.OpenIDProvider.MTLSEndpointAliases, wantMTLS,
+			"MTLSEndpointAliases merge mismatch: got %+v, want %+v", target.OpenIDProvider.MTLSEndpointAliases,
+			wantMTLS,
 		)
 	}
 	// Nested Extra merged

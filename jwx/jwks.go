@@ -16,7 +16,11 @@ import (
 )
 
 func init() {
-	for _, field := range []string{"exp", "iat", "nbf"} {
+	for _, field := range []string{
+		"exp",
+		"iat",
+		"nbf",
+	} {
 		if err := jwk.RegisterCustomField[unixtime.Unixtime](field); err != nil {
 			panic(err)
 		}
@@ -72,7 +76,7 @@ func (jwks JWKS) MarshalYAML() (any, error) {
 
 // UnmarshalYAML implements the yaml.Unmarshaler interface
 func (jwks *JWKS) UnmarshalYAML(node *yaml.Node) error {
-	var generic map[string]interface{}
+	var generic map[string]any
 	if err := node.Decode(&generic); err != nil {
 		return errors.WithStack(err)
 	}
@@ -192,7 +196,7 @@ func MergeJWKS(primary, secondary JWKS) JWKS {
 var zeroJWKS JWKS
 
 // KeyToJWKS creates a jwk.Set from the passed publicKey and sets the algorithm key in the jwk.Key to the passed jwa.SignatureAlgorithm
-func KeyToJWKS(publicKey interface{}, alg jwa.SignatureAlgorithm) (JWKS, error) {
+func KeyToJWKS(publicKey any, alg jwa.SignatureAlgorithm) (JWKS, error) {
 	key, err := jwk.PublicKeyOf(publicKey)
 	if err != nil {
 		return zeroJWKS, err

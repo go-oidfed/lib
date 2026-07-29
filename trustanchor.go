@@ -26,7 +26,7 @@ type TrustAnchor struct {
 // and new 'jwks_file' field. It loads JWKS from file if jwks_file is specified.
 func (t *TrustAnchor) UnmarshalYAML(node *yaml.Node) error {
 	// Create a map to manually parse the YAML node
-	var rawMap map[string]interface{}
+	var rawMap map[string]any
 	if err := node.Decode(&rawMap); err != nil {
 		return fmt.Errorf("failed to decode TrustAnchor YAML: %w", err)
 	}
@@ -91,7 +91,7 @@ func (t *TrustAnchor) UnmarshalYAML(node *yaml.Node) error {
 }
 
 // encodeToYAMLNode converts a Go value to a yaml.Node for unmarshaling
-func encodeToYAMLNode(v interface{}) (*yaml.Node, error) {
+func encodeToYAMLNode(v any) (*yaml.Node, error) {
 	data, err := yaml.Marshal(v)
 	if err != nil {
 		return nil, err
@@ -121,9 +121,9 @@ func loadJWKSFromFile(filepath string) (jwx.JWKS, error) {
 }
 
 // MarshalYAML implements custom YAML marshaling for serialization
-func (t TrustAnchor) MarshalYAML() (interface{}, error) {
+func (t TrustAnchor) MarshalYAML() (any, error) {
 	type Alias TrustAnchor
-	result := map[string]interface{}{
+	result := map[string]any{
 		"entity_id":          t.EntityID,
 		"jwks_file":          t.JWKSFile,
 		"enable_jwks_update": t.EnableJWKSUpdate,

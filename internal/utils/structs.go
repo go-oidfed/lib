@@ -12,7 +12,7 @@ import (
 
 // NilAllExceptByTag sets all fields of a struct to their zero values except for
 // the fields with the specified JSON tags.
-func NilAllExceptByTag(v interface{}, jsonTags []string) {
+func NilAllExceptByTag(v any, jsonTags []string) {
 	if v == nil {
 		return
 	}

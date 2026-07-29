@@ -156,7 +156,7 @@ var metadataMarshalData = map[string]marshalData{
 				Issuer:                "https://op.example.com",
 				AuthorizationEndpoint: "https://op.example.com/auth",
 				TokenEndpoint:         "https://op.example.com/token",
-				Extra: map[string]interface{}{
+				Extra: map[string]any{
 					"foo": "bar",
 					"slice": []any{
 						"two",
@@ -178,7 +178,7 @@ var metadataMarshalData = map[string]marshalData{
 		Data: []byte(`{"openid_relying_party":{"client_registration_types":null,"foo":"bar","slice":["two","values"]}}`),
 		Object: Metadata{
 			RelyingParty: &OpenIDRelyingPartyMetadata{
-				Extra: map[string]interface{}{
+				Extra: map[string]any{
 					"foo": "bar",
 					"slice": []any{
 						"two",
@@ -200,7 +200,7 @@ var metadataMarshalData = map[string]marshalData{
 				Issuer:                "https://as.example.com",
 				AuthorizationEndpoint: "https://as.example.com/auth",
 				TokenEndpoint:         "https://as.example.com/token",
-				Extra: map[string]interface{}{
+				Extra: map[string]any{
 					"foo": "bar",
 					"slice": []any{
 						"two",
@@ -222,7 +222,7 @@ var metadataMarshalData = map[string]marshalData{
 		Data: []byte(`{"oauth_client":{"client_registration_types":null,"foo":"bar","slice":["two","values"]}}`),
 		Object: Metadata{
 			OAuthClient: &OAuthClientMetadata{
-				Extra: map[string]interface{}{
+				Extra: map[string]any{
 					"foo": "bar",
 					"slice": []any{
 						"two",
@@ -241,7 +241,7 @@ var metadataMarshalData = map[string]marshalData{
 		Data: []byte(`{"oauth_resource":{"foo":"bar","resource_encryption_alg_values_supported":null,"resource_encryption_enc_values_supported":null,"slice":["two","values"]}}`),
 		Object: Metadata{
 			OAuthProtectedResource: &OAuthProtectedResourceMetadata{
-				Extra: map[string]interface{}{
+				Extra: map[string]any{
 					"foo": "bar",
 					"slice": []any{
 						"two",
@@ -260,7 +260,7 @@ var metadataMarshalData = map[string]marshalData{
 		Data: []byte(`{"federation_entity":{"foo":"bar","slice":["two","values"]}}`),
 		Object: Metadata{
 			FederationEntity: &FederationEntityMetadata{
-				Extra: map[string]interface{}{
+				Extra: map[string]any{
 					"foo": "bar",
 					"slice": []any{
 						"two",
@@ -284,8 +284,8 @@ var metadataMarshalData = map[string]marshalData{
 					"FederationFetchEndpoint": true,
 				},
 			},
-			Extra: map[string]interface{}{
-				"another-entity": map[string]interface{}{
+			Extra: map[string]any{
+				"another-entity": map[string]any{
 					"a-key": "a-value",
 				},
 			},
