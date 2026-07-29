@@ -23,7 +23,7 @@ func NilAllExceptByTag(v any, jsonTags []string) {
 		field := val.Field(i)
 		fieldType := typ.Field(i)
 		if fieldType.Name == "Extra" &&
-			fieldType.Type == reflect.TypeOf(map[string]any{}) &&
+			fieldType.Type == reflect.TypeFor[map[string]any]() &&
 			!field.IsNil() {
 			// We already checked the field's type, so this type assertion can't fail
 			asMap := field.Interface().(map[string]any)

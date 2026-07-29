@@ -94,7 +94,7 @@ func (e *CollectedEntity) setMultilingualUIInfoField(entityType, jsonTag, langTa
 			fieldValue := multiUIInfoValue.Field(i)
 			if fieldValue.CanSet() {
 				// For MultilingualString fields
-				if fieldValue.Type() == reflect.TypeOf(MultilingualString{}) {
+				if fieldValue.Type() == reflect.TypeFor[MultilingualString]() {
 					if strValue, ok := value.(string); ok {
 						// Initialize the map if it's nil
 						if fieldValue.IsNil() {

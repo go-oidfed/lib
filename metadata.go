@@ -520,7 +520,7 @@ func (m Metadata) ApplyPolicy(p *MetadataPolicies) (*Metadata, error) {
 	if p == nil {
 		return &m, nil
 	}
-	t := reflect.TypeOf(m)
+	t := reflect.TypeFor[Metadata]()
 	v := reflect.ValueOf(m)
 	out := &Metadata{}
 	for i := 0; i < t.NumField(); i++ {
