@@ -2,6 +2,7 @@ package oidfed
 
 import (
 	"context"
+	"slices"
 	"time"
 
 	"github.com/pkg/errors"
@@ -72,17 +73,21 @@ func triggerAuthRequiredFromEC(targetEntityID string) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	for _, m := range extraStringSlice(stmt.Metadata.FederationEntity, oidfedconst.FederationJWKSUpdateTriggerEndpointAuthMethods) {
-		if m == oidfedconst.AuthMethodPrivateKeyJWT {
-			return true, nil
-		}
+	if slices.Contains(
+		extraStringSlice(
+			stmt.Metadata.FederationEntity, oidfedconst.FederationJWKSUpdateTriggerEndpointAuthMethods,
+		), oidfedconst.AuthMethodPrivateKeyJWT,
+	) {
+		return true, nil
 	}
 	return false, nil
 }
 
 // resolveEndpointFromEC returns a URLFunc that resolves an endpoint URL from
 // the target entity's Entity Configuration (federation_entity metadata Extra).
-func resolveEndpointFromEC(targetEntityID, endpointKey, label string) func(context.Context, kms.KeyRotationEvent) (string, error) {
+func resolveEndpointFromEC(targetEntityID, endpointKey, label string) func(
+	context.Context, kms.KeyRotationEvent,
+) (string, error) {
 	return func(_ context.Context, _ kms.KeyRotationEvent) (string, error) {
 		stmt, err := fetchTargetEC(targetEntityID)
 		if err != nil {
@@ -159,7 +164,9 @@ func TriggerUpdateHook(cfg TriggerUpdateHookConfig) (kms.KeyRotationHook, error)
 		return nil, errors.New("TriggerUpdateHook: TargetEntityID is required")
 	}
 
-	urlFunc := resolveEndpointFromEC(cfg.TargetEntityID, oidfedconst.FederationJWKSUpdateTriggerEndpoint, "jwks update trigger endpoint")
+	urlFunc := resolveEndpointFromEC(
+		cfg.TargetEntityID, oidfedconst.FederationJWKSUpdateTriggerEndpoint, "jwks update trigger endpoint",
+	)
 
 	withoutAuth, err := HTTPHook(
 		HTTPHookConfig{
@@ -243,7 +250,9 @@ func JWKSUpdateHook(cfg JWKSUpdateHookConfig) (kms.KeyRotationHook, error) {
 	}
 	return HTTPHook(
 		HTTPHookConfig{
-			URLFunc:     resolveEndpointFromEC(cfg.TargetEntityID, oidfedconst.FederationJWKSUpdateEndpoint, "jwks update endpoint"),
+			URLFunc: resolveEndpointFromEC(
+				cfg.TargetEntityID, oidfedconst.FederationJWKSUpdateEndpoint, "jwks update endpoint",
+			),
 			BodyMode:    HTTPBodySignedJWKS,
 			Signer:      cfg.Signer,
 			JWTLifetime: cfg.JWTLifetime,

@@ -1,6 +1,8 @@
 package kms
 
 import (
+	"slices"
+
 	"github.com/lestrrat-go/jwx/v4/jwa"
 
 	"github.com/go-oidfed/lib/jwx"
@@ -53,10 +55,8 @@ func (s *SingleSigningKeyFile) GetForAlgs(algs ...string) (jwx.SigningKey, jwa.S
 		return nil, jwa.SignatureAlgorithm{}
 	}
 	want := s.Alg.String()
-	for _, a := range algs {
-		if a == want {
-			return s.signer, s.Alg
-		}
+	if slices.Contains(algs, want) {
+		return s.signer, s.Alg
 	}
 	return nil, jwa.SignatureAlgorithm{}
 }
