@@ -9,7 +9,7 @@ require (
 	github.com/cloudflare/circl v1.6.4
 	github.com/coreos/go-oidc/v3 v3.20.0
 	github.com/decred/dcrd/dcrec/secp256k1/v4 v4.4.1
-	github.com/eclipse-keypont/crypto11 v1.6.5
+	github.com/eclipse-keypont/crypto11 v1.6.8
 	github.com/go-resty/resty/v2 v2.17.2
 	github.com/gofiber/fiber/v2 v2.52.14
 	github.com/google/go-querystring v1.2.0
@@ -27,11 +27,12 @@ require (
 	github.com/stretchr/testify v1.11.1
 	github.com/vmihailenco/msgpack/v5 v5.4.1
 	github.com/zachmann/go-utils v0.0.0-20260709061248-d06e3e0557c4
-	golang.org/x/crypto v0.54.0
 	golang.org/x/oauth2 v0.36.0
 	golang.org/x/text v0.40.0
 	gopkg.in/yaml.v3 v3.0.1
 )
+
+require golang.org/x/crypto v0.54.0 // indirect
 
 require (
 	github.com/andybalholm/brotli v1.2.2 // indirect
