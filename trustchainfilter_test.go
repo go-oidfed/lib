@@ -1,6 +1,7 @@
 package oidfed
 
 import (
+	"strings"
 	"testing"
 
 	arrops "github.com/adam-hanna/arrayOperations"
@@ -326,18 +327,18 @@ func compareTrustChains(a, b TrustChains) bool {
 	aIssChains := make([]string, len(a))
 	bIssChains := make([]string, len(b))
 	for i, aa := range a {
-		var issChain string
+		var issChain strings.Builder
 		for _, e := range aa {
-			issChain += "->" + e.Issuer
+			issChain.WriteString("->" + e.Issuer)
 		}
-		aIssChains[i] = issChain
+		aIssChains[i] = issChain.String()
 	}
 	for i, bb := range b {
-		var issChain string
+		var issChain strings.Builder
 		for _, e := range bb {
-			issChain += "->" + e.Issuer
+			issChain.WriteString("->" + e.Issuer)
 		}
-		bIssChains[i] = issChain
+		bIssChains[i] = issChain.String()
 	}
 	return len(arrops.Difference(aIssChains, bIssChains)) == 0
 }
