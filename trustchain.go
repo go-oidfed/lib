@@ -130,7 +130,7 @@ func mergeMetadata(target, source *Metadata) {
 		sourceField := sourceVal.Field(i)
 
 		// Only proceed if source field is not nil
-		if sourceField.Kind() == reflect.Ptr && !sourceField.IsNil() {
+		if sourceField.Kind() == reflect.Pointer && !sourceField.IsNil() {
 			if targetField.IsNil() {
 				// If target field is nil, just copy the source field
 				targetField.Set(sourceField)

@@ -190,7 +190,7 @@ func (m Metadata) GuessEntityTypes() (entityTypes []string) {
 	typ := value.Type()
 	for i := 0; i < value.NumField(); i++ {
 		field := value.Field(i)
-		if field.Kind() == reflect.Ptr && !field.IsNil() {
+		if field.Kind() == reflect.Pointer && !field.IsNil() {
 			structField := typ.Field(i)
 			jsonTag := structField.Tag.Get("json")
 			jsonTag = strings.TrimSuffix(jsonTag, ",omitempty")
@@ -279,7 +279,7 @@ func (m Metadata) collectLanguageTaggedDisplayNames(result map[string]map[string
 
 // isValidPointerField checks if a field is a non-nil pointer
 func isValidPointerField(field reflect.Value) bool {
-	return field.Kind() == reflect.Ptr && !field.IsNil()
+	return field.Kind() == reflect.Pointer && !field.IsNil()
 }
 
 // getEntityTag extracts the entity tag from a struct field
@@ -355,7 +355,7 @@ func (m Metadata) IterateStringSliceClaim(tag string, iterator func(entityType s
 
 	for i := 0; i < value.NumField(); i++ {
 		field := value.Field(i)
-		if field.Kind() == reflect.Ptr && !field.IsNil() {
+		if field.Kind() == reflect.Pointer && !field.IsNil() {
 			structField := typ.Field(i)
 			entityTag := structField.Tag.Get("json")
 			entityTag = strings.TrimSuffix(entityTag, ",omitempty")
@@ -389,7 +389,7 @@ func (m Metadata) IterateStringClaim(tag string, iterator func(entityType, value
 
 	for i := 0; i < value.NumField(); i++ {
 		field := value.Field(i)
-		if field.Kind() == reflect.Ptr && !field.IsNil() {
+		if field.Kind() == reflect.Pointer && !field.IsNil() {
 			structField := typ.Field(i)
 			entityTag := structField.Tag.Get("json")
 			entityTag = strings.TrimSuffix(entityTag, ",omitempty")
@@ -450,7 +450,7 @@ func (m Metadata) IterateMultilingualStringClaim(tag string, iterator func(entit
 
 	for i := 0; i < value.NumField(); i++ {
 		field := value.Field(i)
-		if field.Kind() == reflect.Ptr && !field.IsNil() {
+		if field.Kind() == reflect.Pointer && !field.IsNil() {
 			structField := typ.Field(i)
 			entityTag := structField.Tag.Get("json")
 			entityTag = strings.TrimSuffix(entityTag, ",omitempty")
@@ -634,7 +634,7 @@ func applyPolicy(metadata any, policy MetadataPolicy, ownTag string) (any, error
 func (m *Metadata) FindEntityMetadata(entityType string, metadata any) error {
 	// Validate that metadata is a pointer
 	metadataValue := reflect.ValueOf(metadata)
-	if metadataValue.Kind() != reflect.Ptr || metadataValue.IsNil() {
+	if metadataValue.Kind() != reflect.Pointer || metadataValue.IsNil() {
 		return errors.New("metadata parameter must be a non-nil pointer")
 	}
 

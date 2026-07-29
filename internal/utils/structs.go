@@ -1,13 +1,13 @@
 package utils
 
 import (
+	"crypto/sha3"
 	"encoding/base64"
 	"reflect"
 	"slices"
 	"strings"
 
 	"github.com/vmihailenco/msgpack/v5"
-	"golang.org/x/crypto/sha3"
 )
 
 // NilAllExceptByTag sets all fields of a struct to their zero values except for
