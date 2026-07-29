@@ -475,8 +475,7 @@ func (m Metadata) IterateMultilingualStringClaim(tag string, iterator func(entit
 				extraMap := extraField.Interface().(map[string]interface{})
 				for key, val := range extraMap {
 					// Check if the key follows the pattern "tag#langTag"
-					if strings.HasPrefix(key, tag+"#") {
-						langTag := strings.TrimPrefix(key, tag+"#")
+					if langTag, ok := strings.CutPrefix(key, tag+"#"); ok {
 						if strVal, ok := val.(string); ok && strVal != "" {
 							iterator(entityTag, langTag, strVal)
 						}
