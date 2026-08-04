@@ -1,3 +1,14 @@
+## go-oidfed/lib 0.11.1
+
+### Dependencies
+
+- `github.com/eclipse-keypont/crypto11` 1.6.5 → 1.6.8
+- `golang.org/x/crypto` moved from a direct to an indirect dependency.
+
+### Refactoring
+
+- Modernized the codebase to use Go 1.26 stdlib features (`go fix`):
+
 ## go-oidfed/lib 0.11.0
 
 ### Breaking Changes
