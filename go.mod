@@ -11,7 +11,7 @@ require (
 	github.com/decred/dcrd/dcrec/secp256k1/v4 v4.4.1
 	github.com/eclipse-keypont/crypto11 v1.6.8
 	github.com/go-resty/resty/v2 v2.17.2
-	github.com/gofiber/fiber/v2 v2.52.14
+	github.com/gofiber/fiber/v2 v2.52.15
 	github.com/google/go-querystring v1.2.0
 	github.com/google/uuid v1.6.0
 	github.com/jarcoal/httpmock v1.4.2
