@@ -447,7 +447,7 @@ type IssueTrustMarkOptions struct {
 	// Lifetime overrides the spec's lifetime if set (> 0).
 	Lifetime time.Duration
 	// SubjectClaims are additional claims specific to this subject.
-	// These are merged with (and override) the spec's Extra claims.
+	// These override the spec's Extra claims.
 	SubjectClaims map[string]any
 }
 
