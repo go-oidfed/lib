@@ -6,7 +6,7 @@ require (
 	filippo.io/mldsa v0.0.0-20260711112038-ff3f469cee29
 	github.com/TwiN/gocache/v2 v2.4.0
 	github.com/adam-hanna/arrayOperations v1.0.1
-	github.com/cloudflare/circl v1.6.4
+	github.com/cloudflare/circl v1.6.5
 	github.com/coreos/go-oidc/v3 v3.20.0
 	github.com/decred/dcrd/dcrec/secp256k1/v4 v4.4.1
 	github.com/eclipse-keypont/crypto11 v1.6.8
