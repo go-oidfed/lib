@@ -17,7 +17,7 @@ require (
 	github.com/jarcoal/httpmock v1.4.2
 	github.com/jwx-go/ed448/v4 v4.0.5
 	github.com/jwx-go/es256k/v4 v4.0.4
-	github.com/jwx-go/mldsa/v4 v4.0.4
+	github.com/jwx-go/mldsa/v4 v4.0.5
 	github.com/lithammer/fuzzysearch v1.1.8
 	github.com/luci/go-render v0.0.0-20160219211803-9a04cc21af0f
 	github.com/pkg/errors v0.9.1

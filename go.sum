@@ -50,8 +50,8 @@ github.com/jwx-go/ed448/v4 v4.0.5 h1:d3iZXIgEuf13VTPGq7zzDLs3+8P8M/J+oaABoJjgHkw
 github.com/jwx-go/ed448/v4 v4.0.5/go.mod h1:3EmyRyDWQMZZoB8dDnov6FUxI3QQE2rMtjTmclIj2kQ=
 github.com/jwx-go/es256k/v4 v4.0.4 h1:n9mAXszcDXsNmpCFXQPv5E/Q/HChrpeVXHr7hDK7YKQ=
 github.com/jwx-go/es256k/v4 v4.0.4/go.mod h1:cjMrwCTHbcvkMuWtAk9g+lQ5fkgV5OwYBNu3CIEUWGE=
-github.com/jwx-go/mldsa/v4 v4.0.4 h1:9rOcP4Ddropp2oULmiph3c/6rIIFn6VCqJvK4tg+0SY=
-github.com/jwx-go/mldsa/v4 v4.0.4/go.mod h1:6RyZYeXU76jnAtSIOPru0Zx9KC7FcTCH1oMyqKnlhTM=
+github.com/jwx-go/mldsa/v4 v4.0.5 h1:tGvb8V2srHC+/qwIBsJIRv/2ivr/jsHaNMJ5dJfKCk8=
+github.com/jwx-go/mldsa/v4 v4.0.5/go.mod h1:EB4Yp9tvLwcojdprLzvine/HMtZtObYUCfXtVMeOF/A=
 github.com/klauspost/compress v1.19.1 h1:VsB4HPswih7mmZ8WleSFQ75c/Ui1M4trX5oAsJnhSlk=
 github.com/klauspost/compress v1.19.1/go.mod h1:cwPg85FWrGar70rWktvGQj8/hthj3wpl0PGDogxkrSQ=
 github.com/klauspost/cpuid/v2 v2.2.10 h1:tBs3QSyvjDyFTq3uoc/9xFpCuOsJQFNPiAhYdw2skhE=
