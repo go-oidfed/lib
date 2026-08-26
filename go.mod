@@ -15,7 +15,7 @@ require (
 	github.com/google/go-querystring v1.2.0
 	github.com/google/uuid v1.6.0
 	github.com/jarcoal/httpmock v1.4.2
-	github.com/jwx-go/ed448/v4 v4.0.4
+	github.com/jwx-go/ed448/v4 v4.0.5
 	github.com/jwx-go/es256k/v4 v4.0.4
 	github.com/jwx-go/mldsa/v4 v4.0.4
 	github.com/lithammer/fuzzysearch v1.1.8
@@ -47,10 +47,10 @@ require (
 	github.com/jwx-go/compsig/v4 v4.0.4
 	github.com/klauspost/compress v1.19.1 // indirect
 	github.com/kr/pretty v0.3.1 // indirect
-	github.com/lestrrat-go/dsig v1.3.0 // indirect
+	github.com/lestrrat-go/dsig v1.4.0 // indirect
 	github.com/lestrrat-go/dsig-circl-ed448 v1.0.0 // indirect
 	github.com/lestrrat-go/dsig-secp256k1 v1.0.0 // indirect
-	github.com/lestrrat-go/jwx/v4 v4.3.0
+	github.com/lestrrat-go/jwx/v4 v4.4.0
 	github.com/lestrrat-go/option/v3 v3.0.0-alpha1 // indirect
 	github.com/mattn/go-colorable v0.1.15 // indirect
 	github.com/mattn/go-isatty v0.0.24 // indirect
