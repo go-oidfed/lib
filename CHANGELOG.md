@@ -1,3 +1,23 @@
+## go-oidfed/lib 0.11.2
+
+### Dependencies
+
+- `github.com/cloudflare/circl` 1.6.4 → 1.6.5
+- `github.com/gofiber/fiber/v2` 2.52.14 → 2.52.15
+- `github.com/jwx-go/compsig/v4` 4.0.4 → 4.0.5
+- `github.com/jwx-go/ed448/v4` 4.0.4 → 4.0.5
+- `github.com/jwx-go/mldsa/v4` 4.0.4 → 4.0.5
+- `github.com/lestrrat-go/jwx/v4` 4.2.0 → 4.4.0
+- `github.com/redis/go-redis/v9` 9.21.0 → 9.22.0
+- `github.com/stretchr/testify` 1.11.1 → 1.12.1
+- `golang.org/x/text` 0.40.0 → 0.41.0
+- `github.com/lestrrat-go/dsig` 1.3.0 → 1.4.0 (indirect)
+- `golang.org/x/crypto` 0.54.0 → 0.55.0 (indirect)
+
+### Documentation
+
+- Clarified the `IssueTrustMarkOptions.SubjectClaims` comment: subject claims override the spec's Extra claims.
+
 ## go-oidfed/lib 0.11.1
 
 ### Dependencies
