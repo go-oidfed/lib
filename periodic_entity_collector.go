@@ -45,10 +45,10 @@ type PeriodicEntityCollector struct {
 	PagingLimit                int `yaml:"paging_limit"`
 
 	// internal state
-	cacheMutex sync.RWMutex
-	startOnce  sync.Once
-	stopOnce   sync.Once
-	stopCh     chan struct{}
+	runMutex  sync.Mutex
+	startOnce sync.Once
+	stopOnce  sync.Once
+	stopCh    chan struct{}
 
 	// Optional handler invoked after each trust anchor collection with the
 	// discovered entities; can be used to trigger proactive resolver jobs.
@@ -121,7 +121,7 @@ func (p *PeriodicEntityCollector) CollectEntities(req apimodel.EntityCollectionR
 	*EntityCollectionResponse, *ErrorResponse,
 ) {
 	p.Start()
-	if p.PagingLimit < req.Limit || req.Limit <= 0 {
+	if p.PagingLimit > 0 && (p.PagingLimit < req.Limit || req.Limit <= 0) {
 		req.Limit = p.PagingLimit
 	}
 	reqHash, err := utils.HashStruct(req)
@@ -133,9 +133,7 @@ func (p *PeriodicEntityCollector) CollectEntities(req apimodel.EntityCollectionR
 	}
 	cacheRequestKey := cache.Key(periodicCacheSubsystem, cacheSubSubSystemRequests, reqHash)
 	var res EntityCollectionResponse
-	p.cacheMutex.RLock()
 	set, err := cache.Get(cacheRequestKey, &res)
-	p.cacheMutex.RUnlock()
 	if err != nil {
 		return nil, &ErrorResponse{
 			Status: fiber.StatusInternalServerError,
@@ -151,9 +149,7 @@ func (p *PeriodicEntityCollector) CollectEntities(req apimodel.EntityCollectionR
 	}
 
 	var cc cachedCollection
-	p.cacheMutex.RLock()
 	set, err = cache.Get(cache.Key(periodicCacheSubsystem, cacheSubSubSystemAll, req.TrustAnchor), &cc)
-	p.cacheMutex.RUnlock()
 	if err != nil {
 		return nil, &ErrorResponse{
 			Status: fiber.StatusInternalServerError,
@@ -184,7 +180,7 @@ func (p *PeriodicEntityCollector) CollectEntities(req apimodel.EntityCollectionR
 		entities = entities[n:]
 	}
 	var nextEntityID string
-	if len(entities) > req.Limit {
+	if req.Limit > 0 && len(entities) > req.Limit {
 		others := entities[req.Limit:]
 		entities = entities[:req.Limit]
 		nextEntityID = others[0].EntityID
@@ -247,12 +243,8 @@ func (p *PeriodicEntityCollector) runOnce() {
 	if conc > len(anchors) {
 		conc = len(anchors)
 	}
-	p.cacheMutex.Lock()
-	defer p.cacheMutex.Unlock()
-
-	if err := cache.Clear(periodicCacheSubsystem); err != nil {
-		internal.Logger().Error().Err(err).Msg("PeriodicEntityCollector cache clear error")
-	}
+	p.runMutex.Lock()
+	defer p.runMutex.Unlock()
 
 	// Worker pool pattern with a buffered semaphore channel.
 	sem := make(chan struct{}, conc)
