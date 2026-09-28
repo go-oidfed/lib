@@ -102,23 +102,23 @@ type openIDRelyingPartyMetadata struct {
 	BackchannelLogoutSessionRequired           bool     `json:"backchannel_logout_session_required,omitempty"`
 	PostLogoutRedirectURIs                     []string `json:"post_logout_redirect_uris,omitempty"`
 	AuthorizationDetailsTypes                  []string `json:"authorization_details_types,omitempty"`
-	ClientRegistrationTypes                    []string `json:"client_registration_types"`
+	ClientRegistrationTypes                    []string `json:"client_registration_types,omitempty"`
 
 	Extra map[string]any `json:"-"`
 }
 
 type openIDProviderMetadata struct {
-	Issuer                                                    string            `json:"issuer"`
-	AuthorizationEndpoint                                     string            `json:"authorization_endpoint"`
-	TokenEndpoint                                             string            `json:"token_endpoint"`
+	Issuer                                                    string            `json:"issuer,omitempty"`
+	AuthorizationEndpoint                                     string            `json:"authorization_endpoint,omitempty"`
+	TokenEndpoint                                             string            `json:"token_endpoint,omitempty"`
 	UserinfoEndpoint                                          string            `json:"userinfo_endpoint,omitempty"`
 	RegistrationEndpoint                                      string            `json:"registration_endpoint,omitempty"`
 	ScopesSupported                                           []string          `json:"scopes_supported,omitempty"`
-	ResponseTypesSupported                                    []string          `json:"response_types_supported"`
+	ResponseTypesSupported                                    []string          `json:"response_types_supported,omitempty"`
 	ResponseModesSupported                                    []string          `json:"response_modes_supported,omitempty"`
 	GrantTypesSupported                                       []string          `json:"grant_types_supported,omitempty"`
 	ACRValuesSupported                                        []string          `json:"acr_values_supported,omitempty"`
-	SubjectTypesSupported                                     []string          `json:"subject_types_supported"`
+	SubjectTypesSupported                                     []string          `json:"subject_types_supported,omitempty"`
 	IDTokenSigningAlgValuesSupported                          []string          `json:"id_token_signing_alg_values_supported,omitempty"`
 	IDTokenEncryptionAlgValuesSupported                       []string          `json:"id_token_encryption_alg_values_supported,omitempty"`
 	IDTokenEncryptionEncValuesSupported                       []string          `json:"id_token_encryption_enc_values_supported,omitempty"`
@@ -173,7 +173,7 @@ type openIDProviderMetadata struct {
 	BackchannelUserCodeParameterSupported                     bool              `json:"backchannel_user_code_parameter_supported,omitempty"`
 	AuthorizationDetailsTypesSupported                        []string          `json:"authorization_details_types_supported,omitempty"`
 
-	ClientRegistrationTypesSupported               []string            `json:"client_registration_types_supported"`
+	ClientRegistrationTypesSupported               []string            `json:"client_registration_types_supported,omitempty"`
 	FederationRegistrationEndpoint                 string              `json:"federation_registration_endpoint,omitempty"`
 	RequestAuthenticationMethodsSupported          map[string][]string `json:"request_authentication_methods_supported,omitempty"`
 	RequestAuthenticationSigningAlgValuesSupported []string            `json:"request_authentication_signing_alg_values_supported,omitempty"`
@@ -187,8 +187,8 @@ type oAuthProtectedResourceMetadata struct {
 	ScopesSupported                      []string `json:"scopes_supported,omitempty"`
 	BearerMethodsSupported               []string `json:"bearer_methods_supported,omitempty"`
 	ResourceSigningAlgValuesSupported    []string `json:"resource_signing_alg_values_supported,omitempty"`
-	ResourceEncryptionAlgValuesSupported []string `json:"resource_encryption_alg_values_supported"`
-	ResourceEncryptionEncValuesSupported []string `json:"resource_encryption_enc_values_supported"`
+	ResourceEncryptionAlgValuesSupported []string `json:"resource_encryption_alg_values_supported,omitempty"`
+	ResourceEncryptionEncValuesSupported []string `json:"resource_encryption_enc_values_supported,omitempty"`
 	ResourceName                         string   `json:"resource_name,omitempty"`
 	ResourceDocumentation                string   `json:"resource_documentation,omitempty"`
 	ResourcePolicyURI                    string   `json:"resource_policy_uri,omitempty"`
