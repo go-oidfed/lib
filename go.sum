@@ -1,5 +1,5 @@
-filippo.io/mldsa v0.0.0-20260711112038-ff3f469cee29 h1:11cJmDX5FvZu/znhVjfwxs9jZcos6d8O6Bc9Fpdv87Y=
-filippo.io/mldsa v0.0.0-20260711112038-ff3f469cee29/go.mod h1:32qQ5yj3R24Eu03iWFWchdC3OB653wPvoepWejkefbY=
+filippo.io/mldsa v1.0.0 h1:DSyjDhIEKrGEO/RZfI60iuXI83Yzy8jDcbqMuPySK5U=
+filippo.io/mldsa v1.0.0/go.mod h1:32qQ5yj3R24Eu03iWFWchdC3OB653wPvoepWejkefbY=
 github.com/TwiN/gocache/v2 v2.4.0 h1:BZ/TqvhipDQE23MFFTjC0MiI1qZ7GEVtSdOFVVXyr18=
 github.com/TwiN/gocache/v2 v2.4.0/go.mod h1:Cl1c0qNlQlXzJhTpAARVqpQDSuGDM5RhtzPYAM1x17g=
 github.com/adam-hanna/arrayOperations v1.0.1 h1:iAot3I2p4yKrFk8eRhEkuHj0ttOrfFJMWAo7Is/rHwk=

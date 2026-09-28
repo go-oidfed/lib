@@ -3,7 +3,7 @@ module github.com/go-oidfed/lib
 go 1.26.0
 
 require (
-	filippo.io/mldsa v0.0.0-20260711112038-ff3f469cee29
+	filippo.io/mldsa v1.0.0
 	github.com/TwiN/gocache/v2 v2.4.0
 	github.com/adam-hanna/arrayOperations v1.0.1
 	github.com/cloudflare/circl v1.6.5
