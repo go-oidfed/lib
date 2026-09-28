@@ -41,7 +41,7 @@ var metadataMarshalData = map[string]marshalData{
 		},
 	},
 	"federation + op": {
-		Data: []byte(`{"federation_entity":{"contacts":["contact@op.example.com"],"organization_name":"Test OP Org"},"openid_provider":{"authorization_endpoint":"https://op.example.com/authorization","client_registration_types_supported":["automatic"],"code_challenge_methods_supported":["S256"],"grant_types_supported":["authorization_code","refresh_token"],"id_token_signing_alg_values_supported":["ES256","ES512"],"introspection_endpoint":"https://op.example.com/introspect","issuer":"https://op.example.com","jwks_uri":"https://op.example.com/jwks","organization_name":"Test OP Org","request_object_signing_alg_values_supported":["ES256","ES512"],"response_types_supported":["code"],"revocation_endpoint":"https://op.example.com/revoke","scopes_supported":["openid","profile","email","offline_access"],"subject_types_supported":null,"token_endpoint":"https://op.example.com/token","userinfo_endpoint":"https://op.example.com/userinfo","userinfo_signed_response_alg_values_supported":["ES256","ES512"]}}`),
+		Data: []byte(`{"federation_entity":{"contacts":["contact@op.example.com"],"organization_name":"Test OP Org"},"openid_provider":{"authorization_endpoint":"https://op.example.com/authorization","client_registration_types_supported":["automatic"],"code_challenge_methods_supported":["S256"],"grant_types_supported":["authorization_code","refresh_token"],"id_token_signing_alg_values_supported":["ES256","ES512"],"introspection_endpoint":"https://op.example.com/introspect","issuer":"https://op.example.com","jwks_uri":"https://op.example.com/jwks","organization_name":"Test OP Org","request_object_signing_alg_values_supported":["ES256","ES512"],"response_types_supported":["code"],"revocation_endpoint":"https://op.example.com/revoke","scopes_supported":["openid","profile","email","offline_access"],"token_endpoint":"https://op.example.com/token","userinfo_endpoint":"https://op.example.com/userinfo","userinfo_signed_response_alg_values_supported":["ES256","ES512"]}}`),
 		Object: Metadata{
 			OpenIDProvider: &OpenIDProviderMetadata{
 				Issuer:                "https://op.example.com",
@@ -150,7 +150,7 @@ var metadataMarshalData = map[string]marshalData{
 		},
 	},
 	"op extra fields": {
-		Data: []byte(`{"openid_provider":{"authorization_endpoint":"https://op.example.com/auth","client_registration_types_supported":null,"foo":"bar","issuer":"https://op.example.com","response_types_supported":null,"slice":["two","values"],"subject_types_supported":null,"token_endpoint":"https://op.example.com/token"}}`),
+		Data: []byte(`{"openid_provider":{"authorization_endpoint":"https://op.example.com/auth","foo":"bar","issuer":"https://op.example.com","slice":["two","values"],"token_endpoint":"https://op.example.com/token"}}`),
 		Object: Metadata{
 			OpenIDProvider: &OpenIDProviderMetadata{
 				Issuer:                "https://op.example.com",
@@ -175,7 +175,7 @@ var metadataMarshalData = map[string]marshalData{
 		},
 	},
 	"rp extra fields": {
-		Data: []byte(`{"openid_relying_party":{"client_registration_types":null,"foo":"bar","slice":["two","values"]}}`),
+		Data: []byte(`{"openid_relying_party":{"foo":"bar","slice":["two","values"]}}`),
 		Object: Metadata{
 			RelyingParty: &OpenIDRelyingPartyMetadata{
 				Extra: map[string]any{
@@ -194,7 +194,7 @@ var metadataMarshalData = map[string]marshalData{
 		},
 	},
 	"as extra fields": {
-		Data: []byte(`{"oauth_authorization_server":{"authorization_endpoint":"https://as.example.com/auth","client_registration_types_supported":null,"foo":"bar","issuer":"https://as.example.com","response_types_supported":null,"slice":["two","values"],"subject_types_supported":null,"token_endpoint":"https://as.example.com/token"}}`),
+		Data: []byte(`{"oauth_authorization_server":{"authorization_endpoint":"https://as.example.com/auth","foo":"bar","issuer":"https://as.example.com","slice":["two","values"],"token_endpoint":"https://as.example.com/token"}}`),
 		Object: Metadata{
 			OAuthAuthorizationServer: &OAuthAuthorizationServerMetadata{
 				Issuer:                "https://as.example.com",
@@ -219,7 +219,7 @@ var metadataMarshalData = map[string]marshalData{
 		},
 	},
 	"client extra fields": {
-		Data: []byte(`{"oauth_client":{"client_registration_types":null,"foo":"bar","slice":["two","values"]}}`),
+		Data: []byte(`{"oauth_client":{"foo":"bar","slice":["two","values"]}}`),
 		Object: Metadata{
 			OAuthClient: &OAuthClientMetadata{
 				Extra: map[string]any{
@@ -238,7 +238,7 @@ var metadataMarshalData = map[string]marshalData{
 		},
 	},
 	"pr extra fields": {
-		Data: []byte(`{"oauth_resource":{"foo":"bar","resource_encryption_alg_values_supported":null,"resource_encryption_enc_values_supported":null,"slice":["two","values"]}}`),
+		Data: []byte(`{"oauth_resource":{"foo":"bar","slice":["two","values"]}}`),
 		Object: Metadata{
 			OAuthProtectedResource: &OAuthProtectedResourceMetadata{
 				Extra: map[string]any{
