@@ -7,7 +7,7 @@ require (
 	github.com/TwiN/gocache/v2 v2.4.0
 	github.com/adam-hanna/arrayOperations v1.0.1
 	github.com/cloudflare/circl v1.6.5
-	github.com/coreos/go-oidc/v3 v3.20.0
+	github.com/coreos/go-oidc/v3 v3.21.0
 	github.com/decred/dcrd/dcrec/secp256k1/v4 v4.4.1
 	github.com/eclipse-keypont/crypto11 v1.6.8
 	github.com/go-resty/resty/v2 v2.17.2
