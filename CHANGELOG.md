@@ -1,3 +1,24 @@
+## go-oidfed/lib 0.11.3
+
+### Enhancements
+
+- **`PeriodicEntityCollector`**: Replaced the `sync.RWMutex` cache mutex with a `sync.Mutex` and now support **unpaginated collection** (`PagingLimit` / `req.Limit` can be `0`, returning all matching entities without paging).
+
+### Refactoring
+
+- Made `omitempty` the standard across **all** `Metadata` struct fields. 
+  While it was previously not used for mandatory metadata fields, those 
+  fields are now also omitted when serialized; since they are always optional 
+  when used in a superior's subordinate statement.
+
+### Dependencies
+
+- `github.com/coreos/go-oidc/v3` 3.20.0 → 3.21.0
+- `github.com/lestrrat-go/jwx/v4` 4.4.0 → 4.5.0
+- `golang.org/x/oauth2` 0.36.0 → 0.37.0
+- `golang.org/x/text` 0.41.0 → 0.42.0
+- `golang.org/x/crypto` 0.55.0 → 0.56.0 (indirect)
+
 ## go-oidfed/lib 0.11.2
 
 ### Dependencies
