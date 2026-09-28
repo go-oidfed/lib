@@ -18,6 +18,13 @@ func init() {
 	client.SetRetryCount(2)
 	client.SetRedirectPolicy(resty.FlexibleRedirectPolicy(10))
 	client.SetTimeout(20 * time.Second)
+	client.SetHeader("User-Agent", "go-oidfed")
+}
+
+// SetUserAgent sets the default User-Agent header sent by all requests.
+// It can be called more than once; the last value wins.
+func SetUserAgent(ua string) {
+	client.SetHeader("User-Agent", ua)
 }
 
 // HttpError is a type for returning the server's error response including its status code

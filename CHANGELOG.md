@@ -1,3 +1,9 @@
+## go-oidfed/lib 0.11.4
+
+### Enhancements
+
+- Allow customization of user-agent header. Set "go-oidfed" as default.
+
 ## go-oidfed/lib 0.11.3
 
 ### Enhancements
