@@ -3,7 +3,7 @@ module github.com/go-oidfed/lib
 go 1.26.0
 
 require (
-	filippo.io/mldsa v0.0.0-20260711112038-ff3f469cee29
+	filippo.io/mldsa v1.0.0
 	github.com/TwiN/gocache/v2 v2.4.0
 	github.com/adam-hanna/arrayOperations v1.0.1
 	github.com/cloudflare/circl v1.6.5
@@ -17,7 +17,7 @@ require (
 	github.com/jarcoal/httpmock v1.4.2
 	github.com/jwx-go/ed448/v4 v4.0.5
 	github.com/jwx-go/es256k/v4 v4.0.4
-	github.com/jwx-go/mldsa/v4 v4.0.5
+	github.com/jwx-go/mldsa/v4 v4.0.6
 	github.com/lithammer/fuzzysearch v1.1.8
 	github.com/luci/go-render v0.0.0-20160219211803-9a04cc21af0f
 	github.com/pkg/errors v0.9.1
@@ -44,7 +44,7 @@ require (
 	github.com/fatih/structs v1.1.0 // indirect
 	github.com/go-jose/go-jose/v4 v4.1.4 // indirect
 	github.com/google/go-cmp v0.7.0 // indirect
-	github.com/jwx-go/compsig/v4 v4.0.5
+	github.com/jwx-go/compsig/v4 v4.0.6
 	github.com/klauspost/compress v1.19.1 // indirect
 	github.com/kr/pretty v0.3.1 // indirect
 	github.com/lestrrat-go/dsig v1.4.0 // indirect
