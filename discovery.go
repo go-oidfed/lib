@@ -422,12 +422,16 @@ func (f EntityCollectionFilterVerifiedChains) Filter(e *CollectedEntity) bool {
 	return confirmedValid
 }
 
-func fetchList(listEndpoint string) ([]string, error) {
+func fetchList(listEndpoint string, fe ...*FederationEntityMetadata) ([]string, error) {
 	if ids := subordinateListingCacheGet(listEndpoint); ids != nil {
 		internal.Log("Discovery: Obtained listing response from cache")
 		return ids, nil
 	}
-	ids, err := httpFetchList(listEndpoint)
+	var fePtr *FederationEntityMetadata
+	if len(fe) > 0 {
+		fePtr = fe[0]
+	}
+	ids, err := httpFetchList(listEndpoint, fePtr)
 	if err != nil {
 		return nil, err
 	}
@@ -436,8 +440,12 @@ func fetchList(listEndpoint string) ([]string, error) {
 	return ids, nil
 }
 
-func httpFetchList(listEndpoint string) ([]string, error) {
-	resp, errRes, err := http.Get(listEndpoint, nil, &[]string{})
+func httpFetchList(listEndpoint string, fe *FederationEntityMetadata) ([]string, error) {
+	var authMethods []string
+	if fe != nil {
+		authMethods = fe.FederationListEndpointAuthMethods
+	}
+	resp, errRes, err := httpFederationEndpointRequest(listEndpoint, nil, authMethods, fe, &[]string{})
 	if err != nil {
 		return nil, err
 	}

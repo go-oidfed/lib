@@ -523,6 +523,7 @@ func (t *trustTree) fetchAndValidateSubordinateStatement(
 ) (*EntityStatement, error) {
 	subordinateStmt, err := FetchEntityStatement(
 		authorityStmt.Metadata.FederationEntity.FederationFetchEndpoint, t.Entity.Issuer, authorityID,
+		authorityStmt.Metadata.FederationEntity,
 	)
 	if err != nil {
 		return nil, err
@@ -780,20 +781,31 @@ func httpGetEntityConfiguration(
 	return ParseEntityStatement(res.Body())
 }
 
-// FetchEntityStatement fetches an EntityStatement from a fetch endpoint
-func FetchEntityStatement(fetchEndpoint, subID, issID string) (*EntityStatement, error) {
+// FetchEntityStatement fetches an EntityStatement from a fetch endpoint. When
+// the given federation entity metadata advertises private_key_jwt in
+// federation_fetch_endpoint_auth_methods and DefaultClientAuth is set, the
+// request is POSTed (form-encoded) with a client assertion; otherwise an
+// unauthenticated GET with the params as query string is used.
+func FetchEntityStatement(fetchEndpoint, subID, issID string, fe ...*FederationEntityMetadata) (*EntityStatement, error) {
 	return getEntityStatementOrConfiguration(
 		subID, issID, func() (*EntityStatement, error) {
-			return httpFetchEntityStatement(fetchEndpoint, subID)
+			var fePtr *FederationEntityMetadata
+			if len(fe) > 0 {
+				fePtr = fe[0]
+			}
+			return httpFetchEntityStatement(fetchEndpoint, subID, fePtr)
 		},
 	)
 }
 
-func httpFetchEntityStatement(fetchEndpoint, subID string) (*EntityStatement, error) {
-	uri := fetchEndpoint
+func httpFetchEntityStatement(fetchEndpoint, subID string, fe *FederationEntityMetadata) (*EntityStatement, error) {
 	params := url.Values{}
 	params.Add("sub", subID)
-	res, errRes, err := http.Get(uri, params, nil)
+	var authMethods []string
+	if fe != nil {
+		authMethods = fe.FederationFetchEndpointAuthMethods
+	}
+	res, errRes, err := httpFederationEndpointRequest(fetchEndpoint, params, authMethods, fe, nil)
 	if err != nil {
 		return nil, err
 	}

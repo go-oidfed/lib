@@ -70,7 +70,10 @@ func (r *collectorResult) processAuthority(
 				return
 			}
 
-			subordinates, err := fetchList(stmt.Metadata.FederationEntity.FederationListEndpoint)
+			subordinates, err := fetchList(
+				stmt.Metadata.FederationEntity.FederationListEndpoint,
+				stmt.Metadata.FederationEntity,
+			)
 			if err != nil {
 				internal.Logf("Discovery: Could not fetch subordinates: %s", err.Error())
 				return

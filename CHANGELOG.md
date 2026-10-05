@@ -1,3 +1,12 @@
+## go-oidfed/lib 0.12.0
+
+### Features
+
+- **Automatic `private_key_jwt` client authentication on federation endpoints.** An entity that advertises `private_key_jwt` in an endpoint's `*_auth_methods` (fetch, list, resolve, trust-mark) is now called with an authenticated form-encoded POST: the request params plus `client_assertion_type` + `client_assertion` (audience = endpoint URL). When the field is absent (or no producer is set), behavior is unchanged (unauthenticated GET).
+  - New setter `SetDefaultClientAuth(*RequestObjectProducer)` and package var `DefaultClientAuth` enable auto-auth for the fetch/list/trust-mark endpoints (`FetchEntityStatement`, entity collection list fetching, and external trust-mark refresh).
+  - `SimpleRemoteMetadataResolver` gains `ClientAuth *RequestObjectProducer` (non-nil → always POST + client assertion), optional `Headers`, and `AlgsFromEC func() []string` for reading acceptable signing algorithms from the target's Entity Configuration. `RemoteResolverClientAuth` (`ROProducer` + `Force`) applies only to `SmartRemoteMetadataResolver`.
+  - `SmartRemoteMetadataResolver` gains `ClientAuth *RemoteResolverClientAuth` and, when set, authenticates to each trust anchor's resolve endpoint exactly when the anchor's EC advertises `private_key_jwt` in `federation_resolve_endpoint_auth_methods` (or always with `Force: true`).
+
 ## go-oidfed/lib 0.11.4
 
 ### Enhancements

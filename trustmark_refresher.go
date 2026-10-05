@@ -11,7 +11,6 @@ import (
 	"github.com/zachmann/go-utils/duration"
 
 	"github.com/go-oidfed/lib/internal"
-	"github.com/go-oidfed/lib/internal/http"
 	"github.com/go-oidfed/lib/jwx"
 	"github.com/go-oidfed/lib/unixtime"
 )
@@ -232,6 +231,7 @@ func (c *EntityConfigurationTrustMarkConfig) refreshSelfIssued() (string, unixti
 // refreshExternal handles external trust mark issuer refresh
 func (c *EntityConfigurationTrustMarkConfig) refreshExternal() (string, unixtime.Unixtime, error) {
 	var endpoint string
+	var fe *FederationEntityMetadata
 	if c.TrustMarkIssuer == c.sub {
 		endpoint = c.ownTrustMarkEndpoint
 	} else {
@@ -244,11 +244,16 @@ func (c *EntityConfigurationTrustMarkConfig) refreshExternal() (string, unixtime
 			return "", unixtime.Unixtime{}, errors.New("could not obtain trust mark endpoint of trust mark issuer")
 		}
 		endpoint = tmi.Metadata.FederationEntity.FederationTrustMarkEndpoint
+		fe = tmi.Metadata.FederationEntity
+	}
+	var authMethods []string
+	if fe != nil {
+		authMethods = fe.FederationTrustMarkEndpointAuthMethods
 	}
 	params := url.Values{}
 	params.Add("trust_mark_type", c.TrustMarkType)
 	params.Add("sub", c.sub)
-	res, errRes, err := http.Get(endpoint, params, nil)
+	res, errRes, err := httpFederationEndpointRequest(endpoint, params, authMethods, fe, nil)
 	if err != nil {
 		return "", unixtime.Unixtime{}, err
 	}

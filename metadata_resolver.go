@@ -3,12 +3,14 @@ package oidfed
 import (
 	"encoding/json"
 
+	"github.com/go-resty/resty/v2"
 	"github.com/google/go-querystring/query"
 	"github.com/pkg/errors"
 
 	"github.com/go-oidfed/lib/apimodel"
 	"github.com/go-oidfed/lib/internal"
 	"github.com/go-oidfed/lib/internal/http"
+	internalhttp "github.com/go-oidfed/lib/internal/http"
 	"github.com/go-oidfed/lib/internal/jwx"
 	"github.com/go-oidfed/lib/oidfedconst"
 )
@@ -102,6 +104,20 @@ func (LocalMetadataResolver) ResolvePossible(req apimodel.ResolveRequest) (bool,
 // ResolveEndpoint
 type SimpleRemoteMetadataResolver struct {
 	ResolveEndpoint string
+	// ClientAuth, when non-nil, authenticates every resolve request with a
+	// private_key_jwt client assertion (audience = ResolveEndpoint) sent as a
+	// form-encoded POST containing the resolve params plus
+	// client_assertion_type/client_assertion. When nil, an unauthenticated GET
+	// with the params as URL query is used. EC-based advertisement checks
+	// (federation_resolve_endpoint_auth_methods) are the caller's concern —
+	// see SmartRemoteMetadataResolver.
+	ClientAuth *RequestObjectProducer
+	// Headers, when non-nil, are added to every request.
+	Headers map[string]string
+	// AlgsFromEC, when non-nil, reads the endpoint's acceptable signing
+	// algorithms from the target entity's Entity Configuration. If nil, the
+	// producer's DefaultSigner is used.
+	AlgsFromEC func() []string
 }
 
 const (
@@ -122,30 +138,63 @@ func (r SimpleRemoteMetadataResolver) ResolveResponse(req apimodel.ResolveReques
 	if err != nil {
 		return nil, resolveStatus, errors.WithStack(err)
 	}
-	res, errRes, err := http.Get(r.ResolveEndpoint, params, nil)
-	if err != nil {
-		return nil, resolveStatus, err
-	}
-	if errRes != nil {
-		switch errRes.Error {
-		case InvalidSubject, InvalidTrustAnchor:
-			resolveStatus = resolveStatusNotAcceptable
-		case InvalidTrustChain:
-			resolveStatus = resolveStatusInvalid
-		case InvalidMetadata:
-			resolveStatus = resolveStatusOnlyValidTrustChain
-		default:
-			resolveStatus = resolveStatusUnknown
+
+	// process converts the raw HTTP result (via the shared resty.Response and
+	// *http.HttpError result shape) into a resolveStatus. It is shared by the
+	// authenticated POST and the unauthenticated GET paths.
+	process := func(res *resty.Response, errRes *internalhttp.HttpError, err error) (*ResolveResponse, int, error) {
+		if err != nil {
+			return nil, resolveStatus, err
 		}
-		return nil, resolveStatus, nil
+		if errRes != nil {
+			switch errRes.Error {
+			case InvalidSubject, InvalidTrustAnchor:
+				resolveStatus = resolveStatusNotAcceptable
+			case InvalidTrustChain:
+				resolveStatus = resolveStatusInvalid
+			case InvalidMetadata:
+				resolveStatus = resolveStatusOnlyValidTrustChain
+			default:
+				resolveStatus = resolveStatusUnknown
+			}
+			return nil, resolveStatus, nil
+		}
+		rres, err := ParseResolveResponse(res.Body())
+		if err != nil {
+			// Keep status at unknown for parse/format errors
+			return nil, resolveStatus, err
+		}
+		resolveStatus = resolveStatusValid
+		return rres, resolveStatus, nil
 	}
-	rres, err := ParseResolveResponse(res.Body())
-	if err != nil {
-		// Keep status at unknown for parse/format errors
-		return nil, resolveStatus, err
+
+	if r.ClientAuth != nil {
+		algs := []string(nil)
+		if r.AlgsFromEC != nil {
+			algs = r.AlgsFromEC()
+		}
+		form, err := clientAuthForm(params, r.ClientAuth, r.ResolveEndpoint, algs)
+		if err != nil {
+			return nil, resolveStatus, errors.WithStack(err)
+		}
+		authReq := internalhttp.Do().R().SetFormDataFromValues(form).SetError(&internalhttp.HttpError{})
+		for k, v := range r.Headers {
+			authReq.SetHeader(k, v)
+		}
+		res, re := authReq.Post(r.ResolveEndpoint)
+		if re != nil {
+			return process(res, nil, errors.WithStack(re))
+		}
+		var errRes *internalhttp.HttpError
+		if e, ok := res.Error().(*internalhttp.HttpError); ok && e != nil && e.Error != "" {
+			e.Status = res.RawResponse.StatusCode
+			errRes = e
+		}
+		return process(res, errRes, nil)
 	}
-	resolveStatus = resolveStatusValid
-	return rres, resolveStatus, nil
+
+	res, errRes, err := http.Get(r.ResolveEndpoint, params, nil)
+	return process(res, errRes, err)
 }
 
 // Resolve implements the MetadataResolver interface
@@ -212,11 +261,51 @@ func ParseResolveResponse(body []byte) (*ResolveResponse, error) {
 	return &res, err
 }
 
+// RemoteResolverClientAuth configures private_key_jwt client authentication
+// for a SmartRemoteMetadataResolver.
+type RemoteResolverClientAuth struct {
+	// ROProducer produces the client assertion JWT (private_key_jwt).
+	ROProducer *RequestObjectProducer
+	// Force, when true, authenticates against every trust anchor's resolve
+	// endpoint even when its EC does not advertise private_key_jwt; when
+	// false, endpoints are authenticated exactly when the EC advertises it.
+	Force bool
+}
+
 // SmartRemoteMetadataResolver is a MetadataResolver that utilizes remote
 // resolve endpoints. It will iterate through the resolve endpoints of the
 // given TrustAnchors and stop if one is successful,
 // if no resolve endpoint is successful, local resolving is used
-type SmartRemoteMetadataResolver struct{}
+type SmartRemoteMetadataResolver struct {
+	// ClientAuth, when non-nil, enables private_key_jwt client authentication
+	// against each trust anchor's resolve endpoint. With Force=false, a
+	// resolve endpoint is authenticated exactly when the trust anchor's EC
+	// advertises private_key_jwt in
+	// federation_resolve_endpoint_auth_methods; with Force=true, every resolve
+	// request is authenticated.
+	ClientAuth *RemoteResolverClientAuth
+}
+
+// remoteResolverForTA builds a SimpleRemoteMetadataResolver for a trust
+// anchor's resolve endpoint, applying this resolver's ClientAuth. When
+// r.ClientAuth is non-nil, the endpoint is authenticated (POST + client
+// assertion) if Force is set or the trust anchor's EC advertises
+// private_key_jwt; signing algorithms are read from the EC. With a nil
+// ClientAuth the plain unauthenticated resolver is returned.
+func (r SmartRemoteMetadataResolver) remoteResolverForTA(
+	resolveEndpoint string, fe *FederationEntityMetadata,
+) SimpleRemoteMetadataResolver {
+	rr := SimpleRemoteMetadataResolver{
+		ResolveEndpoint: resolveEndpoint,
+	}
+	if r.ClientAuth != nil {
+		if r.ClientAuth.Force || clientAuthRequired(fe.FederationResolveEndpointAuthMethods) {
+			rr.ClientAuth = r.ClientAuth.ROProducer
+		}
+		rr.AlgsFromEC = func() []string { return endpointAlgsFromEC(fe) }
+	}
+	return rr
+}
 
 // Resolve implements the MetadataResolver interface
 func (r SmartRemoteMetadataResolver) Resolve(req apimodel.ResolveRequest) (*Metadata, error) {
@@ -228,7 +317,7 @@ func (r SmartRemoteMetadataResolver) Resolve(req apimodel.ResolveRequest) (*Meta
 }
 
 // ResolveResponsePayload implements the MetadataResolver interface
-func (SmartRemoteMetadataResolver) ResolveResponsePayload(req apimodel.ResolveRequest) (
+func (r SmartRemoteMetadataResolver) ResolveResponsePayload(req apimodel.ResolveRequest) (
 	ResolveResponsePayload, error,
 ) {
 	// Prefer trust anchors hinted by the starting entity; fall back to others.
@@ -273,9 +362,7 @@ func (SmartRemoteMetadataResolver) ResolveResponsePayload(req apimodel.ResolveRe
 		if resolveEndpoint == "" {
 			continue
 		}
-		remoteResolver := SimpleRemoteMetadataResolver{
-			ResolveEndpoint: resolveEndpoint,
-		}
+		remoteResolver := r.remoteResolverForTA(resolveEndpoint, entityConfig.Metadata.FederationEntity)
 		res, err := remoteResolver.ResolveResponsePayload(req)
 		if err != nil {
 			internal.Logf("MetadataResolver: error while obtaining resolve response: %v", err)
@@ -287,7 +374,7 @@ func (SmartRemoteMetadataResolver) ResolveResponsePayload(req apimodel.ResolveRe
 }
 
 // ResolvePossible implements the MetadataResolver interface
-func (SmartRemoteMetadataResolver) ResolvePossible(req apimodel.ResolveRequest) (bool, bool) {
+func (r SmartRemoteMetadataResolver) ResolvePossible(req apimodel.ResolveRequest) (bool, bool) {
 	// Prefer trust anchors hinted by the starting entity; fall back to others.
 	var ordered []string
 	if req.Subject != "" {
@@ -327,9 +414,7 @@ func (SmartRemoteMetadataResolver) ResolvePossible(req apimodel.ResolveRequest) 
 		if resolveEndpoint == "" {
 			continue
 		}
-		remoteResolver := SimpleRemoteMetadataResolver{
-			ResolveEndpoint: resolveEndpoint,
-		}
+		remoteResolver := r.remoteResolverForTA(resolveEndpoint, entityConfig.Metadata.FederationEntity)
 		validConfirmed, invalidConfirmed := remoteResolver.ResolvePossible(req)
 		if validConfirmed {
 			return true, false
