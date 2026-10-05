@@ -4,7 +4,6 @@ import (
 	"github.com/jwx-go/compsig/v4"
 	"github.com/jwx-go/ed448/v4"
 	"github.com/jwx-go/es256k/v4"
-	jwxmldsa "github.com/jwx-go/mldsa/v4"
 	"github.com/lestrrat-go/jwx/v4/jwa"
 )
 
@@ -22,9 +21,9 @@ var supportedAlgs = []jwa.SignatureAlgorithm{
 	jwa.RS512(),
 	jwa.RS384(),
 	jwa.RS256(),
-	jwxmldsa.MLDSA44(),
-	jwxmldsa.MLDSA65(),
-	jwxmldsa.MLDSA87(),
+	jwa.MLDSA44(),
+	jwa.MLDSA65(),
+	jwa.MLDSA87(),
 	compsig.MLDSA44ES256(),
 	compsig.MLDSA65ES256(),
 	compsig.MLDSA87ES384(),

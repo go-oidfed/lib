@@ -6,10 +6,9 @@ import (
 	"encoding/pem"
 	"os"
 
-	compsig "github.com/jwx-go/compsig/v4"
+	"github.com/jwx-go/compsig/v4"
 	ed448ext "github.com/jwx-go/ed448/v4"
 	"github.com/jwx-go/es256k/v4"
-	jwxmldsa "github.com/jwx-go/mldsa/v4"
 	"github.com/lestrrat-go/jwx/v4/jwa"
 	"github.com/pkg/errors"
 	"github.com/zachmann/go-utils/fileutils"
@@ -55,7 +54,7 @@ func ParseSignerFromPEM(data []byte, alg jwa.SignatureAlgorithm) (SigningKey, er
 			return nil, errors.WithStack(err)
 		}
 		sk = key
-	case jwxmldsa.MLDSA44(), jwxmldsa.MLDSA65(), jwxmldsa.MLDSA87():
+	case jwa.MLDSA44(), jwa.MLDSA65(), jwa.MLDSA87():
 		key, err := parseMLDSAPKCS8PrivateKey(block.Bytes)
 		if err != nil {
 			return nil, errors.WithStack(err)

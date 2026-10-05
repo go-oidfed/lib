@@ -4,17 +4,16 @@ import (
 	"crypto/ecdsa"
 	"crypto/ed25519"
 	"crypto/elliptic"
+	"crypto/mldsa"
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/x509"
 	"encoding/pem"
 
-	"filippo.io/mldsa"
 	"github.com/cloudflare/circl/sign/ed448"
-	compsig "github.com/jwx-go/compsig/v4"
+	"github.com/jwx-go/compsig/v4"
 	ed448ext "github.com/jwx-go/ed448/v4"
 	"github.com/jwx-go/es256k/v4"
-	jwxmldsa "github.com/jwx-go/mldsa/v4"
 	"github.com/lestrrat-go/jwx/v4/jwa"
 	"github.com/lestrrat-go/jwx/v4/jwk"
 	"github.com/pkg/errors"
@@ -44,11 +43,11 @@ func generatePrivateKey(alg jwa.SignatureAlgorithm, rsaKeyLen int) (
 		_, sk, err = ed25519.GenerateKey(rand.Reader)
 	case ed448ext.EdDSAEd448():
 		_, sk, err = ed448.GenerateKey(rand.Reader)
-	case jwxmldsa.MLDSA44():
+	case jwa.MLDSA44():
 		sk, err = mldsa.GenerateKey(mldsa.MLDSA44())
-	case jwxmldsa.MLDSA65():
+	case jwa.MLDSA65():
 		sk, err = mldsa.GenerateKey(mldsa.MLDSA65())
-	case jwxmldsa.MLDSA87():
+	case jwa.MLDSA87():
 		sk, err = mldsa.GenerateKey(mldsa.MLDSA87())
 	case compsig.MLDSA44ES256(), compsig.MLDSA65ES256(), compsig.MLDSA87ES384(),
 		compsig.MLDSA44Ed25519(), compsig.MLDSA65Ed25519(), compsig.MLDSA87Ed448():

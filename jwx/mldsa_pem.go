@@ -1,17 +1,46 @@
 package jwx
 
 import (
+	"crypto/mldsa"
 	"encoding/asn1"
 	"encoding/pem"
 	"fmt"
-
-	mldsa "filippo.io/mldsa"
 )
 
 var (
-	oidMLDSA44 = asn1.ObjectIdentifier{2, 16, 840, 1, 101, 3, 4, 3, 17}
-	oidMLDSA65 = asn1.ObjectIdentifier{2, 16, 840, 1, 101, 3, 4, 3, 18}
-	oidMLDSA87 = asn1.ObjectIdentifier{2, 16, 840, 1, 101, 3, 4, 3, 19}
+	oidMLDSA44 = asn1.ObjectIdentifier{
+		2,
+		16,
+		840,
+		1,
+		101,
+		3,
+		4,
+		3,
+		17,
+	}
+	oidMLDSA65 = asn1.ObjectIdentifier{
+		2,
+		16,
+		840,
+		1,
+		101,
+		3,
+		4,
+		3,
+		18,
+	}
+	oidMLDSA87 = asn1.ObjectIdentifier{
+		2,
+		16,
+		840,
+		1,
+		101,
+		3,
+		4,
+		3,
+		19,
+	}
 )
 
 type mldsaPKCS8 struct {
@@ -24,7 +53,7 @@ type mldsaAlgorithmIdentifier struct {
 	Algorithm asn1.ObjectIdentifier
 }
 
-func mldsaParamsToOID(params *mldsa.Parameters) (asn1.ObjectIdentifier, error) {
+func mldsaParamsToOID(params mldsa.Parameters) (asn1.ObjectIdentifier, error) {
 	switch params {
 	case mldsa.MLDSA44():
 		return oidMLDSA44, nil
@@ -37,7 +66,7 @@ func mldsaParamsToOID(params *mldsa.Parameters) (asn1.ObjectIdentifier, error) {
 	}
 }
 
-func mldsaOIDToParams(oid asn1.ObjectIdentifier) (*mldsa.Parameters, error) {
+func mldsaOIDToParams(oid asn1.ObjectIdentifier) (mldsa.Parameters, error) {
 	switch {
 	case oid.Equal(oidMLDSA44):
 		return mldsa.MLDSA44(), nil
@@ -46,14 +75,16 @@ func mldsaOIDToParams(oid asn1.ObjectIdentifier) (*mldsa.Parameters, error) {
 	case oid.Equal(oidMLDSA87):
 		return mldsa.MLDSA87(), nil
 	default:
-		return nil, fmt.Errorf("not an ML-DSA key, got algorithm OID %s", oid)
+		return mldsa.Parameters{}, fmt.Errorf("not an ML-DSA key, got algorithm OID %s", oid)
 	}
 }
 
 func marshalMLDSAPKCS8PrivateKey(key *mldsa.PrivateKey) ([]byte, error) {
 	seed := key.Bytes()
 	if len(seed) != mldsa.PrivateKeySize {
-		return nil, fmt.Errorf("mldsa: invalid private key seed length %d (expected %d)", len(seed), mldsa.PrivateKeySize)
+		return nil, fmt.Errorf(
+			"mldsa: invalid private key seed length %d (expected %d)", len(seed), mldsa.PrivateKeySize,
+		)
 	}
 
 	oid, err := mldsaParamsToOID(key.PublicKey().Parameters())
@@ -105,8 +136,10 @@ func exportMLDSAPrivateKeyAsPem(key *mldsa.PrivateKey) []byte {
 	if err != nil {
 		return nil
 	}
-	return pem.EncodeToMemory(&pem.Block{
-		Type:  "PRIVATE KEY",
-		Bytes: der,
-	})
+	return pem.EncodeToMemory(
+		&pem.Block{
+			Type:  "PRIVATE KEY",
+			Bytes: der,
+		},
+	)
 }
