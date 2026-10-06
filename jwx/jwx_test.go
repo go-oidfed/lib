@@ -6,6 +6,8 @@ import (
 	"crypto/ed25519"
 	"crypto/mldsa"
 	"crypto/rsa"
+	"crypto/x509"
+	"encoding/asn1"
 	"encoding/json"
 	"encoding/pem"
 	"io"
@@ -1425,6 +1427,122 @@ func TestMLDSA87_PEMRoundTrip(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, sk.Bytes(), parsed.Bytes())
 	assert.True(t, sk.PublicKey().Equal(parsed.PublicKey()))
+}
+
+func TestMLDSAParseAcceptsLegacyAndInteropEncoding(t *testing.T) {
+	for _, params := range []mldsa.Parameters{
+		mldsa.MLDSA44(),
+		mldsa.MLDSA65(),
+		mldsa.MLDSA87(),
+	} {
+		sk, err := mldsa.GenerateKey(params)
+		require.NoError(t, err)
+
+		oid, err := mldsaParamsToOID(sk.PublicKey().Parameters())
+		require.NoError(t, err)
+		inner, err := asn1.Marshal(sk.Bytes())
+		require.NoError(t, err)
+		legacyDER, err := asn1.Marshal(
+			mldsaPKCS8{
+				Version: 0,
+				Algo: mldsaAlgorithmIdentifier{
+					Algorithm: oid,
+				},
+				PrivateKey: inner,
+			},
+		)
+		require.NoError(t, err)
+
+		legacyParsed, err := parseMLDSAPKCS8PrivateKey(legacyDER)
+		require.NoError(t, err, "legacy encoding must still parse")
+		assert.Equal(t, sk.Bytes(), legacyParsed.Bytes())
+		assert.True(t, sk.PublicKey().Equal(legacyParsed.PublicKey()))
+
+		interopDER, err := marshalMLDSAPKCS8PrivateKey(sk)
+		require.NoError(t, err)
+		assert.NotEqual(t, legacyDER, interopDER, "interop and legacy encodings must differ")
+		interopParsed, err := parseMLDSAPKCS8PrivateKey(interopDER)
+		require.NoError(t, err)
+		assert.Equal(t, sk.Bytes(), interopParsed.Bytes())
+
+		// the interop DER must also parse via crypto/x509 directly
+		stdParsed, err := x509.ParsePKCS8PrivateKey(interopDER)
+		require.NoError(t, err)
+		assert.True(t, sk.Equal(stdParsed.(crypto.PrivateKey)))
+	}
+}
+
+func TestMLDSAConvertPEMRewritesLegacyEncoding(t *testing.T) {
+	sk := testKey(t, jwa.MLDSA65()).(*mldsa.PrivateKey)
+
+	oid, err := mldsaParamsToOID(sk.PublicKey().Parameters())
+	require.NoError(t, err)
+	inner, err := asn1.Marshal(sk.Bytes())
+	require.NoError(t, err)
+	legacyDER, err := asn1.Marshal(
+		mldsaPKCS8{
+			Version: 0,
+			Algo: mldsaAlgorithmIdentifier{
+				Algorithm: oid,
+			},
+			PrivateKey: inner,
+		},
+	)
+	require.NoError(t, err)
+	legacyPEM := pem.EncodeToMemory(
+		&pem.Block{
+			Type:  "PRIVATE KEY",
+			Bytes: legacyDER,
+		},
+	)
+
+	converted, err := ConvertMLDSAPEM(legacyPEM)
+	require.NoError(t, err)
+
+	block, _ := pem.Decode(converted)
+	require.NotNil(t, block)
+	assert.Equal(t, "PRIVATE KEY", block.Type)
+	assert.NotEqual(t, legacyDER, block.Bytes, "conversion must rewrite the DER")
+
+	// converted output must be exactly what stdlib produces for the same key
+	stdDER, err := x509.MarshalPKCS8PrivateKey(sk)
+	require.NoError(t, err)
+	assert.Equal(t, stdDER, block.Bytes)
+
+	// key identity preserved
+	reparsed, err := ParseMLDSAPrivateKeyFromPEM(converted)
+	require.NoError(t, err)
+	assert.Equal(t, sk.Bytes(), reparsed.Bytes())
+	assert.True(t, sk.PublicKey().Equal(reparsed.PublicKey()))
+
+	// the key object variant produces the same result
+	converted2, err := ExportMLDSAPrivateKeyAsPem(sk)
+	require.NoError(t, err)
+	assert.Equal(t, converted, converted2)
+}
+
+func TestMLDSAParseRejectsGarbage(t *testing.T) {
+	_, err := ParseMLDSAPrivateKeyFromPEM([]byte("not a pem"))
+	assert.Error(t, err)
+
+	// valid outer PKCS#8 shape, unknown algorithm OID
+	badDER, err := asn1.Marshal(
+		mldsaPKCS8{
+			Version: 0,
+			Algo: mldsaAlgorithmIdentifier{
+				Algorithm: asn1.ObjectIdentifier{
+					1,
+					2,
+					3,
+					4,
+					5,
+				},
+			},
+		},
+	)
+	require.NoError(t, err)
+	_, err = parseMLDSAPKCS8PrivateKey(badDER)
+	assert.Error(t, err)
 }
 
 func TestCompsig_MLDSA44ES256_SignAndVerify(t *testing.T) {
