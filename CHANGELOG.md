@@ -1,11 +1,22 @@
 ## go-oidfed/lib 0.12.0
 
+The required go version is now 1.27.
+
 ### Features
 
 - **Automatic `private_key_jwt` client authentication on federation endpoints.** An entity that advertises `private_key_jwt` in an endpoint's `*_auth_methods` (fetch, list, resolve, trust-mark) is now called with an authenticated form-encoded POST: the request params plus `client_assertion_type` + `client_assertion` (audience = endpoint URL). When the field is absent (or no producer is set), behavior is unchanged (unauthenticated GET).
   - New setter `SetDefaultClientAuth(*RequestObjectProducer)` and package var `DefaultClientAuth` enable auto-auth for the fetch/list/trust-mark endpoints (`FetchEntityStatement`, entity collection list fetching, and external trust-mark refresh).
   - `SimpleRemoteMetadataResolver` gains `ClientAuth *RequestObjectProducer` (non-nil → always POST + client assertion), optional `Headers`, and `AlgsFromEC func() []string` for reading acceptable signing algorithms from the target's Entity Configuration. `RemoteResolverClientAuth` (`ROProducer` + `Force`) applies only to `SmartRemoteMetadataResolver`.
   - `SmartRemoteMetadataResolver` gains `ClientAuth *RemoteResolverClientAuth` and, when set, authenticates to each trust anchor's resolve endpoint exactly when the anchor's EC advertises `private_key_jwt` in `federation_resolve_endpoint_auth_methods` (or always with `Force: true`).
+
+### Breaking Changes
+
+- **ML-DSA keys now use Go's native `crypto/mldsa`.** The `github.com/jwx-go/mldsa/v4` and `filippo.io/mldsa` extension imports are gone; all ML-DSA key types are `crypto/mldsa` and algorithms come from `jwa` (`jwa.MLDSA44/65/87()`). ML-DSA signing/verification and PKCS#8 PEM handling are unchanged in behavior.
+- **ML-DSA PEM export now writes the interoperable (RFC 9935) seed-only encoding** via `crypto/x509` instead of the legacy OCTET-STRING-wrapped seed form. This matches what OpenSSL and Go's stdlib emit. Parsing still accepts both the new and the legacy encoding, so previously exported keys keep loading.
+
+### Migration
+
+- New `jwx.ConvertMLDSAPEM([]byte) ([]byte, error)` re-encodes a PEM ML-DSA private key from the legacy encoding to the new interoperable one; `jwx.ConvertMLDSAPrivateKeyAsPem(*mldsa.PrivateKey)` is the object-level variant. Existing legacy keys continue to load without conversion; run the converter when you want PEM files to match OpenSSL/stdlib output. New helpers `jwx.ParseMLDSAPrivateKeyFromPEM` and `jwx.ExportMLDSAPrivateKeyAsPem` are also exported.
 
 ## go-oidfed/lib 0.11.4
 
