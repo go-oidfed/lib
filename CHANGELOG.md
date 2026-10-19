@@ -5,8 +5,12 @@
 - Entity Collection: when an Entity publishes a `federation_collection_endpoint`, the `SimpleEntityCollector` now 
   delegates enumeration of that Entity's entire subtree to the endpoint instead of recursively descending its 
   `federation_list_endpoint` level by level. Records returned by the remote are enriched by fetching the leaf Entity 
-  Configuration when the record omits what the classic traversal would return by default (`entity_types` and 
-  `entity_infos`) or a requested `info_claims`/`entity_claims`/`trust_marks`/`query` item; if the remote call fails or returns nothing, the collector falls back to the classic recursive list traversal. Enabled by default; opt out by setting `DisableSubordinateCollectionEndpoints: true`.
+  Configuration, filling in **only the parts that are missing** (`entity_types`, `entity_infos`, and/or requested 
+  `trust_marks`), so the fast-path output stays consistent with the classic traversal's default output (it reports 
+  `entity_types` and `entity_infos` by default) and with `query`/`info_claims`/`entity_claims` requests. If the remote
+  call fails or returns nothing, the collector falls back to the classic recursive list traversal. Enabled by default; 
+  construct via `NewSimpleEntityCollector()` and opt out by setting `DisableSubordinateCollectionEndpoints: true`.
+
 
 ### Breaking Changes
 
@@ -16,6 +20,11 @@
   - `FederationCollectionEndpointAuthMethods` (`json:"federation_collection_endpoint_auth_methods"`).
   - `FederationExtendedListEndpoint` (`json:"federation_extended_list_endpoint"`).
   - `FederationExtendedListEndpointAuthMethods` (`json:"federation_extended_list_endpoint_auth_methods"`).
+
+### Dependencies
+
+- Bump golang.org/x/text from 0.42.0 to 0.43.0.
+- Bump github.com/redis/go-redis/v9 from 9.22.0 to 9.23.0.
 
 ## go-oidfed/lib 0.12.0
 
