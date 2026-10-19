@@ -41,12 +41,12 @@ type CollectedEntity struct {
 	EntityID    string         `json:"entity_id"`
 	TrustMarks  TrustMarkInfos `json:"trust_marks,omitempty"`
 	metadata    *Metadata
-	EntityTypes []string          `json:"entity_types,omitempty"`
-	UIInfos     map[string]UIInfo `json:"ui_infos,omitempty"`
-	Extra       map[string]any    `json:"-"`
+	EntityTypes []string                  `json:"entity_types,omitempty"`
+	EntityInfos map[string]EntityTypeInfo `json:"entity_infos,omitempty"`
+	Extra       map[string]any            `json:"-"`
 }
 
-type UIInfo struct {
+type EntityTypeInfo struct {
 	DisplayName    string         `json:"display_name,omitempty"`
 	Description    string         `json:"description,omitempty"`
 	Keywords       []string       `json:"keywords,omitempty"`
@@ -56,16 +56,16 @@ type UIInfo struct {
 	Extra          map[string]any `json:"-"`
 }
 
-// setUInfoField sets a field in UIInfo	 by matching the JSON tag.
+// setEntityTypeInfoField sets a field in EntityTypeInfo	 by matching the JSON tag.
 // Falls back to Extra if the field is not found or not assignable.
-func (e *CollectedEntity) setUIInfoField(
+func (e *CollectedEntity) setEntityTypeInfoField(
 	entityType, jsonTag string, value any,
 ) error {
-	if e.UIInfos == nil {
-		e.UIInfos = make(map[string]UIInfo)
+	if e.EntityInfos == nil {
+		e.EntityInfos = make(map[string]EntityTypeInfo)
 	}
 
-	uiInfo := e.UIInfos[entityType]
+	uiInfo := e.EntityInfos[entityType]
 	uiInfoValue := reflect.ValueOf(&uiInfo).Elem()
 	uiInfoType := uiInfoValue.Type()
 
@@ -102,7 +102,7 @@ func (e *CollectedEntity) setUIInfoField(
 		uiInfo.Extra[jsonTag] = value
 	}
 
-	e.UIInfos[entityType] = uiInfo
+	e.EntityInfos[entityType] = uiInfo
 	return nil
 }
 
@@ -131,8 +131,8 @@ func (e *CollectedEntity) UnmarshalJSON(data []byte) error {
 }
 
 // MarshalJSON implements the json.Marshaler interface
-func (i UIInfo) MarshalJSON() ([]byte, error) {
-	type Alias UIInfo
+func (i EntityTypeInfo) MarshalJSON() ([]byte, error) {
+	type Alias EntityTypeInfo
 	explicitFields, err := json.Marshal(Alias(i))
 	if err != nil {
 		return nil, errors.WithStack(err)
@@ -141,8 +141,8 @@ func (i UIInfo) MarshalJSON() ([]byte, error) {
 }
 
 // UnmarshalJSON implements the json.Unmarshaler interface
-func (i *UIInfo) UnmarshalJSON(data []byte) error {
-	type Alias UIInfo
+func (i *EntityTypeInfo) UnmarshalJSON(data []byte) error {
+	type Alias EntityTypeInfo
 	ii := Alias(*i)
 
 	extra, err := unmarshalWithExtra(data, &ii)
@@ -150,7 +150,7 @@ func (i *UIInfo) UnmarshalJSON(data []byte) error {
 		return errors.WithStack(err)
 	}
 	ii.Extra = extra
-	*i = UIInfo(ii)
+	*i = EntityTypeInfo(ii)
 	return nil
 }
 

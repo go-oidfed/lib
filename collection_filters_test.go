@@ -23,7 +23,7 @@ func TestFilterAndTrim_QueryFuzzy(t *testing.T) {
 	e := &CollectedEntity{
 		EntityID:    "e1",
 		EntityTypes: []string{"openid_provider"},
-		UIInfos: map[string]UIInfo{
+		EntityInfos: map[string]EntityTypeInfo{
 			"openid_provider": {DisplayName: "Amazing Service", Extra: map[string]any{"display_name#en": "Amazing Service"}},
 		},
 	}
@@ -47,7 +47,7 @@ func TestFilterAndTrim_TrustMarks(t *testing.T) {
 func TestTrim_LanguageFiltering(t *testing.T) {
 	e := &CollectedEntity{
 		EntityID: "e1",
-		UIInfos: map[string]UIInfo{
+		EntityInfos: map[string]EntityTypeInfo{
 			"openid_provider": {
 				DisplayName: "Default Name",
 				Extra: map[string]any{
@@ -59,14 +59,14 @@ func TestTrim_LanguageFiltering(t *testing.T) {
 	}
 
 	got := FilterAndTrimEntities([]*CollectedEntity{e}, apimodel.EntityCollectionRequest{
-		UIClaims:     []string{"display_name"},
+		InfoClaims:   []string{"display_name"},
 		LanguageTags: []string{"en"},
 	})
 
 	if len(got) != 1 {
 		t.Fatalf("expected 1 result, got %d", len(got))
 	}
-	ui := got[0].UIInfos["openid_provider"]
+	ui := got[0].EntityInfos["openid_provider"]
 	if ui.DisplayName != "Default Name" {
 		t.Fatalf("expected default display name kept, got %q", ui.DisplayName)
 	}

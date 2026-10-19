@@ -39,17 +39,17 @@ func (m MultilingualString) String() string {
 	return ""
 }
 
-// MultilingualUIInfo is a version of UIInfo that supports multilingual values.
+// MultilingualEntityTypeInfo is a version of EntityTypeInfo that supports multilingual values.
 // This type is used internally for processing UI claims in multiple languages.
 //
-// It replaces the string fields in UIInfo with MultilingualString fields to support
+// It replaces the string fields in EntityTypeInfo with MultilingualString fields to support
 // multiple language representations of the same information. The Keywords field
 // remains as a string slice since it's not typically language-specific.
 //
 // This type is not exposed directly in the API but is used internally to convert
-// between the standard UIInfo type and multilingual representations. It may be used
+// between the standard EntityTypeInfo type and multilingual representations. It may be used
 // by third-party applications.
-type MultilingualUIInfo struct {
+type MultilingualEntityTypeInfo struct {
 	DisplayName    MultilingualString `json:"display_name,omitempty"`
 	Description    MultilingualString `json:"description,omitempty"`
 	Keywords       []string           `json:"keywords,omitempty"`
@@ -59,7 +59,7 @@ type MultilingualUIInfo struct {
 	Extra          map[string]any     `json:"-"`
 }
 
-// setMultilingualUIInfoField sets a field in UIInfo with support for multiple languages.
+// setMultilingualEntityTypeInfoField sets a field in EntityTypeInfo with support for multiple languages.
 // It stores the value in the appropriate field based on the JSON tag and language tag.
 //
 // Parameters:
@@ -69,29 +69,29 @@ type MultilingualUIInfo struct {
 // - value: The value to set
 //
 // Returns an error if the value cannot be set.
-func (e *CollectedEntity) setMultilingualUIInfoField(entityType, jsonTag, langTag string, value any) error {
-	if e.UIInfos == nil {
-		e.UIInfos = make(map[string]UIInfo)
+func (e *CollectedEntity) setMultilingualEntityTypeInfoField(entityType, jsonTag, langTag string, value any) error {
+	if e.EntityInfos == nil {
+		e.EntityInfos = make(map[string]EntityTypeInfo)
 	}
 
-	uiInfo := e.UIInfos[entityType]
+	uiInfo := e.EntityInfos[entityType]
 
-	// Convert the existing UIInfo to MultilingualUIInfo if needed
-	multiUIInfo := convertToMultilingualUIInfo(uiInfo)
+	// Convert the existing EntityTypeInfo to MultilingualEntityTypeInfo if needed
+	multiEntityTypeInfo := convertToMultilingualEntityTypeInfo(uiInfo)
 
 	// Set the value in the appropriate field
-	multiUIInfoValue := reflect.ValueOf(&multiUIInfo).Elem()
-	multiUIInfoType := multiUIInfoValue.Type()
+	multiEntityTypeInfoValue := reflect.ValueOf(&multiEntityTypeInfo).Elem()
+	multiEntityTypeInfoType := multiEntityTypeInfoValue.Type()
 
 	fieldFound := false
 
-	for i := 0; i < multiUIInfoType.NumField(); i++ {
-		structField := multiUIInfoType.Field(i)
+	for i := 0; i < multiEntityTypeInfoType.NumField(); i++ {
+		structField := multiEntityTypeInfoType.Field(i)
 		tag := structField.Tag.Get("json")
 		tagName, _, _ := strings.Cut(tag, ",")
 
 		if tagName == jsonTag {
-			fieldValue := multiUIInfoValue.Field(i)
+			fieldValue := multiEntityTypeInfoValue.Field(i)
 			if fieldValue.CanSet() {
 				// For MultilingualString fields
 				if fieldValue.Type() == reflect.TypeFor[MultilingualString]() {
@@ -120,22 +120,22 @@ func (e *CollectedEntity) setMultilingualUIInfoField(entityType, jsonTag, langTa
 	}
 
 	if !fieldFound {
-		if multiUIInfo.Extra == nil {
-			multiUIInfo.Extra = make(map[string]any)
+		if multiEntityTypeInfo.Extra == nil {
+			multiEntityTypeInfo.Extra = make(map[string]any)
 		}
-		multiUIInfo.Extra[jsonTag] = value
+		multiEntityTypeInfo.Extra[jsonTag] = value
 	}
 
-	// Convert back to UIInfo and store
-	e.UIInfos[entityType] = convertToUIInfo(multiUIInfo)
+	// Convert back to EntityTypeInfo and store
+	e.EntityInfos[entityType] = convertToEntityTypeInfo(multiEntityTypeInfo)
 	return nil
 }
 
-// convertToMultilingualUIInfo converts a UIInfo to a MultilingualUIInfo
-// It handles both the default values from UIInfo fields and language-tagged values
+// convertToMultilingualEntityTypeInfo converts a EntityTypeInfo to a MultilingualEntityTypeInfo
+// It handles both the default values from EntityTypeInfo fields and language-tagged values
 // from the Extra map using the "tag#langTag" format.
-func convertToMultilingualUIInfo(info UIInfo) MultilingualUIInfo {
-	multiInfo := MultilingualUIInfo{
+func convertToMultilingualEntityTypeInfo(info EntityTypeInfo) MultilingualEntityTypeInfo {
+	multiInfo := MultilingualEntityTypeInfo{
 		Keywords: info.Keywords,
 		Extra:    make(map[string]any),
 	}
@@ -145,7 +145,7 @@ func convertToMultilingualUIInfo(info UIInfo) MultilingualUIInfo {
 		maps.Copy(multiInfo.Extra, info.Extra)
 	}
 
-	// Initialize MultilingualString fields with default values from UIInfo
+	// Initialize MultilingualString fields with default values from EntityTypeInfo
 	// Create a helper function to initialize MultilingualString fields
 	initMultilingualField := func(value string) MultilingualString {
 		if value != "" {
@@ -187,11 +187,11 @@ func convertToMultilingualUIInfo(info UIInfo) MultilingualUIInfo {
 	return multiInfo
 }
 
-// convertToUIInfo converts a MultilingualUIInfo to a UIInfo
-// It sets the default/untagged values as the primary values in UIInfo fields
+// convertToEntityTypeInfo converts a MultilingualEntityTypeInfo to a EntityTypeInfo
+// It sets the default/untagged values as the primary values in EntityTypeInfo fields
 // and stores language-tagged values in the Extra map using the "tag#langTag" format.
-func convertToUIInfo(multiInfo MultilingualUIInfo) UIInfo {
-	info := UIInfo{
+func convertToEntityTypeInfo(multiInfo MultilingualEntityTypeInfo) EntityTypeInfo {
+	info := EntityTypeInfo{
 		Keywords: multiInfo.Keywords,
 		Extra:    make(map[string]any),
 	}

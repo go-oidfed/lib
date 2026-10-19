@@ -1,3 +1,9 @@
+## go-oidfed/lib 0.12.1
+
+### Breaking Changes
+
+- **Entity Collection Endpoint updated to draft 01.** The response claim `ui_infos` was renamed to `entity_infos` and the request parameter `ui_claims` to `info_claims`, per the draft 01 changelog. Go identifiers follow: `CollectedEntity.UIInfos` → `CollectedEntity.EntityInfos`, `UIInfo` → `EntityTypeInfo`, and the `UIClaims` field of `apimodel.EntityCollectionRequest` → `InfoClaims`. The `locale` (language tag filtering) request-parameter wire name is now `locale` per draft 01 (previously `language_tag`); the filtering helpers were already present and are otherwise unchanged.
+
 ## go-oidfed/lib 0.12.0
 
 The required go version is now 1.27.

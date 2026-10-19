@@ -191,7 +191,7 @@ func (r *collectorResult) createCollectedEntity(
 		entity.EntityTypes = entityTypes
 	}
 
-	processUIClaims(entity, entityConfig, req)
+	processInfoClaims(entity, entityConfig, req)
 	r.processTrustMarks(entity, entityConfig, req)
 
 	return entity
@@ -204,7 +204,7 @@ func hasValidFederationListEndpoint(stmt *EntityStatement) bool {
 		stmt.Metadata.FederationEntity.FederationListEndpoint != ""
 }
 
-func processUIClaims(
+func processInfoClaims(
 	entity *CollectedEntity,
 	entityConfig *EntityStatement,
 	req apimodel.EntityCollectionRequest,
@@ -224,24 +224,24 @@ func processUIClaims(
 	}
 
 	for _, claim := range uiInfoClaims {
-		if len(req.UIClaims) == 0 || slices.Contains(req.UIClaims, claim) {
+		if len(req.InfoClaims) == 0 || slices.Contains(req.InfoClaims, claim) {
 			entityConfig.Metadata.IterateMultilingualStringClaim(
 				claim,
 				func(entityType, langTag, value string) {
 					// If language tags are specified in the request, only include those languages
 					if shouldIncludeLanguage(langTag, req.LanguageTags) {
-						_ = entity.setMultilingualUIInfoField(entityType, claim, langTag, value)
+						_ = entity.setMultilingualEntityTypeInfoField(entityType, claim, langTag, value)
 					}
 				},
 			)
 		}
 	}
 	for _, claim := range sliceClaims {
-		if len(req.UIClaims) == 0 || slices.Contains(req.UIClaims, claim) {
+		if len(req.InfoClaims) == 0 || slices.Contains(req.InfoClaims, claim) {
 			entityConfig.Metadata.IterateStringSliceClaim(
 				claim,
 				func(entityType string, value []string) {
-					_ = entity.setUIInfoField(entityType, claim, value)
+					_ = entity.setEntityTypeInfoField(entityType, claim, value)
 				},
 			)
 		}

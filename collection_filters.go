@@ -71,40 +71,40 @@ func trimEntity(e *CollectedEntity, req apimodel.EntityCollectionRequest) *Colle
 		out.TrustMarks = e.TrustMarks
 	}
 
-	includeAllUI := len(req.UIClaims) == 0
-	if includeAllClaims || includeAllUI || anyUIRequested(req.UIClaims) {
-		out.UIInfos = make(map[string]UIInfo, len(e.UIInfos))
-		for et, ui := range e.UIInfos {
-			var outUI UIInfo
-			if includeAllUI || contains(req.UIClaims, "keywords") {
+	includeAllUI := len(req.InfoClaims) == 0
+	if includeAllClaims || includeAllUI || anyUIRequested(req.InfoClaims) {
+		out.EntityInfos = make(map[string]EntityTypeInfo, len(e.EntityInfos))
+		for et, ui := range e.EntityInfos {
+			var outUI EntityTypeInfo
+			if includeAllUI || contains(req.InfoClaims, "keywords") {
 				outUI.Keywords = append([]string(nil), ui.Keywords...)
 			}
-			if includeAllUI || contains(req.UIClaims, "display_name") {
+			if includeAllUI || contains(req.InfoClaims, "display_name") {
 				outUI.DisplayName = ui.DisplayName
 				outUI.Extra = filterLangExtras(ui.Extra, "display_name", req.LanguageTags)
 			}
-			if includeAllUI || contains(req.UIClaims, "description") {
+			if includeAllUI || contains(req.InfoClaims, "description") {
 				outUI.Description = ui.Description
 				mergeExtras(&outUI, filterLangExtras(ui.Extra, "description", req.LanguageTags))
 			}
-			if includeAllUI || contains(req.UIClaims, "logo_uri") {
+			if includeAllUI || contains(req.InfoClaims, "logo_uri") {
 				outUI.LogoURI = ui.LogoURI
 				mergeExtras(&outUI, filterLangExtras(ui.Extra, "logo_uri", req.LanguageTags))
 			}
-			if includeAllUI || contains(req.UIClaims, "policy_uri") {
+			if includeAllUI || contains(req.InfoClaims, "policy_uri") {
 				outUI.PolicyURI = ui.PolicyURI
 				mergeExtras(&outUI, filterLangExtras(ui.Extra, "policy_uri", req.LanguageTags))
 			}
-			if includeAllUI || contains(req.UIClaims, "information_uri") {
+			if includeAllUI || contains(req.InfoClaims, "information_uri") {
 				outUI.InformationURI = ui.InformationURI
 				mergeExtras(&outUI, filterLangExtras(ui.Extra, "information_uri", req.LanguageTags))
 			}
-			if !isEmptyUIInfo(outUI) {
-				out.UIInfos[et] = outUI
+			if !isEmptyEntityTypeInfo(outUI) {
+				out.EntityInfos[et] = outUI
 			}
 		}
-		if len(out.UIInfos) == 0 {
-			out.UIInfos = nil
+		if len(out.EntityInfos) == 0 {
+			out.EntityInfos = nil
 		}
 	}
 
@@ -127,7 +127,7 @@ func anyUIRequested(ss []string) bool {
 
 func collectAllDisplayNames(e *CollectedEntity) []string {
 	var names []string
-	for _, ui := range e.UIInfos {
+	for _, ui := range e.EntityInfos {
 		if ui.DisplayName != "" {
 			names = append(names, ui.DisplayName)
 		}
@@ -163,7 +163,7 @@ func filterLangExtras(extra map[string]any, field string, requested []string) ma
 	return out
 }
 
-func mergeExtras(dst *UIInfo, extras map[string]any) {
+func mergeExtras(dst *EntityTypeInfo, extras map[string]any) {
 	if len(extras) == 0 {
 		return
 	}
@@ -173,6 +173,6 @@ func mergeExtras(dst *UIInfo, extras map[string]any) {
 	maps.Copy(dst.Extra, extras)
 }
 
-func isEmptyUIInfo(i UIInfo) bool {
+func isEmptyEntityTypeInfo(i EntityTypeInfo) bool {
 	return i.DisplayName == "" && i.Description == "" && len(i.Keywords) == 0 && i.LogoURI == "" && i.PolicyURI == "" && i.InformationURI == "" && len(i.Extra) == 0
 }

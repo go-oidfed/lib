@@ -9,34 +9,34 @@ import (
 	"github.com/go-oidfed/lib/apimodel"
 )
 
-func TestMultilingualUIInfo(t *testing.T) {
+func TestMultilingualEntityTypeInfo(t *testing.T) {
 	// Create a test entity
 	entity := &CollectedEntity{EntityID: "test-entity"}
 
 	// Test setting multilingual values
-	err := entity.setMultilingualUIInfoField("openid_provider", "description", "", "Default description")
+	err := entity.setMultilingualEntityTypeInfoField("openid_provider", "description", "", "Default description")
 	assert.NoError(t, err)
 
-	err = entity.setMultilingualUIInfoField("openid_provider", "description", "en", "English description")
+	err = entity.setMultilingualEntityTypeInfoField("openid_provider", "description", "en", "English description")
 	assert.NoError(t, err)
 
-	err = entity.setMultilingualUIInfoField("openid_provider", "description", "fr", "Description en français")
+	err = entity.setMultilingualEntityTypeInfoField("openid_provider", "description", "fr", "Description en français")
 	assert.NoError(t, err)
 
-	err = entity.setMultilingualUIInfoField("openid_provider", "description", "de", "Deutsche Beschreibung")
+	err = entity.setMultilingualEntityTypeInfoField("openid_provider", "description", "de", "Deutsche Beschreibung")
 	assert.NoError(t, err)
 
 	// Verify the default value is used when no language tag is specified
-	assert.Equal(t, "Default description", entity.UIInfos["openid_provider"].Description)
+	assert.Equal(t, "Default description", entity.EntityInfos["openid_provider"].Description)
 
 	// Verify multilingual values are NOT stored in the old format (multilingual_description)
-	_, ok := entity.UIInfos["openid_provider"].Extra["multilingual_description"]
+	_, ok := entity.EntityInfos["openid_provider"].Extra["multilingual_description"]
 	assert.False(t, ok, "multilingual_description should not be present")
 
 	// Verify multilingual values are stored in the new format (description#langTag)
-	assert.Equal(t, "English description", entity.UIInfos["openid_provider"].Extra["description#en"])
-	assert.Equal(t, "Description en français", entity.UIInfos["openid_provider"].Extra["description#fr"])
-	assert.Equal(t, "Deutsche Beschreibung", entity.UIInfos["openid_provider"].Extra["description#de"])
+	assert.Equal(t, "English description", entity.EntityInfos["openid_provider"].Extra["description#en"])
+	assert.Equal(t, "Description en français", entity.EntityInfos["openid_provider"].Extra["description#fr"])
+	assert.Equal(t, "Deutsche Beschreibung", entity.EntityInfos["openid_provider"].Extra["description#de"])
 }
 
 // TestNoMultilingualPrefix tests that the multilingual_ prefix is not used in the response
@@ -45,23 +45,23 @@ func TestNoMultilingualPrefix(t *testing.T) {
 	entity := &CollectedEntity{EntityID: "test-entity"}
 
 	// Set values for all multilingual fields
-	err := entity.setMultilingualUIInfoField("openid_provider", "display_name", "", "Default Name")
+	err := entity.setMultilingualEntityTypeInfoField("openid_provider", "display_name", "", "Default Name")
 	assert.NoError(t, err)
-	err = entity.setMultilingualUIInfoField("openid_provider", "display_name", "en", "English Name")
-	assert.NoError(t, err)
-
-	err = entity.setMultilingualUIInfoField("openid_provider", "description", "", "Default description")
-	assert.NoError(t, err)
-	err = entity.setMultilingualUIInfoField("openid_provider", "description", "en", "English description")
+	err = entity.setMultilingualEntityTypeInfoField("openid_provider", "display_name", "en", "English Name")
 	assert.NoError(t, err)
 
-	err = entity.setMultilingualUIInfoField("openid_provider", "logo_uri", "", "https://example.com/logo.png")
+	err = entity.setMultilingualEntityTypeInfoField("openid_provider", "description", "", "Default description")
 	assert.NoError(t, err)
-	err = entity.setMultilingualUIInfoField("openid_provider", "logo_uri", "en", "https://example.com/logo-en.png")
+	err = entity.setMultilingualEntityTypeInfoField("openid_provider", "description", "en", "English description")
+	assert.NoError(t, err)
+
+	err = entity.setMultilingualEntityTypeInfoField("openid_provider", "logo_uri", "", "https://example.com/logo.png")
+	assert.NoError(t, err)
+	err = entity.setMultilingualEntityTypeInfoField("openid_provider", "logo_uri", "en", "https://example.com/logo-en.png")
 	assert.NoError(t, err)
 
 	// Check that no multilingual_ prefixed fields are present in the Extra map
-	extra := entity.UIInfos["openid_provider"].Extra
+	extra := entity.EntityInfos["openid_provider"].Extra
 	for key := range extra {
 		assert.False(
 			t, strings.HasPrefix(key, "multilingual_"),
@@ -79,8 +79,8 @@ func TestLanguageFiltering(t *testing.T) {
 	// Create a test entity and metadata
 	entity := &CollectedEntity{EntityID: "test-entity"}
 
-	// Set up multilingual values directly in the UIInfo
-	uiInfo := UIInfo{
+	// Set up multilingual values directly in the EntityTypeInfo
+	uiInfo := EntityTypeInfo{
 		Description: "Default description",
 		Extra: map[string]any{
 			"multilingual_description": MultilingualString{
@@ -91,7 +91,7 @@ func TestLanguageFiltering(t *testing.T) {
 			},
 		},
 	}
-	entity.UIInfos = map[string]UIInfo{
+	entity.EntityInfos = map[string]EntityTypeInfo{
 		"openid_provider": uiInfo,
 	}
 
@@ -278,15 +278,15 @@ func TestMultilingualDisplayNames(t *testing.T) {
 			Metadata: &metadata,
 		},
 	}
-	processUIClaims(entity, entityStatement, req)
+	processInfoClaims(entity, entityStatement, req)
 
 	// Verify that only the default, English, and French display names were included
-	assert.Equal(t, "Default Display Name", entity.UIInfos["openid_provider"].DisplayName)
-	assert.Equal(t, "English Display Name", entity.UIInfos["openid_provider"].Extra["display_name#en"])
-	assert.Equal(t, "Nom d'affichage en français", entity.UIInfos["openid_provider"].Extra["display_name#fr"])
+	assert.Equal(t, "Default Display Name", entity.EntityInfos["openid_provider"].DisplayName)
+	assert.Equal(t, "English Display Name", entity.EntityInfos["openid_provider"].Extra["display_name#en"])
+	assert.Equal(t, "Nom d'affichage en français", entity.EntityInfos["openid_provider"].Extra["display_name#fr"])
 
 	// German should not be included due to language filtering
-	_, germanExists := entity.UIInfos["openid_provider"].Extra["display_name#de"]
+	_, germanExists := entity.EntityInfos["openid_provider"].Extra["display_name#de"]
 	assert.False(t, germanExists, "German display name should not be included")
 }
 

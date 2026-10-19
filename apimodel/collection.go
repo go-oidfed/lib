@@ -12,9 +12,10 @@ type EntityCollectionRequest struct {
 	TrustAnchor    string   `json:"trust_anchor" form:"trust_anchor" query:"trust_anchor" url:"trust_anchor"`
 	Query          string   `json:"query" form:"query" query:"query"`
 	EntityClaims   []string `json:"entity_claims" form:"entity_claims" query:"entity_claims" url:"entity_claims"`
-	UIClaims       []string `json:"ui_claims" form:"ui_claims" query:"ui_claims" url:"ui_claims"`
-	// LanguageTags specifies the preferred language tags according to BCP47 (RFC5646)
+	InfoClaims     []string `json:"info_claims" form:"info_claims" query:"info_claims" url:"info_claims"`
+	// LanguageTags specifies the preferred language tags according to BCP47 (RFC5646),
+	// sent as repeatable `locale` request parameters.
 	// If provided, UI claims will be filtered to include only these languages
 	// If not provided, all available languages will be included in the response
-	LanguageTags []string `json:"language_tag" form:"language_tag" query:"language_tag" url:"language_tag"`
+	LanguageTags []string `json:"locale" form:"locale" query:"locale" url:"locale"`
 }
