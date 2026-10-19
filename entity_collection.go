@@ -110,6 +110,25 @@ func (r *collectorResult) processSubordinate(
 				r.entityChan <- entity
 			}
 
+			// Fast path: if the subordinate publishes a federation_collection_endpoint,
+			// delegate enumeration of its whole subtree to that endpoint instead of
+			// recursively descending its federation_list_endpoint level by level.
+			if !collector.DisableSubordinateCollectionEndpoints &&
+				hasValidFederationCollectionEndpoint(entityConfig) {
+				remote, ok := r.collectViaCollectionEndpoint(
+					entityConfig.Metadata.FederationEntity.FederationCollectionEndpoint,
+					subordinateID, req,
+				)
+				if ok {
+					for _, nestedEntity := range remote {
+						r.entityChan <- nestedEntity
+					}
+					// Subtree fully handled by the collection endpoint.
+					return
+				}
+				// Fall through to the classic recursive list traversal below.
+			}
+
 			if hasValidFederationListEndpoint(entityConfig) {
 				nested := collector.collect(
 					req, func() *TrustAnchor {
@@ -124,6 +143,103 @@ func (r *collectorResult) processSubordinate(
 			}
 		},
 	)
+}
+
+// collectViaCollectionEndpoint delegates enumeration of a subordinate's whole
+// subtree to its published federation_collection_endpoint. The forwarded
+// request is anchored at the subordinate itself so the remote collection scope
+// matches the subtree. It aggregates all pages. On success it returns the
+// (possibly enriched) entities and true; on failure or an empty result it
+// returns (nil, false) so the caller can fall back to recursive list traversal.
+func (r *collectorResult) collectViaCollectionEndpoint(
+	endpoint, subordinateID string,
+	req apimodel.EntityCollectionRequest,
+) ([]*CollectedEntity, bool) {
+	subReq := req
+	subReq.TrustAnchor = subordinateID
+	subReq.From = "" // aggregate all pages
+
+	remote := SimpleRemoteEntityCollector{EntityCollectionEndpoint: endpoint}
+	remoteRes, errRes := remote.CollectEntities(subReq)
+	if errRes != nil {
+		errDesc := ""
+		if errRes.Error != nil {
+			errDesc = errRes.Error.ErrorDescription
+		}
+		internal.Logf(
+			"Entity Collection: delegated subordinate collection endpoint for %s failed: %s", subordinateID, errDesc,
+		)
+		return nil, false
+	}
+	if remoteRes == nil || len(remoteRes.Entities) == 0 {
+		internal.Logf(
+			"Entity Collection: delegated subordinate collection endpoint for %s returned no entities -> falling back",
+			subordinateID,
+		)
+		return nil, false
+	}
+
+	// The remote response is informational and may omit claims we are expected
+	// to return. Fetch the leaf entity configuration only when a requested claim
+	// is missing from the record.
+	var out []*CollectedEntity
+	for _, e := range remoteRes.Entities {
+		if e == nil || e.EntityID == "" {
+			continue
+		}
+		if r.enrichmentNeeded(e, req) {
+			r.enrichLeaf(e, req)
+		}
+		out = append(out, e)
+	}
+	return out, true
+}
+
+// enrichmentNeeded reports whether the remote collection record omits claims
+// that our own collection path would have populated for the given request, so
+// that the leaf entity configuration should be fetched to complete it. This
+// keeps the fast-path result consistent with the classic recursive traversal's
+// default output (entity_types + entity_infos, plus trust_marks when requested).
+func (r *collectorResult) enrichmentNeeded(e *CollectedEntity, req apimodel.EntityCollectionRequest) bool {
+	if len(e.EntityInfos) == 0 {
+		if req.Query != "" || len(req.InfoClaims) > 0 {
+			// Query matching and info-claim extraction need display metadata.
+			return true
+		}
+		// entity_infos are part of the default output too: the underlying
+		// processInfoClaims populates them when no info_claims were requested.
+		return true
+	}
+	if len(e.EntityTypes) == 0 {
+		// entity_types are reported by default.
+		return true
+	}
+	if slices.Contains(req.EntityClaims, "trust_marks") && len(e.TrustMarks) == 0 {
+		return true
+	}
+	return false
+}
+
+// enrichLeaf fetches an entity configuration for a single collected entity and
+// fills in only those parts that were missing from the remote collection
+// record: entity types, info claims, and trust marks are each enriched
+// independently when absent. If every expected part is already present this is
+// a no-op (assuming enrichmentNeeded reported a real gap).
+func (r *collectorResult) enrichLeaf(e *CollectedEntity, req apimodel.EntityCollectionRequest) {
+	ec, err := GetEntityConfiguration(e.EntityID)
+	if err != nil || ec == nil || ec.Metadata == nil {
+		internal.Logf("Discovery: could not fetch entity config to enrich %s: %v", e.EntityID, err)
+		return
+	}
+	if len(e.EntityTypes) == 0 {
+		e.EntityTypes = ec.Metadata.GuessEntityTypes()
+	}
+	if len(e.EntityInfos) == 0 {
+		processInfoClaims(e, ec, req)
+	}
+	if slices.Contains(req.EntityClaims, "trust_marks") && len(e.TrustMarks) == 0 {
+		r.processTrustMarks(e, ec, req)
+	}
 }
 
 func (r *collectorResult) shouldIncludeEntity(
@@ -202,6 +318,13 @@ func hasValidFederationListEndpoint(stmt *EntityStatement) bool {
 		stmt.Metadata != nil &&
 		stmt.Metadata.FederationEntity != nil &&
 		stmt.Metadata.FederationEntity.FederationListEndpoint != ""
+}
+
+func hasValidFederationCollectionEndpoint(stmt *EntityStatement) bool {
+	return stmt != nil &&
+		stmt.Metadata != nil &&
+		stmt.Metadata.FederationEntity != nil &&
+		stmt.Metadata.FederationEntity.FederationCollectionEndpoint != ""
 }
 
 func processInfoClaims(

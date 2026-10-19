@@ -164,6 +164,13 @@ type EntityCollector interface {
 // federation
 type SimpleEntityCollector struct {
 	visitedEntities *mutexedStrSet
+
+	// DisableSubordinateCollectionEndpoints disables the discovery fast path
+	// that consults a subordinate's published federation_collection_endpoint to
+	// enumerate its whole subtree instead of recursively descending its
+	// federation_list_endpoint. The fast path is enabled by default (zero
+	// value); set this to true to force the classic recursive list traversal.
+	DisableSubordinateCollectionEndpoints bool
 }
 
 type mutexedStrSet struct {
@@ -688,8 +695,8 @@ func (c SmartRemoteEntityCollector) CollectEntities(req apimodel.EntityCollectio
 			continue
 		}
 		var entityCollectionEndpoint string
-		if entityConfig != nil && entityConfig.Metadata != nil && entityConfig.Metadata.FederationEntity != nil && entityConfig.Metadata.FederationEntity.Extra != nil {
-			entityCollectionEndpoint, _ = entityConfig.Metadata.FederationEntity.Extra["federation_collection_endpoint"].(string)
+		if entityConfig != nil && entityConfig.Metadata != nil && entityConfig.Metadata.FederationEntity != nil {
+			entityCollectionEndpoint = entityConfig.Metadata.FederationEntity.FederationCollectionEndpoint
 		}
 		if entityCollectionEndpoint == "" {
 			continue
