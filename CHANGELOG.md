@@ -3,6 +3,11 @@
 ### Breaking Changes
 
 - **Entity Collection Endpoint updated to draft 01.** The response claim `ui_infos` was renamed to `entity_infos` and the request parameter `ui_claims` to `info_claims`, per the draft 01 changelog. Go identifiers follow: `CollectedEntity.UIInfos` → `CollectedEntity.EntityInfos`, `UIInfo` → `EntityTypeInfo`, and the `UIClaims` field of `apimodel.EntityCollectionRequest` → `InfoClaims`. The `locale` (language tag filtering) request-parameter wire name is now `locale` per draft 01 (previously `language_tag`); the filtering helpers were already present and are otherwise unchanged.
+- `FederationEntityMetadata` gains first-class fields, which are no longer available in `Extra`:
+  - `FederationCollectionEndpoint` (`json:"federation_collection_endpoint"`).
+  - `FederationCollectionEndpointAuthMethods` (`json:"federation_collection_endpoint_auth_methods"`).
+  - `FederationExtendedListEndpoint` (`json:"federation_extended_list_endpoint"`).
+  - `FederationExtendedListEndpointAuthMethods` (`json:"federation_extended_list_endpoint_auth_methods"`).
 
 ## go-oidfed/lib 0.12.0
 

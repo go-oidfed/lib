@@ -205,6 +205,8 @@ type federationEntityMetadata struct {
 	FederationTrustMarkListEndpoint   string `json:"federation_trust_mark_list_endpoint,omitempty"`
 	FederationTrustMarkEndpoint       string `json:"federation_trust_mark_endpoint,omitempty"`
 	FederationHistoricalLKeysEndpoint string `json:"federation_historical_keys_endpoint,omitempty"`
+	FederationCollectionEndpoint      string `json:"federation_collection_endpoint,omitempty"`
+	FederationExtendedListEndpoint    string `json:"federation_extended_list_endpoint,omitempty"`
 
 	FederationFetchEndpointAuthMethods           []string `json:"federation_fetch_endpoint_auth_methods,omitempty"`
 	FederationListEndpointAuthMethods            []string `json:"federation_list_endpoint_auth_methods,omitempty"`
@@ -213,6 +215,8 @@ type federationEntityMetadata struct {
 	FederationTrustMarkListEndpointAuthMethods   []string `json:"federation_trust_mark_list_endpoint_auth_methods,omitempty"`
 	FederationTrustMarkEndpointAuthMethods       []string `json:"federation_trust_mark_endpoint_auth_methods,omitempty"`
 	FederationHistoricalLKeysEndpointAuthMethods []string `json:"federation_historical_keys_endpoint_auth_methods,omitempty"`
+	FederationCollectionEndpointAuthMethods      []string `json:"federation_collection_endpoint_auth_methods,omitempty"`
+	FederationExtendedListEndpointAuthMethods    []string `json:"federation_extended_list_endpoint_auth_methods,omitempty"`
 	EndpointAuthSigningAlgValuesSupported        []string `json:"endpoint_auth_signing_alg_values_supported,omitempty"`
 
 	Extra map[string]any `json:"-"`
