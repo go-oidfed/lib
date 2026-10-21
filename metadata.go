@@ -580,6 +580,13 @@ func applyPolicy(metadata any, policy MetadataPolicy, ownTag string) (any, error
 	if policy == nil {
 		return metadata, nil
 	}
+	// Metadata for an Entity Type this module has no struct for is kept in
+	// Metadata.Extra as a map[string]any. applyPolicy must handle that case:
+	// applying the policy per parameter by key. (Before this, reflect Elem on
+	// the map panicked.)
+	if extra, ok := metadata.(map[string]any); ok {
+		return applyPolicyToMap(extra, policy, ownTag)
+	}
 	v := reflect.ValueOf(metadata)
 	t := v.Elem().Type()
 
@@ -626,6 +633,29 @@ func applyPolicy(metadata any, policy MetadataPolicy, ownTag string) (any, error
 	}
 
 	return metadata, nil
+}
+
+// applyPolicyToMap applies a MetadataPolicy to an Entity Type the module has
+// no Go struct for, whose metadata is a map[string]any (Metadata.Extra). Each
+// policy parameter is applied to the corresponding map key; a key present in
+// the map counts as set, an absent key counts as unset (so operators such as
+// "default" or "value" can establish it). A fresh map is returned so the
+// caller's metadata is not mutated, mirroring how typed entity metadata is
+// applied; it is unchanged when the policy is empty.
+func applyPolicyToMap(extra map[string]any, policy MetadataPolicy, ownTag string) (any, error) {
+	out := make(map[string]any, len(extra))
+	for k, v := range extra {
+		out[k] = v
+	}
+	for key, entry := range policy {
+		value, present := out[key]
+		applied, err := entry.ApplyTo(value, present, fmt.Sprintf("%s.%s", ownTag, key))
+		if err != nil {
+			return nil, err
+		}
+		out[key] = applied
+	}
+	return out, nil
 }
 
 // FindEntityMetadata finds metadata for the specified entity type in the

@@ -1,3 +1,11 @@
+## go-oidfed/lib 0.13.1
+
+### Fixes
+
+- Fixed a panic in `Metadata.ApplyPolicy` (and the resolver path `TrustChain.Metadata`) when a metadata policy 
+  covers an Entity Type the module has no Go struct for (custom entity types). Metadata for such a type lives in 
+  `Metadata.Extra` as a `map[string]any`; the policy is now applied per metadata parameter by key (with `default`/`value` operators able to establish previously-absent parameters), instead of `reflect.Value.Elem` panicking on the map. The input metadata is not mutated.
+
 ## go-oidfed/lib 0.13.0
 
 ### Enhancements

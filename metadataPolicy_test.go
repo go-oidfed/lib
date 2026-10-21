@@ -422,3 +422,104 @@ func TestExceptOperatorCombineWithOtherOperators(t *testing.T) {
 		t.Fatalf("expected subset_of+except+essential to be a valid combination, but got: %v", err)
 	}
 }
+
+// TestApplyPolicyToUnknownEntityType guards against a panic when a metadata
+// policy covers an Entity Type the module has no Go struct for. Such metadata
+// lands in Metadata.Extra as a map[string]any; applyPolicy must apply the
+// per-parameter policy by key instead of reflecting over a map (which used to
+// panic with "reflect: call of reflect.Value.Elem on map Value").
+func TestApplyPolicyToUnknownEntityType(t *testing.T) {
+	const metadataJSON = `{
+	  "openid_relying_party": {"client_name": "rp"},
+	  "openid_credential_verifier": {"client_name": "verifier"}
+	}`
+	apply := func(policyJSON string) (*Metadata, error) {
+		var m Metadata
+		if err := json.Unmarshal([]byte(metadataJSON), &m); err != nil {
+			t.Fatalf("failed to unmarshal metadata: %v", err)
+		}
+		var p MetadataPolicies
+		if err := json.Unmarshal([]byte(policyJSON), &p); err != nil {
+			t.Fatalf("failed to unmarshal policy: %v", err)
+		}
+		return m.ApplyPolicy(&p)
+	}
+
+	t.Run("value operator applied", func(t *testing.T) {
+		// Build metadata explicitly and confirm ApplyPolicy does not mutate it.
+		var input Metadata
+		if err := json.Unmarshal([]byte(metadataJSON), &input); err != nil {
+			t.Fatalf("failed to unmarshal metadata: %v", err)
+		}
+		var p MetadataPolicies
+		if err := json.Unmarshal([]byte(
+			`{"openid_credential_verifier": {"client_name": {"value": "forced"}}}`), &p); err != nil {
+			t.Fatalf("failed to unmarshal policy: %v", err)
+		}
+		out, err := input.ApplyPolicy(&p)
+		if err != nil {
+			t.Fatalf("ApplyPolicy returned error: %v", err)
+		}
+		ver := out.Extra["openid_credential_verifier"].(map[string]any)
+		if got := ver["client_name"]; got != "forced" {
+			t.Fatalf("verifier client_name = %v, want forced", got)
+		}
+		// The typed entity must be untouched in the output.
+		if got := out.RelyingParty.ClientName; got != "rp" {
+			t.Fatalf("rp client_name = %q, want rp", got)
+		}
+		// The input must not be mutated.
+		inVer := input.Extra["openid_credential_verifier"].(map[string]any)
+		if got := inVer["client_name"]; got != "verifier" {
+			t.Fatalf("input verifier client_name = %v, want verifier (input was mutated)", got)
+		}
+	})
+
+	t.Run("default operator establishes unset parameter", func(t *testing.T) {
+		out, err := apply(`{"openid_credential_verifier": {"client_uri": {"default": "https://leaf.example"}}}`)
+		if err != nil {
+			t.Fatalf("ApplyPolicy returned error: %v", err)
+		}
+		ver := out.Extra["openid_credential_verifier"].(map[string]any)
+		if got := ver["client_name"]; got != "verifier" {
+			t.Fatalf("client_name = %v, want verifier", got)
+		}
+		if got := ver["client_uri"]; got != "https://leaf.example" {
+			t.Fatalf("client_uri = %v, want https://leaf.example", got)
+		}
+	})
+}
+
+// TestTrustChainMetadataWithUnknownEntityTypePolicy guards the resolver path:
+// TrustChain.Metadata must apply a policy covering a custom Entity Type that
+// the leaf advertises, without panicking.
+func TestTrustChainMetadataWithUnknownEntityTypePolicy(t *testing.T) {
+	leaf := &EntityStatement{}
+	leaf.Issuer, leaf.Subject = "https://leaf.example", "https://leaf.example"
+	leaf.Metadata = &Metadata{}
+	if err := json.Unmarshal([]byte(
+		`{"openid_credential_verifier": {"client_name": "verifier"}}`), leaf.Metadata); err != nil {
+		t.Fatalf("failed to unmarshal leaf metadata: %v", err)
+	}
+
+	var policy MetadataPolicies
+	if err := json.Unmarshal([]byte(
+		`{"openid_credential_verifier": {"client_name": {"value": "forced"}}}`), &policy); err != nil {
+		t.Fatalf("failed to unmarshal policy: %v", err)
+	}
+
+	sub := &EntityStatement{}
+	sub.Issuer, sub.Subject = "https://ta.example", "https://leaf.example"
+	sub.MetadataPolicy = &policy
+	ta := &EntityStatement{}
+	ta.Issuer, ta.Subject = "https://ta.example", "https://ta.example"
+
+	out, err := TrustChain{leaf, sub, ta}.Metadata()
+	if err != nil {
+		t.Fatalf("TrustChain.Metadata returned error: %v", err)
+	}
+	ver := out.Extra["openid_credential_verifier"].(map[string]any)
+	if got := ver["client_name"]; got != "forced" {
+		t.Fatalf("verifier client_name = %v, want forced", got)
+	}
+}
