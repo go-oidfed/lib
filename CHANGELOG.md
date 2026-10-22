@@ -1,9 +1,18 @@
+## go-oidfed/lib 0.13.2
+
+### Enhancements
+
+- **A KID must uniquely identify a key in a JWKS.** Previously, two keys claiming the same `kid` could be stored and published together in an Entity Configuration's `jwks`, producing an invalid configuration. Now:
+  - `public.FilesystemPublicKeyStorage.Add` returns a new `public.DuplicateKIDError` when the key's KID is already present (it previously silently did nothing). `AddAll` also returns this error — and is now atomic, adding none of the batch — when an entry collides with an existing KID or two batch entries share a KID.
+  - `public.PublicKeyEntryList.JWKS()` never emits two keys with the same KID: if a list (e.g. from a partially-loaded or externally-seeded source) contains duplicate-KID entries, it publishes a single deterministic winner — earliest `nbf`, then earliest `iat`, then first in list.
+  - Migrations (`NewFilesystemPublicKeyStorageFromLegacy`, `NewFilesystemPublicKeyStorageFromStorage`) refuse sources carrying duplicate `kid` claims instead of silently last-write-wins.
+
 ## go-oidfed/lib 0.13.1
 
 ### Fixes
 
-- Fixed a panic in `Metadata.ApplyPolicy` (and the resolver path `TrustChain.Metadata`) when a metadata policy 
-  covers an Entity Type the module has no Go struct for (custom entity types). Metadata for such a type lives in 
+- Fixed a panic in `Metadata.ApplyPolicy` (and the resolver path `TrustChain.Metadata`) when a metadata policy
+  covers an Entity Type the module has no Go struct for (custom entity types). Metadata for such a type lives in
   `Metadata.Extra` as a `map[string]any`; the policy is now applied per metadata parameter by key (with `default`/`value` operators able to establish previously-absent parameters), instead of `reflect.Value.Elem` panicking on the map. The input metadata is not mutated.
 
 ## go-oidfed/lib 0.13.0

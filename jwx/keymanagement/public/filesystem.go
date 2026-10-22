@@ -147,7 +147,8 @@ func (fs *FilesystemPublicKeyStorage) GetValid() (PublicKeyEntryList, error) {
 	return out, nil
 }
 
-// Add adds a new key to the storage if the KID is unused.
+// Add adds a new key to the storage. Adding a key whose KID is already present
+// returns a DuplicateKIDError, so that no two keys may share a KID.
 func (fs *FilesystemPublicKeyStorage) Add(key PublicKeyEntry) error {
 	fs.mu.Lock()
 	defer fs.mu.Unlock()
@@ -159,16 +160,21 @@ func (fs *FilesystemPublicKeyStorage) Add(key PublicKeyEntry) error {
 		return errors.New("missing kid for public key entry")
 	}
 	if _, exists := fs.entries[key.KID]; exists {
-		return nil
+		return DuplicateKIDError{KID: key.KID}
 	}
 	fs.entries[key.KID] = key
 	return fs.persist()
 }
 
-// AddAll adds multiple keys to the storage.
+// AddAll adds all the passed keys to the storage. It is atomic: if any entry
+// collides with an existing KID or two entries in the batch share a KID, it
+// returns a DuplicateKIDError and adds none of them.
 func (fs *FilesystemPublicKeyStorage) AddAll(keys []PublicKeyEntry) error {
 	fs.mu.Lock()
 	defer fs.mu.Unlock()
+	// Validate all candidates against storage and against each other before
+	// mutating anything, so a conflicting batch adds none of its keys.
+	seen := make(map[string]struct{}, len(keys))
 	for _, key := range keys {
 		if key.KID == "" {
 			key.KID, _ = jwk.Get[string](key.Key, "kid")
@@ -177,6 +183,15 @@ func (fs *FilesystemPublicKeyStorage) AddAll(keys []PublicKeyEntry) error {
 			continue
 		}
 		if _, exists := fs.entries[key.KID]; exists {
+			return DuplicateKIDError{KID: key.KID}
+		}
+		if _, dup := seen[key.KID]; dup {
+			return DuplicateKIDError{KID: key.KID}
+		}
+		seen[key.KID] = struct{}{}
+	}
+	for _, key := range keys {
+		if key.KID == "" {
 			continue
 		}
 		fs.entries[key.KID] = key
@@ -290,15 +305,20 @@ func NewFilesystemPublicKeyStorageFromLegacy(dir, typeID string) (*FilesystemPub
 		return fs, nil
 	}
 	// Import all JWKS sets and history
-	importSet := func(set jwk.Set) {
+	importSet := func(set jwk.Set) error {
 		if set == nil || set.Len() == 0 {
-			return
+			return nil
 		}
 		for _, k := range set.All() {
 			var kid string
 			kid, _ = jwk.Get[string](k, "kid")
 			if kid == "" {
 				continue
+			}
+			if _, exists := fs.entries[kid]; exists {
+				// A KID must uniquely identify a key; importing a duplicate
+				// kid would publish an invalid JWKS, so refuse to migrate.
+				return DuplicateKIDError{KID: kid}
 			}
 			cloned, cerr := k.Clone()
 			if cerr != nil {
@@ -322,15 +342,19 @@ func NewFilesystemPublicKeyStorageFromLegacy(dir, typeID string) (*FilesystemPub
 			if !exp.IsZero() && exp.Unix() != 0 {
 				entry.ExpiresAt = &exp
 			}
-			// Last write wins for duplicate kids
 			fs.entries[kid] = entry
 		}
+		return nil
 	}
 	for _, set := range coll.jwks {
-		importSet(set.Set)
+		if err := importSet(set.Set); err != nil {
+			return nil, err
+		}
 	}
 	if coll.history.Set != nil {
-		importSet(coll.history.Set)
+		if err := importSet(coll.history.Set); err != nil {
+			return nil, err
+		}
 	}
 	if err := fs.persist(); err != nil {
 		return nil, err
@@ -362,6 +386,11 @@ func NewFilesystemPublicKeyStorageFromStorage(dir, typeID string, src PublicKeyS
 		}
 		if e.KID == "" || e.Key.Key == nil {
 			continue
+		}
+		if _, exists := fs.entries[e.KID]; exists {
+			// A KID must uniquely identify a key; refuse sources that carry
+			// duplicate kid claims.
+			return nil, DuplicateKIDError{KID: e.KID}
 		}
 		if k, cerr := e.Key.Clone(); cerr == nil {
 			e.Key.Key = k

@@ -35,10 +35,12 @@ type PublicKeyStorage interface {
 	// i.e., keys that can be used currently or in the future, i.e., keys that are not expired or revoked.
 	GetValid() (PublicKeyEntryList, error)
 	// Add adds a new key to the storage; the keyID is used to identify the
-	// key; MUST only add the key if the keyID is not already in use,
-	// in that case do nothing and MUST NOT return an error.
+	// key. Adding a key whose KID is already in use MUST return a
+	// ErrDuplicateKID error, so that no two keys sharing a KID can be stored.
 	Add(key PublicKeyEntry) error
-	// AddAll adds all the passed PublicKeyEntry to the storage
+	// AddAll adds all the passed PublicKeyEntry to the storage. If any entry
+	// collides with an existing KID (or two entries in the batch share a KID),
+	// it MUST return an ErrDuplicateKID error and add none of them.
 	AddAll(key []PublicKeyEntry) error
 	// Update updates an existing PublicKeyEntry
 	Update(kid string, data UpdateablePublicKeyMetadata) error
@@ -61,14 +63,52 @@ func (e NotFoundError) Error() string {
 	return "public key not found: " + e.KID
 }
 
+// DuplicateKIDError is returned when an attempt is made to store a key whose
+// KID is already present in the storage. A KID uniquely identifies a key in a
+// JWKS; two keys sharing a KID would produce an invalid entity configuration,
+// so the conflicting add is refused rather than silently dropping a key.
+type DuplicateKIDError struct {
+	KID string
+}
+
+func (e DuplicateKIDError) Error() string {
+	return "public key already exists for kid: " + e.KID
+}
+
 // PublicKeyEntryList is a list of PublicKeyEntry
 type PublicKeyEntryList []PublicKeyEntry
 
 // JWKS converts the list into a JWKS, cloning each JWK and annotating it with
 // standard fields (iat, nbf, exp) and optional revocation information.
+//
+// A KID must uniquely identify a key within a JWKS. If two or more entries in
+// the list share a KID, only one is published: the winner of the deterministic
+// preference order (earliest NotBefore, then earliest IssuedAt, then the one
+// appearing first in the list), so the resulting JWKS is always kid-unique
+// regardless of source ordering.
 func (pks PublicKeyEntryList) JWKS() (jwx.JWKS, error) {
+	winner := make(map[string]int, len(pks)) // kid -> index of winning entry
+	for i, pk := range pks {
+		if pk.KID == "" {
+			continue
+		}
+		w, ok := winner[pk.KID]
+		if !ok {
+			winner[pk.KID] = i
+			continue
+		}
+		if prefersPKOver(pk, pks[w]) {
+			winner[pk.KID] = i
+		}
+	}
 	jwks := jwx.NewJWKS()
-	for _, pk := range pks {
+	for i, pk := range pks {
+		if pk.KID == "" {
+			continue
+		}
+		if winner[pk.KID] != i {
+			continue
+		}
 		k, err := pk.JWK()
 		if err != nil {
 			return jwx.JWKS{}, err
@@ -76,6 +116,46 @@ func (pks PublicKeyEntryList) JWKS() (jwx.JWKS, error) {
 		_ = jwks.AddKey(k)
 	}
 	return jwks, nil
+}
+
+// prefersPKOver reports whether a is preferred over b as the canonical key for
+// a shared KID. Preference is by earliest NotBefore, then earliest IssuedAt.
+// nil/unset times are treated as zero so keys without timing metadata lose to
+// keys that carry it, keeping selection deterministic and stable.
+func prefersPKOver(a, b PublicKeyEntry) bool {
+	if t, ok := earlierTiming(a.NotBefore, b.NotBefore); ok {
+		return t
+	}
+	return earlierTimingValue(a.IssuedAt, b.IssuedAt)
+}
+
+// earlierTiming reports whether a is earlier than b. It returns (aEarlier, false)
+// when the two times are equal or both nil, meaning no preference is expressed.
+func earlierTiming(a, b *unixtime.Unixtime) (aEarlier, ok bool) {
+	if a == nil || b == nil {
+		switch {
+		case a == nil && b == nil:
+			return false, false
+		case a == nil:
+			return false, true
+		default:
+			return true, true
+		}
+	}
+	if a.Unix() == b.Unix() {
+		return false, false
+	}
+	return a.Unix() < b.Unix(), true
+}
+
+// earlierTimingValue is like earlierTiming but collapses the "no preference"
+// outcome to false, used for the tie-breaking IssuedAt comparison.
+func earlierTimingValue(a, b *unixtime.Unixtime) bool {
+	t, ok := earlierTiming(a, b)
+	if !ok {
+		return false
+	}
+	return t
 }
 
 // Filter returns a new list containing entries for which the provided filter
