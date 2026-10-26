@@ -367,6 +367,94 @@ func TestSubordinateJWKSRefresher_SigVerifyFailure(t *testing.T) {
 	assert.Equal(t, "", store.lastUpdate, "storage must not be updated on signature failure")
 }
 
+// TestSubordinateJWKSRefresher_ExpiredStoredKeyCannotVerify verifies that an
+// EC signed with an expired (but still stored) federation key is rejected: an
+// expired key must never verify an Entity Configuration.
+func TestSubordinateJWKSRefresher_ExpiredStoredKeyCannotVerify(t *testing.T) {
+	sk := rsaSigningKey(t)
+	entityID := "https://sub-expired-key.example"
+
+	// Stored JWKS: the public key of sk with its thumbprint kid and an exp
+	// claim strictly in the past. The EC below is signed with sk, so its
+	// signature would verify if the key were not expired.
+	pub, err := jwk.PublicKeyOf(sk)
+	require.NoError(t, err)
+	require.NoError(t, jwk.AssignKeyID(pub))
+	require.NoError(t, pub.Set("exp", unixtime.Unixtime{Time: time.Now().Add(-time.Hour)}))
+	expiredSet := jwx.NewJWKS()
+	require.NoError(t, expiredSet.AddKey(pub))
+
+	store := newMemSubStore(
+		SubordinateJWKSInfo{
+			EntityID:         entityID,
+			EnableJWKSUpdate: true,
+			JWKS:             expiredSet,
+		},
+	)
+	ecKeys := publicJWKSFrom(t, rsaSigningKey(t))
+	fetch := func(string) (*EntityStatement, error) {
+		return fakeEC(t, sk, entityID, ecKeys, time.Now().Add(time.Hour)), nil
+	}
+	r, err := NewSubordinateJWKSRefresher(store, fetch)
+	require.NoError(t, err)
+	sub := SubordinateJWKSInfo{
+		EntityID:         entityID,
+		EnableJWKSUpdate: true,
+		JWKS:             expiredSet,
+	}
+	registerState(r, &sub)
+	_, err = r.pollAndMaybeUpdate(&sub)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "expired",
+		"rejection must be due to the signing key being expired")
+	assert.Equal(t, "", store.lastUpdate, "storage must not be updated when the signing key is expired")
+}
+
+// TestSubordinateJWKSRefresher_WrongIssOrSub verifies that an Entity
+// Configuration whose signature (and exp) would be valid but whose `iss`/`sub`
+// do not match the expected subordinate entity ID is rejected.
+func TestSubordinateJWKSRefresher_WrongIssOrSub(t *testing.T) {
+	sk := rsaSigningKey(t)
+	entityID := "https://sub-wrong-iss.example"
+
+	storedKeys := publicJWKSFrom(t, sk)
+	store := newMemSubStore(
+		SubordinateJWKSInfo{
+			EntityID:         entityID,
+			EnableJWKSUpdate: true,
+			JWKS:             storedKeys,
+		},
+	)
+	ecKeys := publicJWKSFrom(t, rsaSigningKey(t))
+	fetch := func(string) (*EntityStatement, error) {
+		// Signed with the known key (so the signature would verify), future
+		// exp, but the EC claims an issuer that is not the subordinate.
+		return signAsEntityStatement(
+			t, sk, EntityStatementPayload{
+				Issuer:    "https://evil.example",
+				Subject:   entityID,
+				IssuedAt:  unixtime.Now(),
+				ExpiresAt: unixtime.Unixtime{Time: time.Now().Add(time.Hour)},
+				JWKS:      ecKeys,
+			},
+		), nil
+	}
+	r, err := NewSubordinateJWKSRefresher(store, fetch)
+	require.NoError(t, err)
+	sub := SubordinateJWKSInfo{
+		EntityID:         entityID,
+		EnableJWKSUpdate: true,
+		JWKS:             storedKeys,
+	}
+	registerState(r, &sub)
+	_, err = r.pollAndMaybeUpdate(&sub)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "do not match",
+		"rejection must be due to the issuer/subject mismatch")
+	assert.Equal(t, "", store.lastUpdate,
+		"storage must not be updated when the EC issuer/subject is wrong")
+}
+
 // --- ParseSignedJWKS tests ---
 
 func TestParseSignedJWKS_HappyPath(t *testing.T) {

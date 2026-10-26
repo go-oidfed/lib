@@ -1,3 +1,20 @@
+## go-oidfed/lib 0.13.3
+
+### Fixes
+
+- **Subordinate JWKS refresher no longer verifies Entity Configurations with expired keys.**
+  `SubordinateJWKSRefresher.pollAndMaybeUpdate` previously verified the fetched Entity Configuration's signature
+  against the entire stored JWKS, including keys whose `exp` had already passed. An expired key must never be used
+  to verify an Entity Configuration, and consuming code (e.g. LightHouse's `federation_jwks_update_trigger_endpoint`)
+  relies on the refresher enforcing that contract. Now:
+  - The EC signature is verified against only the **non-expired** stored keys (`JWKS.WithoutExpired`).
+  - If every stored key has expired, the EC is **rejected** (`all known keys are expired`) rather than being
+    accepted unauthenticated — the subordinate must publish its new key (or signed JWK Set) signed with an old key
+    that is still valid before the old key expires.
+  - The existing requirement that the EC have a valid future `exp` is unchanged (an expired EC is already rejected).
+  - The fetched EC must now be **self-issued for the polled subordinate**: if its `iss` or `sub` claims do not equal
+    the subordinate's entity ID, the EC is rejected (`EC issuer/subject do not match expected entity id`).
+
 ## go-oidfed/lib 0.13.2
 
 ### Enhancements

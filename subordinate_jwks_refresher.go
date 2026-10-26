@@ -318,6 +318,16 @@ func (p *SubordinateJWKSRefresher) pollAndMaybeUpdate(sub *SubordinateJWKSInfo) 
 	if err != nil {
 		return 0, errors.Wrap(err, "failed to fetch EC")
 	}
+	// An Entity Configuration must be self-issued for the subordinate being
+	// polled: both `iss` and `sub` must equal the expected entity ID. Rejecting
+	// a mismatched document prevents adopting a JWKS whose issuer is not the
+	// subordinate.
+	if ec.Issuer != entityID || ec.Subject != entityID {
+		return 0, errors.Errorf(
+			"EC issuer/subject (%q/%q) do not match expected entity id %q",
+			ec.Issuer, ec.Subject, entityID,
+		)
+	}
 	// The EC MUST have a valid (future) exp; it is required by the spec and
 	// the refresher derives the next poll interval from it. A zero/epoch exp
 	// (which round-trips through JSON as 0) or an already-expired EC is
@@ -326,9 +336,18 @@ func (p *SubordinateJWKSRefresher) pollAndMaybeUpdate(sub *SubordinateJWKSInfo) 
 		return 0, errors.New("EC has no valid future exp; exp is required")
 	}
 
-	// Verify signature using the currently known JWKS, if any.
+	// Verify the signature using the currently known JWKS, if any. Only
+	// non-expired keys may be used to verify an Entity Configuration: after a
+	// key rotation the subordinate must sign its EC (or signed JWK Set) with
+	// an old key that is still valid. If every stored key is expired there is
+	// nothing valid to verify against, so the EC is rejected rather than
+	// accepted unauthenticated.
 	if sub.JWKS.Set != nil && sub.JWKS.Len() > 0 {
-		if !ec.Verify(sub.JWKS) {
+		validKeys := sub.JWKS.WithoutExpired(time.Now())
+		if validKeys.Set == nil || validKeys.Len() == 0 {
+			return 0, errors.New("all known keys are expired; cannot verify EC")
+		}
+		if !ec.Verify(validKeys) {
 			return 0, errors.New("EC signature verification failed against known JWKS")
 		}
 	}
