@@ -1,7 +1,10 @@
 package oidfed
 
 import (
+	"context"
 	"encoding/json"
+	stderrors "errors"
+	"time"
 
 	"github.com/go-resty/resty/v2"
 	"github.com/google/go-querystring/query"
@@ -27,6 +30,19 @@ type MetadataResolver interface {
 // library to resolve Metadata
 var DefaultMetadataResolver MetadataResolver = LocalMetadataResolver{}
 
+// Errors returned by LocalMetadataResolver when it cannot produce a resolve
+// result. Callers distinguish the resolution stage with errors.Is:
+//
+//   - ErrNoTrustChainFound: the subject has no signature-valid path to a
+//     configured trust anchor (or, since ResolveToValidChains also applies the
+//     metadata filter, none of the existing paths pass metadata policy).
+//   - ErrNoTrustChainWithValidMetadata: signature-valid paths exist but none
+//     pass metadata policy evaluation.
+var (
+	ErrNoTrustChainFound             = stderrors.New("no trust chain found")
+	ErrNoTrustChainWithValidMetadata = stderrors.New("no trust chain with valid metadata found")
+)
+
 // LocalMetadataResolver is a MetadataResolver that resolves trust chains and
 // evaluates metadata policies to obtain the final Metadata; it does not use
 // a resolve endpoint
@@ -51,10 +67,11 @@ func (LocalMetadataResolver) resolveResponsePayloadWithoutTrustMarks(
 		StartingEntity:       req.Subject,
 		Types:                req.EntityTypes,
 		TrustAnchorHintsMode: TrustAnchorHintsModePrefer,
+		Ctx:                  req.Context,
 	}
 	chains := tr.ResolveToValidChains()
 	if len(chains) == 0 {
-		err = errors.New("no trust chain found")
+		err = ErrNoTrustChainFound
 		return
 	}
 	chains = chains.SortAsc(TrustChainScoringPathLen)
@@ -63,11 +80,12 @@ func (LocalMetadataResolver) resolveResponsePayloadWithoutTrustMarks(
 		if err == nil {
 			res.TrustChain = chain.Messages()
 			res.Metadata = m
+			res.ValidUntil = chain.ExpiresAt()
 			res.TrustAnchor = chain[len(chain)-1].Issuer
 			return res, chain, nil
 		}
 	}
-	err = errors.New("no trust chain with valid metadata found")
+	err = ErrNoTrustChainWithValidMetadata
 	return
 }
 
@@ -94,6 +112,7 @@ func (LocalMetadataResolver) ResolvePossible(req apimodel.ResolveRequest) (bool,
 		StartingEntity:       req.Subject,
 		Types:                req.EntityTypes,
 		TrustAnchorHintsMode: TrustAnchorHintsModeIgnore,
+		Ctx:                  req.Context,
 	}
 	chains := tr.ResolveToValidChains()
 	valid := len(chains) > 0
@@ -138,6 +157,15 @@ func (r SimpleRemoteMetadataResolver) ResolveResponse(req apimodel.ResolveReques
 	if err != nil {
 		return nil, resolveStatus, errors.WithStack(err)
 	}
+	// The caller's context bounds/cancels the request when provided. Both the
+	// unauthenticated GET and the authenticated POST honor it; a canceled
+	// (or timed-out) context aborts the attempt and stops Resty from
+	// retrying, so a slow or dead resolve endpoint is skipped in favor of
+	// the next trust anchor or the fallback resolver.
+	ctx := req.Context
+	if ctx == nil {
+		ctx = context.Background()
+	}
 
 	// process converts the raw HTTP result (via the shared resty.Response and
 	// *http.HttpError result shape) into a resolveStatus. It is shared by the
@@ -165,6 +193,7 @@ func (r SimpleRemoteMetadataResolver) ResolveResponse(req apimodel.ResolveReques
 			return nil, resolveStatus, err
 		}
 		resolveStatus = resolveStatusValid
+		rres.ValidUntil = rres.ExpiresAt
 		return rres, resolveStatus, nil
 	}
 
@@ -177,7 +206,7 @@ func (r SimpleRemoteMetadataResolver) ResolveResponse(req apimodel.ResolveReques
 		if err != nil {
 			return nil, resolveStatus, errors.WithStack(err)
 		}
-		authReq := internalhttp.Do().R().SetFormDataFromValues(form).SetError(&internalhttp.HttpError{})
+		authReq := internalhttp.Do().R().SetContext(ctx).SetFormDataFromValues(form).SetError(&internalhttp.HttpError{})
 		for k, v := range r.Headers {
 			authReq.SetHeader(k, v)
 		}
@@ -193,7 +222,7 @@ func (r SimpleRemoteMetadataResolver) ResolveResponse(req apimodel.ResolveReques
 		return process(res, errRes, nil)
 	}
 
-	res, errRes, err := http.Get(r.ResolveEndpoint, params, nil)
+	res, errRes, err := http.GetCtx(ctx, r.ResolveEndpoint, params, nil)
 	return process(res, errRes, err)
 }
 
@@ -316,12 +345,10 @@ func (r SmartRemoteMetadataResolver) Resolve(req apimodel.ResolveRequest) (*Meta
 	return res.Metadata, nil
 }
 
-// ResolveResponsePayload implements the MetadataResolver interface
-func (r SmartRemoteMetadataResolver) ResolveResponsePayload(req apimodel.ResolveRequest) (
-	ResolveResponsePayload, error,
-) {
-	// Prefer trust anchors hinted by the starting entity; fall back to others.
-	// Default mode: Prefer
+// orderedTrustAnchors returns the trust anchors in resolution order: those
+// hinted by the starting entity's entity configuration first (preserving the
+// order of req.TrustAnchor), then the remaining anchors.
+func orderedTrustAnchors(req apimodel.ResolveRequest) []string {
 	var ordered []string
 	if req.Subject != "" {
 		if starting, err := GetEntityConfiguration(req.Subject); err == nil && starting != nil {
@@ -349,79 +376,306 @@ func (r SmartRemoteMetadataResolver) ResolveResponsePayload(req apimodel.Resolve
 	if len(ordered) == 0 {
 		ordered = req.TrustAnchor
 	}
-	for _, tr := range ordered {
-		entityConfig, err := GetEntityConfiguration(tr)
-		if err != nil {
-			internal.Logf("MetadataResolver: error while obtaining entity configuration: %v", err)
-			continue
-		}
-		var resolveEndpoint string
-		if entityConfig != nil && entityConfig.Metadata != nil && entityConfig.Metadata.FederationEntity != nil {
-			resolveEndpoint = entityConfig.Metadata.FederationEntity.FederationResolveEndpoint
-		}
-		if resolveEndpoint == "" {
-			continue
-		}
-		remoteResolver := r.remoteResolverForTA(resolveEndpoint, entityConfig.Metadata.FederationEntity)
-		res, err := remoteResolver.ResolveResponsePayload(req)
-		if err != nil {
-			internal.Logf("MetadataResolver: error while obtaining resolve response: %v", err)
-			continue
-		}
-		return res, nil
-	}
-	return LocalMetadataResolver{}.ResolveResponsePayload(req)
+	return ordered
 }
 
-// ResolvePossible implements the MetadataResolver interface
+// resolveViaTA resolves req against a single trust anchor's resolve endpoint,
+// fetching the trust anchor's entity configuration first. It is the per-TA
+// candidate function of the parallel smart resolver.
+func (r SmartRemoteMetadataResolver) resolveViaTA(
+	req apimodel.ResolveRequest, ta string,
+) (ResolveResponsePayload, error) {
+	entityConfig, err := GetEntityConfiguration(ta)
+	if err != nil {
+		internal.Logf("MetadataResolver: error while obtaining entity configuration: %v", err)
+		return ResolveResponsePayload{}, err
+	}
+	var resolveEndpoint string
+	if entityConfig != nil && entityConfig.Metadata != nil && entityConfig.Metadata.FederationEntity != nil {
+		resolveEndpoint = entityConfig.Metadata.FederationEntity.FederationResolveEndpoint
+	}
+	if resolveEndpoint == "" {
+		return ResolveResponsePayload{}, errors.New("trust anchor has no federation_resolve_endpoint")
+	}
+	remoteResolver := r.remoteResolverForTA(resolveEndpoint, entityConfig.Metadata.FederationEntity)
+	res, err := remoteResolver.ResolveResponsePayload(req)
+	if err != nil {
+		internal.Logf("MetadataResolver: error while obtaining resolve response: %v", err)
+	}
+	return res, err
+}
+
+// resolvePossibleViaTA is the per-TA candidate function of the parallel smart
+// resolver's ResolvePossible.
+func (r SmartRemoteMetadataResolver) resolvePossibleViaTA(
+	req apimodel.ResolveRequest, ta string,
+) (valid, invalid bool) {
+	entityConfig, err := GetEntityConfiguration(ta)
+	if err != nil {
+		internal.Logf("MetadataResolver: error while obtaining entity configuration: %v", err)
+		return false, false
+	}
+	var resolveEndpoint string
+	if entityConfig != nil && entityConfig.Metadata != nil && entityConfig.Metadata.FederationEntity != nil {
+		resolveEndpoint = entityConfig.Metadata.FederationEntity.FederationResolveEndpoint
+	}
+	if resolveEndpoint == "" {
+		return false, false
+	}
+	return r.remoteResolverForTA(resolveEndpoint, entityConfig.Metadata.FederationEntity).ResolvePossible(req)
+}
+
+// ResolveResponsePayload implements the MetadataResolver interface. All
+// trust anchors are queried concurrently and the best result (shortest trust
+// chain) wins, so one slow or unreachable trust anchor cannot delay a valid
+// one; see ParallelMetadataResolver for the racing semantics.
+func (r SmartRemoteMetadataResolver) ResolveResponsePayload(req apimodel.ResolveRequest) (
+	ResolveResponsePayload, error,
+) {
+	ordered := orderedTrustAnchors(req)
+	successes, _ := raceCandidates(
+		req.Context, len(ordered), maxConcurrentResolverCandidates,
+		func(ctx context.Context, i int) (ResolveResponsePayload, error) {
+			candidateReq := req
+			candidateReq.Context = ctx
+			return r.resolveViaTA(candidateReq, ordered[i])
+		},
+		defaultParallelResolveDeadline, defaultParallelResolveGrace,
+	)
+	if len(successes) == 0 {
+		return LocalMetadataResolver{}.ResolveResponsePayload(req)
+	}
+	return bestResolveResponsePayload(successes), nil
+}
+
+// ResolvePossible implements the MetadataResolver interface. Like
+// ResolveResponsePayload it queries all trust anchors concurrently; a valid
+// result from any anchor wins over an invalid one.
 func (r SmartRemoteMetadataResolver) ResolvePossible(req apimodel.ResolveRequest) (bool, bool) {
-	// Prefer trust anchors hinted by the starting entity; fall back to others.
-	var ordered []string
-	if req.Subject != "" {
-		if starting, err := GetEntityConfiguration(req.Subject); err == nil && starting != nil {
-			hints := starting.TrustAnchorHints
-			if len(hints) > 0 {
-				hintSet := map[string]struct{}{}
-				for _, h := range hints {
-					hintSet[h] = struct{}{}
-				}
-				for _, id := range req.TrustAnchor {
-					if _, ok := hintSet[id]; ok {
-						ordered = append(ordered, id)
-					}
-				}
-				for _, id := range req.TrustAnchor {
-					if _, ok := hintSet[id]; !ok {
-						ordered = append(ordered, id)
-					}
-				}
-			}
-		}
-	}
-	if len(ordered) == 0 {
-		ordered = req.TrustAnchor
-	}
-	for _, tr := range ordered {
-		entityConfig, err := GetEntityConfiguration(tr)
-		if err != nil {
-			internal.Logf("MetadataResolver: error while obtaining entity configuration: %v", err)
-			continue
-		}
-		var resolveEndpoint string
-		if entityConfig != nil && entityConfig.Metadata != nil && entityConfig.Metadata.FederationEntity != nil {
-			resolveEndpoint = entityConfig.Metadata.FederationEntity.FederationResolveEndpoint
-		}
-		if resolveEndpoint == "" {
-			continue
-		}
-		remoteResolver := r.remoteResolverForTA(resolveEndpoint, entityConfig.Metadata.FederationEntity)
-		validConfirmed, invalidConfirmed := remoteResolver.ResolvePossible(req)
-		if validConfirmed {
+	type possible struct{ valid, invalid bool }
+	ordered := orderedTrustAnchors(req)
+	successes, _ := raceCandidates(
+		req.Context, len(ordered), maxConcurrentResolverCandidates,
+		func(ctx context.Context, i int) (possible, error) {
+			candidateReq := req
+			candidateReq.Context = ctx
+			valid, invalid := r.resolvePossibleViaTA(candidateReq, ordered[i])
+			return possible{valid: valid, invalid: invalid}, nil
+		},
+		defaultParallelResolveDeadline, defaultParallelResolveGrace,
+	)
+	for _, res := range successes {
+		if res.value.valid {
 			return true, false
 		}
-		if invalidConfirmed {
+	}
+	for _, res := range successes {
+		if res.value.invalid {
 			return false, true
 		}
 	}
 	return LocalMetadataResolver{}.ResolvePossible(req)
+}
+
+const (
+	// defaultParallelResolveDeadline bounds the total time a parallel resolve
+	// (explicit resolver list or per-trust-anchor fan-out) waits for its
+	// candidates before giving up.
+	defaultParallelResolveDeadline = 15 * time.Second
+	// defaultParallelResolveGrace is how long a parallel resolve keeps
+	// waiting after the first candidate succeeded for a slower candidate to
+	// produce a better (shorter) trust chain. Results are scored by trust
+	// chain length; on a tie the earliest-arrived result wins.
+	defaultParallelResolveGrace = time.Second
+	// maxConcurrentResolverCandidates caps how many candidate resolvers run
+	// at once; further candidates queue until a slot frees up or the
+	// deadline expires.
+	maxConcurrentResolverCandidates = 8
+)
+
+// ParallelMetadataResolver is a MetadataResolver that races multiple
+// candidate resolvers concurrently, so that one slow or unresponsive
+// candidate cannot delay a fast valid one. Candidates run concurrently
+// (capped at maxConcurrentResolverCandidates). The resolve finishes when
+// either all candidates completed, the grace period after the first success
+// elapsed, or the deadline expires — whichever comes first — and returns the
+// best result received so far: the one with the shortest trust chain, with
+// the earliest arrival winning ties. If no candidate succeeds, the last
+// error is returned.
+type ParallelMetadataResolver struct {
+	Resolvers []MetadataResolver
+	// Deadline bounds the total resolve duration. Zero means
+	// defaultParallelResolveDeadline.
+	Deadline time.Duration
+	// GracePeriod is how long the resolve keeps waiting after the first
+	// candidate succeeded for a better result. Zero means
+	// defaultParallelResolveGrace.
+	GracePeriod time.Duration
+}
+
+// Resolve implements the MetadataResolver interface.
+func (r ParallelMetadataResolver) Resolve(req apimodel.ResolveRequest) (*Metadata, error) {
+	res, err := r.ResolveResponsePayload(req)
+	if err != nil {
+		return nil, err
+	}
+	return res.Metadata, nil
+}
+
+// ResolveResponsePayload implements the MetadataResolver interface.
+func (r ParallelMetadataResolver) ResolveResponsePayload(req apimodel.ResolveRequest) (
+	ResolveResponsePayload, error,
+) {
+	results, lastErr := raceCandidates(
+		req.Context, len(r.Resolvers), maxConcurrentResolverCandidates,
+		func(ctx context.Context, i int) (ResolveResponsePayload, error) {
+			candidateReq := req
+			candidateReq.Context = ctx
+			return r.Resolvers[i].ResolveResponsePayload(candidateReq)
+		},
+		r.Deadline, r.GracePeriod,
+	)
+	if len(results) == 0 {
+		return ResolveResponsePayload{}, lastErr
+	}
+	return bestResolveResponsePayload(results), nil
+}
+
+// ResolvePossible implements the MetadataResolver interface. Like
+// ResolveResponsePayload it races all resolvers; a valid result from any
+// resolver wins over an invalid one.
+func (r ParallelMetadataResolver) ResolvePossible(req apimodel.ResolveRequest) (bool, bool) {
+	type possible struct{ valid, invalid bool }
+	results, _ := raceCandidates(
+		req.Context, len(r.Resolvers), maxConcurrentResolverCandidates,
+		func(ctx context.Context, i int) (possible, error) {
+			candidateReq := req
+			candidateReq.Context = ctx
+			valid, invalid := r.Resolvers[i].ResolvePossible(candidateReq)
+			return possible{valid: valid, invalid: invalid}, nil
+		},
+		r.Deadline, r.GracePeriod,
+	)
+	for _, res := range results {
+		if res.value.valid {
+			return true, false
+		}
+	}
+	for _, res := range results {
+		if res.value.invalid {
+			return false, true
+		}
+	}
+	return false, false
+}
+
+// candidateResult is the outcome of one candidate in a raced resolve.
+type candidateResult[T any] struct {
+	value T
+	err   error
+}
+
+// raceCandidates runs fetch concurrently for candidate indices 0..n-1 (at
+// most maxConcurrent at once) and returns all successful results in arrival
+// order. Collection ends when all candidates finished, when the grace period
+// after the first success elapsed, or when the deadline expired — whichever
+// comes first. When the race stops early (grace/deadline) the remaining
+// candidates are canceled: the parent context (the caller's, pass nil for
+// none) is wrapped so a stop cancels every in-flight candidate's context,
+// aborting their requests immediately instead of letting them run out their
+// own (15s) request timeouts. When no candidate succeeds, the last error is
+// returned.
+func raceCandidates[T any](
+	parent context.Context,
+	n, maxConcurrent int,
+	fetch func(ctx context.Context, i int) (T, error),
+	deadline, grace time.Duration,
+) (successes []candidateResult[T], lastErr error) {
+	if n == 0 {
+		return nil, errors.New("no candidates")
+	}
+	if deadline <= 0 {
+		deadline = defaultParallelResolveDeadline
+	}
+	if grace <= 0 {
+		grace = defaultParallelResolveGrace
+	}
+	if parent == nil {
+		parent = context.Background()
+	}
+	// The deadline is imposed on the per-candidate contexts themselves, so
+	// when it fires the in-flight requests are aborted at the same moment
+	// the race gives up (see the deadlineC case below).
+	ctx, deadlineCancel := context.WithTimeout(parent, deadline)
+	ctx, cancel := context.WithCancel(ctx)
+	defer func() {
+		cancel()
+		deadlineCancel()
+	}()
+
+	results := make(chan candidateResult[T], n)
+	sem := make(chan struct{}, maxConcurrent)
+	for i := range n {
+		go func(i int) {
+			sem <- struct{}{}
+			defer func() { <-sem }()
+			value, err := fetch(ctx, i)
+			results <- candidateResult[T]{value: value, err: err}
+		}(i)
+	}
+	// The grace timer is only started by the first success while other
+	// candidates are still in flight.
+	var (
+		graceTimer *time.Timer
+		graceC     <-chan time.Time
+	)
+	defer func() {
+		if graceTimer != nil {
+			graceTimer.Stop()
+		}
+	}()
+	active := n
+	deadlineC := ctx.Done()
+	for active > 0 {
+		select {
+		case res := <-results:
+			active--
+			if res.err != nil {
+				lastErr = res.err
+				continue
+			}
+			successes = append(successes, res)
+			if graceC == nil && active > 0 {
+				graceTimer = time.NewTimer(grace)
+				graceC = graceTimer.C
+			}
+		case <-graceC:
+			// Best-so-far is committed; the deferred cancel() aborts the
+			// remaining in-flight branches on return.
+			active = 0
+		case <-deadlineC:
+			// The deadline expired; the WithTimeout above already canceled
+			// the per-candidate contexts.
+			active = 0
+		}
+	}
+	if len(successes) == 0 {
+		if lastErr == nil {
+			lastErr = errors.New("no candidate succeeded")
+		}
+		return nil, lastErr
+	}
+	return successes, nil
+}
+
+// bestResolveResponsePayload returns the result with the shortest trust chain
+// (fewest statements); on ties the earliest-arrived result wins.
+func bestResolveResponsePayload(results []candidateResult[ResolveResponsePayload]) ResolveResponsePayload {
+	best := results[0]
+	for _, res := range results[1:] {
+		if len(res.value.TrustChain) < len(best.value.TrustChain) {
+			best = res
+		}
+	}
+	return best.value
 }

@@ -3,6 +3,7 @@ package cache
 import (
 	"encoding/base64"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/TwiN/gocache/v2"
@@ -25,21 +26,28 @@ type Cache interface {
 // internal cache
 type cacheWrapper struct {
 	c *gocache.Cache
+	// mu serializes access to c. gocache's Get mutates its internal LRU list
+	// while holding only a read lock, so two concurrent reads can race; the
+	// resolver now reaches the cache from many goroutines (parallel trust
+	// tree build + background grace refresh), so access is serialized here.
+	mu sync.Mutex
 }
 
-func newCacheWrapper(defaultExpiration time.Duration) cacheWrapper {
+func newCacheWrapper(defaultExpiration time.Duration) *cacheWrapper {
 	c := gocache.NewCache().WithDefaultTTL(defaultExpiration)
 	if err := c.StartJanitor(); err != nil {
 		internal.Logger().Error().Err(err).Msg("Cache: failed to start janitor; proceeding without background cleanup")
 	}
-	return cacheWrapper{
-		c,
+	return &cacheWrapper{
+		c: c,
 	}
 }
 
 // Get implements the Cache interface
-func (c cacheWrapper) Get(key string, target any) (bool, error) {
+func (c *cacheWrapper) Get(key string, target any) (bool, error) {
+	c.mu.Lock()
 	entryV, ok := c.c.Get(key)
+	c.mu.Unlock()
 	if !ok {
 		return false, nil
 	}
@@ -52,23 +60,29 @@ func (c cacheWrapper) Get(key string, target any) (bool, error) {
 }
 
 // Set implements the Cache interface
-func (c cacheWrapper) Set(key string, value any, expiration time.Duration) error {
+func (c *cacheWrapper) Set(key string, value any, expiration time.Duration) error {
 	data, err := msgpack.Marshal(value)
 	if err != nil {
 		return err
 	}
+	c.mu.Lock()
 	c.c.SetWithTTL(key, data, expiration)
+	c.mu.Unlock()
 	return nil
 }
 
 // Delete implements the Cache interface
-func (c cacheWrapper) Delete(key string) error {
+func (c *cacheWrapper) Delete(key string) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
 	c.c.Delete(key)
 	return nil
 }
 
 // Clear implements the Cache interface
-func (c cacheWrapper) Clear(prefix string) error {
+func (c *cacheWrapper) Clear(prefix string) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
 	c.c.DeleteKeysByPattern(prefix + "*")
 	return nil
 }

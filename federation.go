@@ -365,15 +365,27 @@ func (f FederationLeaf) ResolveOPMetadata(issuer string) (*OpenIDProviderMetadat
 	if set {
 		return &opm, nil
 	}
-	metadata, err := DefaultMetadataResolver.Resolve(
+	payload, err := DefaultMetadataResolver.ResolveResponsePayload(
 		apimodel.ResolveRequest{
 			Subject:     issuer,
 			TrustAnchor: f.TrustAnchors.EntityIDs(),
 			EntityTypes: []string{"openid_provider"},
 		},
 	)
-	if err != nil {
+	if err != nil || payload.Metadata == nil || payload.Metadata.OpenIDProvider == nil {
 		return nil, errors.Wrap(err, "no trust chain with valid metadata found")
 	}
-	return metadata.OpenIDProvider, nil
+	opm = *payload.Metadata.OpenIDProvider
+	// Cache the result for half of the remaining lifetime of the resolve
+	// result (the trust chain's earliest statement expiry for local
+	// resolution, the resolve response's exp for remote resolution). Within
+	// that window no statement of the chain can expire, so re-resolving
+	// cannot yield a newer result; zero or already-expired lifetimes are not
+	// cached.
+	if cachedFor := unixtime.Until(payload.ValidUntil) / 2; cachedFor > 0 {
+		if err := cache.Set(cache.Key(cache.KeyOPMetadata, issuer), &opm, cachedFor); err != nil {
+			internal.Error(err)
+		}
+	}
+	return &opm, nil
 }

@@ -1,10 +1,13 @@
 package oidfed
 
 import (
+	"context"
 	"encoding/json"
 	"net/url"
 	"slices"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"time"
 
 	go2 "github.com/adam-hanna/arrayOperations"
@@ -102,7 +105,13 @@ type ResolveResponsePayload struct {
 	TrustMarks  TrustMarkInfos `json:"trust_marks,omitempty"`
 	TrustChain  JWSMessages    `json:"trust_chain,omitempty"`
 	TrustAnchor string         `json:"trust_anchor,omitempty"`
-	Extra       map[string]any `json:"-"`
+	// ValidUntil bounds how long this result is valid: the earliest
+	// statement expiry of the resolved trust chain (local resolution) or the
+	// resolve response's exp claim (remote resolution). It is not
+	// serialized; callers (e.g. caching) use it to bound how long the
+	// payload may be kept.
+	ValidUntil unixtime.Unixtime `json:"-"`
+	Extra      map[string]any    `json:"-"`
 }
 
 // MarshalJSON implements the json.Marshaler interface.
@@ -160,9 +169,12 @@ func (m *JWSMessages) UnmarshalJSON(data []byte) error {
 
 // TrustResolver is type for resolving trust chains from a StartingEntity to one or multiple TrustAnchors
 type TrustResolver struct {
-	TrustAnchors         TrustAnchors
-	StartingEntity       string
-	Types                []string
+	TrustAnchors   TrustAnchors
+	StartingEntity string
+	Types          []string
+	// Ctx, when non-nil, bounds and cancels the resolution (request deadline
+	// or client disconnect). A default deadline is applied when none is set.
+	Ctx                  context.Context
 	trustTree            trustTree
 	TrustAnchorHintsMode TrustAnchorHintsMode
 	selectedAnchors      []string
@@ -190,14 +202,6 @@ func (r TrustResolver) hash() (string, error) {
 // ResolveToValidChains starts the trust chain resolution process, building an internal trust tree,
 // verifies the signatures, integrity, expirations, and metadata policies and returns all possible valid TrustChains
 func (r *TrustResolver) ResolveToValidChains() TrustChains {
-	if r.TrustAnchorHintsMode == TrustAnchorHintsModePrefer || r.TrustAnchorHintsMode == "" {
-		r.TrustAnchorHintsMode = TrustAnchorHintsModeRequire
-		chains := r.ResolveToValidChains()
-		if len(chains) > 0 {
-			return chains
-		}
-		r.TrustAnchorHintsMode = TrustAnchorHintsModeIgnore
-	}
 	chains := r.ResolveToValidChainsWithoutVerifyingMetadata()
 	if chains == nil {
 		return nil
@@ -210,14 +214,20 @@ func (r *TrustResolver) ResolveToValidChains() TrustChains {
 // verifies the signatures, integrity, expirations,
 // but not metadata policies and returns all possible valid TrustChains
 func (r *TrustResolver) ResolveToValidChainsWithoutVerifyingMetadata() TrustChains {
-	if r.TrustAnchorHintsMode == TrustAnchorHintsModePrefer || r.TrustAnchorHintsMode == "" {
-		r.TrustAnchorHintsMode = TrustAnchorHintsModeRequire
-		chains := r.ResolveToValidChainsWithoutVerifyingMetadata()
-		if len(chains) > 0 {
-			return chains
-		}
-		r.TrustAnchorHintsMode = TrustAnchorHintsModeIgnore
-	}
+	// Build the trust tree at most once per call — against all configured
+	// trust anchors — and then narrow the resulting chains by the trust
+	// anchor hints mode. The tree build explores every authority hint of the
+	// starting entity regardless of which anchors are configured or hinted,
+	// so the fetched set is identical no matter the mode; only the
+	// verification root set (here: all configured anchors) and the final
+	// narrow-by-hints filter differ. The old double pass (build for Require,
+	// rebuild for Ignore when the first yielded nothing) therefore rebuilt
+	// and re-verified the same tree a second time for no benefit, and the
+	// second build's only saving (requiring a hinted anchor) is recovered
+	// here as a pure in-memory filter over the already-built chains.
+	mode := r.hintsMode()
+	r.TrustAnchorHintsMode = TrustAnchorHintsModeIgnore
+
 	chains, set, err := r.cacheGetTrustChains()
 	if err != nil {
 		set = false
@@ -225,12 +235,96 @@ func (r *TrustResolver) ResolveToValidChainsWithoutVerifyingMetadata() TrustChai
 	}
 	if set {
 		internal.Log("TrustResolver: Obtained trust chains from cache")
+	} else {
+		internal.Log("TrustResolver: Trust chains cache miss; resolving trust tree and verifying signatures")
+		r.resolve()
+		r.verifySignatures()
+		chains = r.chains()
+	}
+	if len(chains) == 0 {
+		return nil
+	}
+	return r.filterByHintsMode(mode, chains)
+}
+
+// hintsMode returns the effective trust anchor hints mode, normalizing "" and
+// Prefer to Prefer: both prefer hinted anchors first and fall back to all
+// configured anchors.
+func (r TrustResolver) hintsMode() TrustAnchorHintsMode {
+	if r.TrustAnchorHintsMode == TrustAnchorHintsModeRequire {
+		return TrustAnchorHintsModeRequire
+	}
+	return TrustAnchorHintsModePrefer
+}
+
+// startingHints returns the trust anchor hints of the starting entity, from
+// the built tree when available, otherwise by fetching the starting entity's
+// entity configuration (cached).
+func (r TrustResolver) startingHints() []string {
+	if r.trustTree.Entity != nil {
+		return r.trustTree.Entity.TrustAnchorHints
+	}
+	if r.StartingEntity == "" {
+		return nil
+	}
+	ctx, cancel := r.buildContext()
+	defer cancel()
+	starting, err := GetEntityConfigurationCtx(ctx, r.StartingEntity)
+	if err != nil {
+		return nil
+	}
+	return starting.TrustAnchorHints
+}
+
+// filterByHintsMode narrows already-resolved chains to the roots the given
+// hint mode accepts, without rebuilding the tree: Require keeps only chains
+// rooted at the intersection of the starting entity's hints and the
+// configured anchors, Prefer prefers those (falling back to all chains), and
+// Ignore keeps everything.
+func (r TrustResolver) filterByHintsMode(mode TrustAnchorHintsMode, chains TrustChains) TrustChains {
+	if mode != TrustAnchorHintsModeRequire && mode != TrustAnchorHintsModePrefer {
 		return chains
 	}
-	internal.Log("TrustResolver: Trust chains cache miss; resolving trust tree and verifying signatures")
-	r.resolve()
-	r.verifySignatures()
-	return r.chains()
+	hints := r.startingHints()
+	if len(hints) == 0 {
+		return chains
+	}
+	intersection := go2.Intersect(hints, r.TrustAnchors.EntityIDs())
+	if mode == TrustAnchorHintsModeRequire {
+		if len(intersection) == 0 {
+			return nil
+		}
+		return chainsRootedAt(chains, intersection)
+	}
+	// Prefer
+	if len(intersection) > 0 {
+		if preferred := chainsRootedAt(chains, intersection); len(preferred) > 0 {
+			return preferred
+		}
+	}
+	return chains
+}
+
+// chainsRootedAt returns the chains whose final statement (the trust
+// anchor's entity configuration) is issued by one of tAs.
+func chainsRootedAt(chains TrustChains, tAs []string) TrustChains {
+	if len(tAs) == 0 {
+		return nil
+	}
+	roots := make(map[string]struct{}, len(tAs))
+	for _, id := range tAs {
+		roots[id] = struct{}{}
+	}
+	out := make(TrustChains, 0, len(chains))
+	for _, c := range chains {
+		if len(c) == 0 {
+			continue
+		}
+		if _, ok := roots[c[len(c)-1].Issuer]; ok {
+			out = append(out, c)
+		}
+	}
+	return out
 }
 
 // resolve starts the trust chain resolution process, building an internal trust tree
@@ -239,7 +333,10 @@ func (r *TrustResolver) resolve() {
 		internal.Log("TrustResolver: Resolve: no StartingEntity provided; aborting")
 		return
 	}
-	starting, err := GetEntityConfiguration(r.StartingEntity)
+	ctx, cancel := r.buildContext()
+	defer cancel()
+
+	starting, err := GetEntityConfigurationCtx(ctx, r.StartingEntity)
 	if err != nil {
 		internal.Logf(
 			"TrustResolver: Resolve: failed to get starting entity configuration for %s: %v", r.StartingEntity, err,
@@ -254,13 +351,77 @@ func (r *TrustResolver) resolve() {
 	if starting.Metadata != nil {
 		entityTypes = starting.Metadata.GuessEntityTypes()
 	}
+	build := &trustBuild{
+		ctx:     ctx,
+		cancel:  cancel,
+		sem:     make(chan struct{}, maxConcurrentResolverCandidates),
+		allDone: make(chan struct{}),
+		found:   make(chan struct{}),
+		grace:   defaultParallelResolveGrace,
+		anchors: r.TrustAnchors,
+	}
 	r.trustTree = trustTree{
 		Entity:              starting,
 		includedEntityTypes: strset.New(entityTypes...),
 		subordinateIDs:      strset.New(starting.Subject),
+		build:               build,
 	}
 	r.selectedAnchors = r.chooseAnchors(starting)
 	r.trustTree.resolve(r.selectedAnchors)
+	r.awaitBuild(build)
+}
+
+// buildContext returns the resolution context: the caller's context, always
+// wrapped so the resolver can cancel it, and bounded by
+// defaultParallelResolveDeadline when the caller provided none.
+func (r TrustResolver) buildContext() (context.Context, context.CancelFunc) {
+	parent := r.Ctx
+	if parent == nil {
+		parent = context.Background()
+	}
+	ctx, cancel := context.WithCancel(parent)
+	ctx, deadlineCancel := context.WithTimeout(ctx, defaultParallelResolveDeadline)
+	return ctx, func() {
+		cancel()
+		deadlineCancel()
+	}
+}
+
+// awaitBuild runs the parallel build until it should stop: when the whole
+// tree has been built, shortly (grace period) after the first complete
+// root-to-anchor path was found, or when the deadline expires. On stop it
+// cancels the build context so remaining workers are aborted, then waits for
+// them to drain so the tree is safe to verify. A build cut short by the
+// grace/deadline is marked incomplete so it is not cached as if complete.
+func (r *TrustResolver) awaitBuild(b *trustBuild) {
+	// A build with no workers never reaches pending zero via a worker; an
+	// idle build is trivially complete.
+	if b.pending.Load() == 0 {
+		b.complete = true
+		return
+	}
+	select {
+	case <-b.allDone:
+		// The whole tree was built; nothing left to wait for.
+		b.complete = true
+	case <-b.found:
+		// First complete path found; give still-running branches a grace
+		// window to yield a better (shorter) chain, then cut them off.
+		select {
+		case <-time.After(b.grace):
+		case <-b.ctx.Done():
+		case <-b.allDone:
+		}
+		if b.pending.Load() == 0 {
+			b.complete = true
+		}
+		b.cancel()
+		<-b.allDone
+	case <-b.ctx.Done():
+		// Deadline (caller-provided or default) expired.
+		b.cancel()
+		<-b.allDone
+	}
 }
 
 // chooseAnchors selects which trust anchors to use based on the provided
@@ -342,10 +503,17 @@ func (r TrustResolver) chains() (chains TrustChains) {
 		internal.Log("TrustResolver: Chains: no chains found from current trust tree")
 		return nil
 	}
-	if err = r.cacheSetTrustChains(chains); err != nil {
-		internal.Log("TrustResolver: " + err.Error())
+	if r.trustTree.build == nil || r.trustTree.build.complete {
+		if err = r.cacheSetTrustChains(chains); err != nil {
+			internal.Log("TrustResolver: " + err.Error())
+		}
+		internal.Logf("TrustResolver: Chains: computed %d chain(s) and cached them", len(chains))
+	} else {
+		internal.Logf(
+			"TrustResolver: Chains: computed %d chain(s); build was cut short, not caching",
+			len(chains),
+		)
 	}
-	internal.Logf("TrustResolver: Chains: computed %d chain(s) and cached them", len(chains))
 	return
 }
 
@@ -384,22 +552,98 @@ type trustTree struct {
 	depth               int
 	includedEntityTypes *strset.Set
 	subordinateIDs      *strset.Set
+	// parent links a node to its ancestor in the tree (nil for the root). It
+	// lets the build assemble a complete root-to-anchor chain from a leaf
+	// (see trustTree.chainToRoot) so a found path can be checked for
+	// signature and metadata validity before the grace period is started.
+	parent *trustTree
+	// build carries the per-resolution build state (context, concurrency
+	// cap, stop-on-success signaling) shared by every node of the tree.
+	build *trustBuild
+}
+
+// trustBuild is the shared, per-resolution state of a parallel trust tree
+// build: a cancellable context (caller context + deadline), a concurrency cap
+// for the parallel statement fetches, and a signal that fires once a complete
+// root-to-anchor path has been found so the build can stop exploring further
+// branches after a grace period instead of always walking the whole tree.
+type trustBuild struct {
+	ctx     context.Context
+	cancel  context.CancelFunc
+	sem     chan struct{}
+	pending atomic.Int64
+	allDone chan struct{}
+	// allDoneOnce guards closing allDone, which happens once the last worker
+	// has finished (pending reached zero).
+	allDoneOnce sync.Once
+	found       chan struct{}
+	foundOnce   sync.Once
+	grace       time.Duration
+	// anchors are the configured trust anchors (with keys) used to verify the
+	// signatures of a found root-to-anchor path before the build may cut off
+	// its remaining branches after the grace period.
+	anchors TrustAnchors
+	// complete reports whether the whole tree was built (as opposed to being
+	// cut short by the grace/deadline stop). Incomplete trees must not be
+	// cached as if they were complete.
+	complete bool
+}
+
+// begin is called before spawning a worker; it registers the worker so the
+// build knows it is not idle. Workers Add their nested workers synchronously
+// before finishing, so pending can only reach zero once every worker — at
+// every tree depth — has finished.
+func (b *trustBuild) begin() {
+	b.pending.Add(1)
+}
+
+// finish is deferred by every worker; the last one closes allDone.
+func (b *trustBuild) finish() {
+	if b.pending.Add(-1) == 0 {
+		b.allDoneOnce.Do(func() { close(b.allDone) })
+	}
+}
+
+// signalFound records that a complete root-to-anchor path exists in the tree.
+func (b *trustBuild) signalFound() {
+	b.foundOnce.Do(func() { close(b.found) })
 }
 
 func (t *trustTree) resolve(anchors []string) {
-	if t.Entity == nil {
+	if t.Entity == nil || t.build == nil || t.build.ctx.Err() != nil {
 		return
 	}
 
-	// Early return if the entity is issued by a trust anchor
+	// Early return if the entity is issued by a trust anchor; a complete
+	// root-to-anchor path exists. The build must not treat it as a stop
+	// unless the path is actually usable: if its signatures do not verify or
+	// its metadata does not resolve, signaling here would let the grace
+	// period cut off still-running branches that might yield a valid chain.
+	// foundPathValid checks exactly that, so an invalid first path keeps the
+	// build running (the found channel stays open for a later valid path).
 	if sliceutils.SliceContains(t.Entity.Issuer, anchors) {
-		internal.Logf("TrustResolver: resolve: entity %s is issued by a trust anchor; early return", t.Entity.Issuer)
+		if t.foundPathValid(t.build.anchors) {
+			internal.Logf(
+				"TrustResolver: resolve: valid root-to-anchor path at entity %s issued by trust anchor; early return",
+				t.Entity.Issuer,
+			)
+			t.build.signalFound()
+		} else {
+			internal.Logf(
+				"TrustResolver: resolve: root-to-anchor path at entity %s issued by trust anchor is invalid; continuing build",
+				t.Entity.Issuer,
+			)
+		}
 		return
 	}
 
 	t.resolveAuthorities(anchors)
 }
 
+// resolveAuthorities resolves all authority hints of t concurrently (capped
+// by the shared build semaphore). Each worker writes a distinct Authorities
+// index, which is safe; the tree is only read after all workers have drained
+// (see TrustResolver.awaitBuild).
 func (t *trustTree) resolveAuthorities(anchors []string) {
 	if len(t.Entity.AuthorityHints) > 0 {
 		t.Authorities = make([]trustTree, len(t.Entity.AuthorityHints))
@@ -410,33 +654,39 @@ func (t *trustTree) resolveAuthorities(anchors []string) {
 		len(t.Entity.AuthorityHints), t.Entity.Issuer, t.depth,
 	)
 	for i, authorityID := range t.Entity.AuthorityHints {
-		internal.Logf(
-			"TrustResolver: resolveAuthorities: working on authority %s (hint %d/%d)", authorityID, i+1,
-			len(t.Entity.AuthorityHints),
-		)
 		if t.subordinateIDs.Has(authorityID) {
 			internal.Logf(
 				"TrustResolver: resolveAuthorities: skipping authority %s due to loop prevention", authorityID,
 			)
 			continue // Loop prevention
 		}
-
-		authority, err := t.resolveAuthority(authorityID, anchors)
-		if err != nil {
-			internal.Logf("TrustResolver: resolveAuthorities: failed resolving authority %s: %v", authorityID, err)
-			continue
+		if t.build.ctx.Err() != nil {
+			return
 		}
-
-		t.Authorities[i] = authority
-		internal.Logf(
-			"TrustResolver: resolveAuthorities: successfully resolved authority %s; subtree depth %d with %d hint(s)",
-			authorityID, authority.depth, len(authority.Entity.AuthorityHints),
-		)
+		t.build.begin()
+		go func() {
+			defer t.build.finish()
+			select {
+			case t.build.sem <- struct{}{}:
+			case <-t.build.ctx.Done():
+				return
+			}
+			defer func() { <-t.build.sem }()
+			if t.build.ctx.Err() != nil {
+				return
+			}
+			authority, err := t.resolveAuthority(authorityID, anchors)
+			if err != nil {
+				internal.Logf("TrustResolver: resolveAuthorities: failed resolving authority %s: %v", authorityID, err)
+				return
+			}
+			t.Authorities[i] = authority
+		}()
 	}
 }
 
 func (t *trustTree) resolveAuthority(authorityID string, anchors []string) (trustTree, error) {
-	authorityStmt, err := GetEntityConfiguration(authorityID)
+	authorityStmt, err := GetEntityConfigurationCtx(t.build.ctx, authorityID)
 	if err != nil {
 		internal.Logf("TrustResolver: resolveAuthority: failed to obtain authority EC for %s: %v", authorityID, err)
 		return trustTree{}, err
@@ -521,7 +771,8 @@ func isValidAuthorityStatement(stmt *EntityStatement, authorityID string) bool {
 func (t *trustTree) fetchAndValidateSubordinateStatement(
 	authorityStmt *EntityStatement, authorityID string,
 ) (*EntityStatement, error) {
-	subordinateStmt, err := FetchEntityStatement(
+	subordinateStmt, err := FetchEntityStatementCtx(
+		t.build.ctx,
 		authorityStmt.Metadata.FederationEntity.FederationFetchEndpoint, t.Entity.Issuer, authorityID,
 		authorityStmt.Metadata.FederationEntity,
 	)
@@ -557,6 +808,8 @@ func (t *trustTree) createAuthorityTrustTree(
 		depth:               t.depth + 1,
 		includedEntityTypes: entityTypes,
 		subordinateIDs:      subordinates,
+		parent:              t,
+		build:               t.build,
 	}
 	newTree.resolve(anchors)
 
@@ -667,6 +920,54 @@ func (t *trustTree) verifySignatures(anchors TrustAnchors) bool {
 	return t.signaturesVerified
 }
 
+// foundPathValid reports whether the complete root-to-anchor path ending at
+// t is usable: its signatures verify against the configured anchors and its
+// metadata resolves. The signature check reuses the authoritative tree
+// verifier on an isolated single-path reconstruction of t's chain, so it is
+// consistent with the full-tree verification that runs after the build; the
+// metadata check is the same predicate (TrustChain.Metadata succeeds) that
+// TrustChainsFilterValidMetadata applies later.
+func (t *trustTree) foundPathValid(anchors TrustAnchors) bool {
+	chain := t.chainToRoot()
+	if len(chain) == 0 {
+		return false
+	}
+	if !trustTreeFromChain(chain).verifySignatures(anchors) {
+		return false
+	}
+	_, err := chain.Metadata()
+	return err == nil
+}
+
+// trustTreeFromChain reconstructs a minimal single-path trust tree from a
+// root-to-leaf chain produced by trustTree.chainToRoot, so verifySignatures
+// can be reused on just that path. The chain alternates an entity
+// configuration and a subordinate statement: [rootEC, sb1, ec1, ..., sbN,
+// ecN]; the reconstructed root has no subordinate statement and every deeper
+// node carries its Subordinate and Entity, mirroring the real tree nodes.
+func trustTreeFromChain(c TrustChain) *trustTree {
+	if len(c) == 0 {
+		return &trustTree{}
+	}
+	if len(c) == 1 {
+		return &trustTree{Entity: c[0]}
+	}
+	nodes := make([]*trustTree, (len(c)-1)/2+1)
+	// Deepest (leaf) node: Entity is the last element, Subordinate before it.
+	nodes[len(nodes)-1] = &trustTree{Entity: c[len(c)-1], Subordinate: c[len(c)-2]}
+	for i := len(nodes) - 2; i >= 0; i-- {
+		// Node i's (Subordinate, Entity) pair lives at chain indices 2*i+1, 2*i+2.
+		nodes[i] = &trustTree{
+			Entity:      c[2*i+2],
+			Subordinate: c[2*i+1],
+			Authorities: []trustTree{*nodes[i+1]},
+		}
+	}
+	// Root has no subordinate statement; its Entity heads the chain.
+	nodes[0].Subordinate = nil
+	return nodes[0]
+}
+
 func (t trustTree) chains() (chains []TrustChain) {
 	if t.Authorities == nil {
 		if t.Subordinate == nil {
@@ -698,6 +999,27 @@ func (t trustTree) chains() (chains []TrustChain) {
 	return
 }
 
+// chainToRoot assembles the full root-to-this-node trust chain in the same
+// ordering trustTree.chains produces for a single path: the root's entity
+// configuration, then for each ancestor (moving toward this node) the
+// subordinate statement issued by that ancestor about the next-lower entity
+// followed by the ancestor's own entity configuration. The node's parent
+// pointers must form a path back to the root.
+func (t trustTree) chainToRoot() TrustChain {
+	var path []*trustTree
+	for n := &t; n != nil; n = n.parent {
+		path = append(path, n)
+	}
+	// path is leaf-first (t, ..., root); walk it root-first to build the
+	// chain in root-to-leaf order.
+	chain := TrustChain{path[len(path)-1].Entity} // root.Entity heads the chain
+	for i := len(path) - 2; i >= 0; i-- {
+		n := path[i]
+		chain = append(chain, n.Subordinate, n.Entity)
+	}
+	return chain
+}
+
 func entityStmtCacheSet(subID, issID string, stmt *EntityStatement) {
 	if err := cache.Set(
 		cache.EntityStmtCacheKey(subID, issID), stmt, time.Until(stmt.ExpiresAt.Time),
@@ -721,15 +1043,22 @@ func entityStmtCacheGet(subID, issID string) *EntityStatement {
 // GetEntityConfiguration obtains the entity configuration for the passed entity id and returns it as an
 // EntityStatement
 func GetEntityConfiguration(entityID string) (*EntityStatement, error) {
-	return getEntityStatementOrConfiguration(
-		entityID, entityID, func() (*EntityStatement, error) {
-			return httpGetEntityConfiguration(entityID)
+	return GetEntityConfigurationCtx(context.Background(), entityID)
+}
+
+// GetEntityConfigurationCtx is GetEntityConfiguration with a context; the
+// fetch (and, for the synchronous path, nothing else) can be canceled via
+// ctx. The background cache-grace refresh is intentionally detached from ctx.
+func GetEntityConfigurationCtx(ctx context.Context, entityID string) (*EntityStatement, error) {
+	return getEntityStatementOrConfigurationCtx(
+		ctx, entityID, entityID, func(ctx context.Context) (*EntityStatement, error) {
+			return httpGetEntityConfigurationCtx(ctx, entityID)
 		},
 	)
 }
 
-func getEntityStatementOrConfiguration(
-	subID, issID string, obtainerFnc func() (*EntityStatement, error),
+func getEntityStatementOrConfigurationCtx(
+	ctx context.Context, subID, issID string, obtainerFnc func(context.Context) (*EntityStatement, error),
 ) (*EntityStatement, error) {
 
 	if stmt := entityStmtCacheGet(subID, issID); stmt != nil {
@@ -741,7 +1070,10 @@ func getEntityStatementOrConfiguration(
 				internal.Log("TrustResolver: Within grace period, refreshing entity statement")
 				_, err := obtainAndSetEntityStatementOrConfiguration(
 					subID,
-					issID, obtainerFnc,
+					issID, func() (*EntityStatement, error) {
+						// The background refresh must outlive the caller.
+						return obtainerFnc(context.Background())
+					},
 				)
 				if err != nil {
 					internal.Log("TrustResolver: ", err)
@@ -750,7 +1082,11 @@ func getEntityStatementOrConfiguration(
 		}()
 		return stmt, nil
 	}
-	return obtainAndSetEntityStatementOrConfiguration(subID, issID, obtainerFnc)
+	return obtainAndSetEntityStatementOrConfiguration(
+		subID, issID, func() (*EntityStatement, error) {
+			return obtainerFnc(ctx)
+		},
+	)
 }
 
 func obtainAndSetEntityStatementOrConfiguration(
@@ -766,12 +1102,12 @@ func obtainAndSetEntityStatementOrConfiguration(
 	return stmt, nil
 }
 
-func httpGetEntityConfiguration(
-	entityID string,
+func httpGetEntityConfigurationCtx(
+	ctx context.Context, entityID string,
 ) (*EntityStatement, error) {
 	uri := strings.TrimSuffix(entityID, "/") + oidfedconst.FederationSuffix
 	internal.Logf("TrustResolver: Obtaining entity configuration from %+q", uri)
-	res, errRes, err := http.Get(uri, nil, nil)
+	res, errRes, err := http.GetCtx(ctx, uri, nil, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -781,31 +1117,44 @@ func httpGetEntityConfiguration(
 	return ParseEntityStatement(res.Body())
 }
 
-// FetchEntityStatement fetches an EntityStatement from a fetch endpoint. When
-// the given federation entity metadata advertises private_key_jwt in
-// federation_fetch_endpoint_auth_methods and DefaultClientAuth is set, the
-// request is POSTed (form-encoded) with a client assertion; otherwise an
-// unauthenticated GET with the params as query string is used.
-func FetchEntityStatement(fetchEndpoint, subID, issID string, fe ...*FederationEntityMetadata) (*EntityStatement, error) {
-	return getEntityStatementOrConfiguration(
-		subID, issID, func() (*EntityStatement, error) {
+// FetchEntityStatementCtx fetches an EntityStatement from a fetch endpoint,
+// honoring ctx for cancellation. When the given federation entity metadata
+// advertises private_key_jwt in federation_fetch_endpoint_auth_methods and
+// DefaultClientAuth is set, the request is POSTed (form-encoded) with a
+// client assertion; otherwise an unauthenticated GET with the params as query
+// string is used.
+func FetchEntityStatementCtx(
+	ctx context.Context, fetchEndpoint, subID, issID string, fe ...*FederationEntityMetadata,
+) (*EntityStatement, error) {
+	return getEntityStatementOrConfigurationCtx(
+		ctx, subID, issID, func(ctx context.Context) (*EntityStatement, error) {
 			var fePtr *FederationEntityMetadata
 			if len(fe) > 0 {
 				fePtr = fe[0]
 			}
-			return httpFetchEntityStatement(fetchEndpoint, subID, fePtr)
+			return httpFetchEntityStatementCtx(ctx, fetchEndpoint, subID, fePtr)
 		},
 	)
 }
 
-func httpFetchEntityStatement(fetchEndpoint, subID string, fe *FederationEntityMetadata) (*EntityStatement, error) {
+// FetchEntityStatement fetches an EntityStatement from a fetch endpoint (see
+// FetchEntityStatementCtx).
+func FetchEntityStatement(fetchEndpoint, subID, issID string, fe ...*FederationEntityMetadata) (
+	*EntityStatement, error,
+) {
+	return FetchEntityStatementCtx(context.Background(), fetchEndpoint, subID, issID, fe...)
+}
+
+func httpFetchEntityStatementCtx(
+	ctx context.Context, fetchEndpoint, subID string, fe *FederationEntityMetadata,
+) (*EntityStatement, error) {
 	params := url.Values{}
 	params.Add("sub", subID)
 	var authMethods []string
 	if fe != nil {
 		authMethods = fe.FederationFetchEndpointAuthMethods
 	}
-	res, errRes, err := httpFederationEndpointRequest(fetchEndpoint, params, authMethods, fe, nil)
+	res, errRes, err := httpFederationEndpointRequestCtx(ctx, fetchEndpoint, params, authMethods, fe, nil)
 	if err != nil {
 		return nil, err
 	}

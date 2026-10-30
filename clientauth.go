@@ -1,7 +1,9 @@
 package oidfed
 
 import (
+	"context"
 	"net/url"
+	"slices"
 
 	"github.com/go-resty/resty/v2"
 	"github.com/pkg/errors"
@@ -30,12 +32,7 @@ func SetDefaultClientAuth(p *RequestObjectProducer) {
 // clientAuthRequired reports whether the endpoint whose *_auth_methods field is
 // given requires private_key_jwt client authentication.
 func clientAuthRequired(authMethods []string) bool {
-	for _, m := range authMethods {
-		if m == oidfedconst.AuthMethodPrivateKeyJWT {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(authMethods, oidfedconst.AuthMethodPrivateKeyJWT)
 }
 
 // clientAuthForm returns assertion fields (client_assertion_type and client_assertion) produced for
@@ -77,12 +74,22 @@ func endpointAlgsFromEC(fe *FederationEntityMetadata) []string {
 func httpFederationEndpointRequest(
 	endpoint string, params url.Values, authMethods []string, algEC *FederationEntityMetadata, result interface{},
 ) (*resty.Response, *internalhttp.HttpError, error) {
+	return httpFederationEndpointRequestCtx(context.Background(), endpoint, params, authMethods, algEC, result)
+}
+
+// httpFederationEndpointRequestCtx is httpFederationEndpointRequest with a
+// context; canceling the context aborts the request.
+func httpFederationEndpointRequestCtx(
+	ctx context.Context, endpoint string, params url.Values, authMethods []string, algEC *FederationEntityMetadata,
+	result any,
+) (*resty.Response, *internalhttp.HttpError, error) {
 	if clientAuthRequired(authMethods) && DefaultClientAuth != nil {
 		form, err := clientAuthForm(params, DefaultClientAuth, endpoint, endpointAlgsFromEC(algEC))
 		if err != nil {
 			return nil, nil, errors.WithStack(err)
 		}
 		resp, err := internalhttp.Do().R().
+			SetContext(ctx).
 			SetFormDataFromValues(form).
 			SetError(&internalhttp.HttpError{}).
 			SetResult(result).
@@ -96,5 +103,5 @@ func httpFederationEndpointRequest(
 		}
 		return resp, nil, nil
 	}
-	return internalhttp.Get(endpoint, params, result)
+	return internalhttp.GetCtx(ctx, endpoint, params, result)
 }

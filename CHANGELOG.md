@@ -1,3 +1,93 @@
+## go-oidfed/lib 0.14.0
+
+### Features
+
+- **`ParallelMetadataResolver`** races multiple `MetadataResolver`s concurrently
+  (capped at 8 in-flight). It waits up to a configurable deadline (default 15s)
+  for any candidate; after the first success it keeps waiting for a configurable
+  grace period (default 1s) and returns the best result — the trust chain with
+  the fewest statements, earliest arrival winning ties — so a valid fast path is
+  never delayed by a slow dead one, and a slightly later "better" chain is still
+  preferred. When every candidate fails, the last error is returned. A candidate
+  still running when the race stops (grace/deadline) is not merely abandoned but
+  canceled — its request context is cancelled, so its in-flight HTTP request
+  aborts immediately instead of lingering up to its own (15s) timeout.
+- **`ResolveRequest.Context`** (never serialized) lets callers bound and cancel a
+  resolution; `TrustResolver.Ctx` does the same when constructing the resolver
+  directly. Cancellation is threaded through the HTTP layer via the new
+  `GetEntityConfigurationCtx`/`FetchEntityStatementCtx` and `internal/http`
+  `GetCtx`/`PostCtx`; both the unauthenticated GET and the authenticated
+  `private_key_jwt` POST against a remote resolve endpoint also honor
+  `ResolveRequest.Context`, so a canceled caller aborts the attempt instead
+  of waiting out the remote.
+- **`ResolveResponsePayload.ValidUntil`** exposes the lifetime of a resolve
+  result: the trust chain's earliest statement expiry for local resolution, the
+  resolve response's `exp` claim for remote resolution. Not serialized.
+
+### Enhancements
+
+- **`internal/http` + `SmartRemoteMetadataResolver`: slow or dead resolve
+  endpoints no longer dominate resolution.** Previously a
+  single unresponsive resolve endpoint could burn 3x20s (Resty retried every
+  error, including timeouts) before the resolver could try the next endpoint or
+  fall back to local resolution. Now:
+  - **Faster, split timeouts.** The shared HTTP client (resolve endpoints, entity
+    configurations, statement fetches) uses a 15s per-attempt budget instead of
+    20s, plus transport timeouts: 3s dial, 5s TLS handshake, 5s response headers.
+    A resolve endpoint that never answers the headers fails at ~5s, not 20s.
+  - **No timeout retries.** A retry condition replaces Resty's default
+    (retry-on-any-error): only network-level errors that did _not_ time out
+    (connection refused/reset, DNS) are retried. A timeout ends the attempt — the
+    next endpoint, trust anchor, or the local fallback takes over instead of
+    repeating the same 15s wait.
+  - **`SmartRemoteMetadataResolver` now resolves all trust anchors concurrently**
+    with the same deadline/grace semantics instead of sequentially.
+- **`FederationLeaf.ResolveOPMetadata` caches its result** for half of the
+  resolve result's remaining lifetime (previously the `op_metadata` cache was
+  read but never written, so every call hit the resolver again). Zero or expired
+  lifetimes are not cached.
+- **`TrustResolver`: the local trust tree build is now bounded and parallel.**
+  (`TrustResolver` is used by `LocalMetadataResolver` to resolve trust chains
+  without a remote resolve endpoint.) It previously walked the whole tree
+  depth-first and sequentially: a single slow or unreachable authority delayed
+  every sibling, the full tree was always explored even after a valid chain was
+  found, and the total time was the sum of per-node costs with no upper bound.
+  Now:
+  - **Parallel tree build.** `trustTree.resolveAuthorities` resolves all authority
+    hints of an entity concurrently (capped at 8 in-flight fetches shared across
+    the whole build). A dead or slow branch cannot block a fast valid one.
+  - **Bounded total time.** The whole build runs under a context with a default
+    deadline (15s) composed over the caller's context when one is provided. On
+    expiry all in-flight fetches are canceled.
+  - **Stop-on-success with grace.** The first complete root-to-anchor path
+    that is actually usable starts a grace window (default 1s); when it
+    elapses, the build cancels the remaining branches instead of always
+    walking the whole tree. A path is usable only if its signatures verify
+    against the configured trust anchors **and** its metadata resolves — so a
+    completed-but-invalid path (bad signature or unsupported metadata policy)
+    does not prematurely cut off still-running branches that could yield a
+    valid chain.
+  - **Single-pass hint modes.** `TrustResolver` builds the tree once (against
+    all configured trust anchors) and narrows the resulting chains by the
+    `trust_anchor_hints` mode (`require`/`prefer`) afterwards as a pure
+    in-memory filter. The fetched set is identical regardless of the mode —
+    the build explores every authority hint of the starting entity either way —
+    so the old "build for require, rebuild for ignore" double pass rebuilt and
+    re-verified the same tree a second time when the require pass found nothing.
+
+### Bugfixes
+
+- **`FederationLeaf.ResolveOPMetadata`: resolving a result without metadata no
+  longer panics.** It previously dereferenced the result of a successful
+  resolve whose `Metadata` or `OpenIDProvider` was nil, causing a nil pointer
+  dereference (or a nil result with no error). It now checks for the missing
+  metadata and returns an explicit error (`no trust chain with valid metadata
+  found`) instead.
+- **`cache.cacheWrapper`: the in-memory cache is now concurrency-safe.**
+  gocache's `Get` mutates its internal LRU list while holding only a read lock,
+  so two concurrent reads can race. Access in `cacheWrapper` is now serialized —
+  the parallel resolvers reach the cache from many goroutines.
+
 ## go-oidfed/lib 0.13.3
 
 ### Fixes

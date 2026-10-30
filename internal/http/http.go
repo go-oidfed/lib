@@ -1,7 +1,10 @@
 package http
 
 import (
+	"context"
 	"fmt"
+	"net"
+	"net/http"
 	"net/url"
 	"time"
 
@@ -17,8 +20,44 @@ func init() {
 	// client.SetDisableWarn(true)
 	client.SetRetryCount(2)
 	client.SetRedirectPolicy(resty.FlexibleRedirectPolicy(10))
-	client.SetTimeout(20 * time.Second)
+	// Fail fast on dead or unresponsive remotes. The per-attempt budget
+	// covers the whole request, but a server that never answers the response
+	// headers is abandoned after 5s, an unreachable host after 3s (dial) or
+	// 5s (TLS handshake). A resolve endpoint that takes this long is better
+	// skipped in favor of the next endpoint or the fallback resolver.
+	client.SetTimeout(15 * time.Second)
+	transport := http.DefaultTransport.(*http.Transport).Clone()
+	transport.DialContext = (&net.Dialer{
+		Timeout:   3 * time.Second,
+		KeepAlive: 30 * time.Second,
+	}).DialContext
+	transport.TLSHandshakeTimeout = 5 * time.Second
+	transport.ResponseHeaderTimeout = 5 * time.Second
+	client.SetTransport(transport)
+	// Resty's bare default retries on any operation error — including
+	// timeouts, which would repeat the full 15s per-attempt budget (3x15s)
+	// for a single dead endpoint. Retry only network-level errors that did
+	// not time out (connection refused/reset, DNS): those already failed
+	// fast and a fresh attempt may succeed. Configuring a retry condition
+	// replaces the default, so a timeout is never retried.
+	client.AddRetryCondition(retryCondition)
 	client.SetHeader("User-Agent", "go-oidfed")
+}
+
+// retryCondition reports whether an operation error should be retried: only
+// network-level errors that did not time out qualify. Timeouts are not
+// retried (the remote is slow or unreachable and a retry would just burn the
+// budget again; fallback and parallel resolution take over instead), and
+// non-network errors (e.g. response parsing) are never retried.
+func retryCondition(_ *resty.Response, err error) bool {
+	if err == nil {
+		return false
+	}
+	var netErr net.Error
+	if errors.As(err, &netErr) {
+		return !netErr.Timeout()
+	}
+	return false
 }
 
 // SetUserAgent sets the default User-Agent header sent by all requests.
@@ -51,7 +90,14 @@ func Do() *resty.Client {
 
 // Get performs a http GET request and parses the response into the given interface{}
 func Get(url string, params url.Values, res interface{}) (*resty.Response, *HttpError, error) {
-	resp, err := client.R().SetQueryParamsFromValues(params).SetError(&HttpError{}).SetResult(res).Get(url)
+	return GetCtx(context.Background(), url, params, res)
+}
+
+// GetCtx is Get with a context; canceling the context aborts the request
+// (and, for a timed-out or canceled operation, stops Resty from retrying). It
+// supersedes Get for callers that need cancellation.
+func GetCtx(ctx context.Context, url string, params url.Values, res interface{}) (*resty.Response, *HttpError, error) {
+	resp, err := client.R().SetContext(ctx).SetQueryParamsFromValues(params).SetError(&HttpError{}).SetResult(res).Get(url)
 	if err != nil {
 		return nil, nil, errors.WithStack(err)
 	}
@@ -67,7 +113,15 @@ func Get(url string, params url.Values, res interface{}) (*resty.Response, *Http
 func Post(url string, req interface{}, res interface{}, headers map[string]string) (
 	*resty.Response, *HttpError, error,
 ) {
-	resp, err := client.R().SetBody(req).SetHeaders(headers).SetError(&HttpError{}).SetResult(
+	return PostCtx(context.Background(), url, req, res, headers)
+}
+
+// PostCtx is Post with a context; canceling the context aborts the request
+// (including any Resty retry) for callers that need cancellation.
+func PostCtx(
+	ctx context.Context, url string, req interface{}, res interface{}, headers map[string]string,
+) (*resty.Response, *HttpError, error) {
+	resp, err := client.R().SetContext(ctx).SetBody(req).SetHeaders(headers).SetError(&HttpError{}).SetResult(
 		res,
 	).Post(url)
 	if err != nil {
