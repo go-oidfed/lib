@@ -74,6 +74,11 @@
     the build explores every authority hint of the starting entity either way —
     so the old "build for require, rebuild for ignore" double pass rebuilt and
     re-verified the same tree a second time when the require pass found nothing.
+- **`LocalMetadataResolver` returns exported sentinel errors** for its failure
+  stages, so callers can branch on the cause with `errors.Is` instead of
+  matching error strings: `ErrNoTrustChainFound` (no signature-valid path to a
+  configured trust anchor) and `ErrNoTrustChainWithValidMetadata` (paths exist
+  but none pass metadata policy evaluation).
 
 ### Bugfixes
 
