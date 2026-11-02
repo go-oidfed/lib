@@ -3,13 +3,13 @@ package oidfed
 import (
 	"encoding/json"
 	"fmt"
+	nethttp "net/http"
 	"reflect"
 	"slices"
 	"strings"
 	"sync"
 	"time"
 
-	"github.com/gofiber/fiber/v2"
 	"github.com/google/go-querystring/query"
 	"github.com/lithammer/fuzzysearch/fuzzy"
 	"github.com/pkg/errors"
@@ -621,7 +621,7 @@ func (c SimpleRemoteEntityCollector) CollectEntities(req apimodel.EntityCollecti
 		if err != nil {
 			internal.Logf("Discovery: error while creating query parameters for entity collection request: %s", err)
 			return nil, &ErrorResponse{
-				Status: fiber.StatusInternalServerError,
+				Status: nethttp.StatusInternalServerError,
 				Error:  ErrorServerError(err.Error()),
 			}
 		}
@@ -634,7 +634,7 @@ func (c SimpleRemoteEntityCollector) CollectEntities(req apimodel.EntityCollecti
 		if err != nil {
 			internal.Logf("Discovery: error while fetching entity collection endpoint: %s", err)
 			return nil, &ErrorResponse{
-				Status: fiber.StatusInternalServerError,
+				Status: nethttp.StatusInternalServerError,
 				Error:  ErrorServerError(err.Error()),
 			}
 		}

@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/coreos/go-oidc/v3/oidc"
-	"github.com/gofiber/fiber/v2"
 	"github.com/lestrrat-go/jwx/v4/jws"
 	"github.com/pkg/errors"
 	"golang.org/x/oauth2"
@@ -158,14 +157,14 @@ func (f FederationLeaf) DoExplicitClientRegistration(op string) (
 		opMetadata.FederationRegistrationEndpoint,
 		entityConfiguration,
 		nil, map[string]string{
-			fiber.HeaderContentType: oidfedconst.ContentTypeEntityStatement,
+			oidfedconst.HeaderContentType: oidfedconst.ContentTypeEntityStatement,
 		},
 	)
 	if err != nil || errRes != nil {
 		return nil, errRes, err
 	}
 	if !strings.EqualFold(
-		resp.Header().Get(fiber.HeaderContentType), oidfedconst.ContentTypeExplicitRegistrationResponse,
+		resp.Header().Get(oidfedconst.HeaderContentType), oidfedconst.ContentTypeExplicitRegistrationResponse,
 	) {
 		return nil, nil, errors.New("explicit client registration: unexpected content type in response")
 	}

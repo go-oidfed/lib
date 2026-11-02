@@ -1,11 +1,11 @@
 package oidfed
 
 import (
+	"net/http"
 	"slices"
 	"sync"
 	"time"
 
-	"github.com/gofiber/fiber/v2"
 	"github.com/pkg/errors"
 
 	"github.com/go-oidfed/lib/apimodel"
@@ -127,7 +127,7 @@ func (p *PeriodicEntityCollector) CollectEntities(req apimodel.EntityCollectionR
 	reqHash, err := utils.HashStruct(req)
 	if err != nil {
 		return nil, &ErrorResponse{
-			Status: fiber.StatusInternalServerError,
+			Status: http.StatusInternalServerError,
 			Error:  ErrorServerError(errors.Wrap(err, "PeriodicEntityCollector: error while hashing request").Error()),
 		}
 	}
@@ -136,7 +136,7 @@ func (p *PeriodicEntityCollector) CollectEntities(req apimodel.EntityCollectionR
 	set, err := cache.Get(cacheRequestKey, &res)
 	if err != nil {
 		return nil, &ErrorResponse{
-			Status: fiber.StatusInternalServerError,
+			Status: http.StatusInternalServerError,
 			Error: ErrorServerError(
 				errors.Wrap(
 					err, "PeriodicEntityCollector: error while retrieving cached response",
@@ -152,7 +152,7 @@ func (p *PeriodicEntityCollector) CollectEntities(req apimodel.EntityCollectionR
 	set, err = cache.Get(cache.Key(periodicCacheSubsystem, cacheSubSubSystemAll, req.TrustAnchor), &cc)
 	if err != nil {
 		return nil, &ErrorResponse{
-			Status: fiber.StatusInternalServerError,
+			Status: http.StatusInternalServerError,
 			Error: ErrorServerError(
 				errors.Wrap(
 					err, "PeriodicEntityCollector: error while retrieving cached collection",
@@ -163,7 +163,7 @@ func (p *PeriodicEntityCollector) CollectEntities(req apimodel.EntityCollectionR
 	if !set {
 		return nil, &ErrorResponse{
 			Error:  ErrorInvalidTrustAnchor("trust anchor not supported"),
-			Status: fiber.StatusNotFound,
+			Status: http.StatusNotFound,
 		}
 	}
 	entities := FilterAndTrimEntities(cc.Entities, req)
@@ -174,7 +174,7 @@ func (p *PeriodicEntityCollector) CollectEntities(req apimodel.EntityCollectionR
 		if !found {
 			return nil, &ErrorResponse{
 				Error:  &Error{Error: EntityIDNotFound},
-				Status: fiber.StatusNotFound,
+				Status: http.StatusNotFound,
 			}
 		}
 		entities = entities[n:]

@@ -93,6 +93,16 @@
   so two concurrent reads can race. Access in `cacheWrapper` is now serialized —
   the parallel resolvers reach the cache from many goroutines.
 
+### Dependencies
+
+- **Dropped the `gofiber/fiber` dependency entirely.** The library used Fiber
+  only for HTTP status/header constants (`fiber.StatusInternalServerError`,
+  `fiber.StatusNotFound`, `fiber.HeaderContentType`). These now come from the
+  standard library: `net/http.StatusInternalServerError` / `net/http.StatusNotFound`
+  (`discovery.go`, `periodic_entity_collector.go`) and the new
+  `oidfedconst.HeaderContentType` constant (= `"Content-Type"`, `explicit.go`) —
+  the stdlib has no named constant for that header.
+
 ## go-oidfed/lib 0.13.3
 
 ### Fixes

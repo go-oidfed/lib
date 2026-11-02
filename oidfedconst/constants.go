@@ -3,6 +3,10 @@ package oidfedconst
 // FederationSuffix is the well-known openid-federation suffix
 const FederationSuffix = "/.well-known/openid-federation"
 
+// HeaderContentType is the HTTP "Content-Type" header name. It exists because
+// the standard library has no named constant for it.
+const HeaderContentType = "Content-Type"
+
 // Constants for JWT Types
 const (
 	ContentTypeEntityStatement              = "application/entity-statement+jwt"
