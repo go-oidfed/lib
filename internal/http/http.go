@@ -19,7 +19,7 @@ func init() {
 	client.SetCookieJar(nil)
 	// client.SetDisableWarn(true)
 	client.SetRetryCount(2)
-	client.SetRedirectPolicy(resty.FlexibleRedirectPolicy(10))
+	client.SetRedirectPolicy(noPostRedirectPolicy(resty.FlexibleRedirectPolicy(10)))
 	// Fail fast on dead or unresponsive remotes. The per-attempt budget
 	// covers the whole request, but a server that never answers the response
 	// headers is abandoned after 5s, an unreachable host after 3s (dial) or
@@ -44,13 +44,39 @@ func init() {
 	client.SetHeader("User-Agent", "go-oidfed")
 }
 
+// errPostRedirect is returned for a POST request that was answered with a
+// redirect.
+var errPostRedirect = errors.New("not following a redirect of a POST request")
+
+// noPostRedirectPolicy refuses every redirect of a POST request and applies
+// next to the others. A POST may carry a client assertion in its body, which
+// a 307 or 308 redirect would resend to whatever host the redirect names.
+func noPostRedirectPolicy(next resty.RedirectPolicy) resty.RedirectPolicy {
+	return resty.RedirectPolicyFunc(
+		func(req *http.Request, via []*http.Request) error {
+			if len(via) > 0 && via[0].Method == http.MethodPost {
+				return errPostRedirect
+			}
+			return next.Apply(req, via)
+		},
+	)
+}
+
 // retryCondition reports whether an operation error should be retried: only
-// network-level errors that did not time out qualify. Timeouts are not
+// network-level errors that did not time out qualify, and never for a POST
+// request. Timeouts are not
 // retried (the remote is slow or unreachable and a retry would just burn the
 // budget again; fallback and parallel resolution take over instead), and
 // non-network errors (e.g. response parsing) are never retried.
-func retryCondition(_ *resty.Response, err error) bool {
+func retryCondition(resp *resty.Response, err error) bool {
 	if err == nil {
+		return false
+	}
+	// A POST may carry a single-use client assertion (its jti), which a
+	// retry would resend; the endpoint must refuse it as a replay. Resty
+	// retries when any condition returns true, so this must be decided
+	// here rather than with a per-request condition.
+	if resp != nil && resp.Request != nil && resp.Request.Method == http.MethodPost {
 		return false
 	}
 	var netErr net.Error
