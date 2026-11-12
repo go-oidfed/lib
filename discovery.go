@@ -510,6 +510,16 @@ func httpFetchList(listEndpoint, entityID string, fe *FederationEntityMetadata) 
 		}
 		return nil, errRes.Err()
 	}
+	// An error answer without an OpenID Federation error body (a reverse
+	// proxy's plain-text 401, an HTML 502) leaves errRes nil; it must not be
+	// read as an empty list.
+	if resp != nil && resp.IsError() {
+		status := resp.StatusCode()
+		if status == nethttp.StatusUnauthorized || status == nethttp.StatusForbidden {
+			return nil, &ListRefusedError{Authority: entityID, Status: status}
+		}
+		return nil, errors.Errorf("list endpoint of %s answered HTTP %d", entityID, status)
+	}
 	entities, ok := resp.Result().(*[]string)
 	if !ok || entities == nil {
 		return nil, errors.New("unexpected response type")

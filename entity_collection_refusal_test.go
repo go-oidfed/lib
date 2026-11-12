@@ -217,3 +217,78 @@ func TestListAuthRequired(t *testing.T) {
 		})
 	}
 }
+
+// A list endpoint behind a reverse proxy may answer an error without the
+// JSON error body of OpenID Federation (a plain-text 401, an HTML 502). It
+// must be reported as a refusal or an error, not read as an empty list.
+func TestCollectorReportsPlainErrorResponses(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		status  int
+		refused bool
+	}{
+		{"401", http.StatusUnauthorized, true},
+		{"403", http.StatusForbidden, true},
+		{"502", http.StatusBadGateway, false},
+	} {
+		t.Run(
+			tc.name, func(t *testing.T) {
+				host := "https://ta-plain-" + tc.name + ".example"
+				leaf := newMockAuthority("https://leaf-plain-"+tc.name+".example", EntityStatementPayload{})
+				ta := newMockAuthority(host, EntityStatementPayload{})
+				ta.RegisterSubordinate(leaf)
+				httpmock.RegisterResponder(
+					"GET", ta.ListEndpoint, httpmock.NewStringResponder(tc.status, "<html>no</html>"),
+				)
+
+				var rec listErrorRecorder
+				res, errRes := (&SimpleEntityCollector{OnListError: rec.hook}).CollectEntities(
+					apimodel.EntityCollectionRequest{TrustAnchor: ta.EntityID},
+				)
+				if errRes != nil {
+					t.Fatalf("unexpected error: %+v", errRes)
+				}
+				if len(res.Entities) != 0 {
+					t.Fatalf("expected an empty collection, got %d entities", len(res.Entities))
+				}
+				if tc.refused {
+					got := rec.refusal(t, ta.EntityID)
+					if got.Status != tc.status {
+						t.Fatalf("got status %d, want %d", got.Status, tc.status)
+					}
+					return
+				}
+				rec.mu.Lock()
+				err := rec.errs[ta.EntityID]
+				rec.mu.Unlock()
+				var refused *ListRefusedError
+				if err == nil || errors.As(err, &refused) {
+					t.Fatalf("want a non-refusal list error, got %v", err)
+				}
+			},
+		)
+	}
+}
+
+// An authority whose list endpoint answers 200 with an empty list has no
+// subordinates: that is neither a refusal nor an error.
+func TestCollectorEmptyListIsNotAnError(t *testing.T) {
+	ta := newMockAuthority("https://ta-empty-list.example", EntityStatementPayload{})
+	httpmock.RegisterResponder("GET", ta.ListEndpoint, httpmock.NewJsonResponderOrPanic(http.StatusOK, []string{}))
+
+	var rec listErrorRecorder
+	res, errRes := (&SimpleEntityCollector{OnListError: rec.hook}).CollectEntities(
+		apimodel.EntityCollectionRequest{TrustAnchor: ta.EntityID},
+	)
+	if errRes != nil {
+		t.Fatalf("unexpected error: %+v", errRes)
+	}
+	if len(res.Entities) != 0 {
+		t.Fatalf("expected an empty collection, got %d entities", len(res.Entities))
+	}
+	rec.mu.Lock()
+	defer rec.mu.Unlock()
+	if len(rec.errs) != 0 {
+		t.Fatalf("expected no list errors, got %v", rec.errs)
+	}
+}

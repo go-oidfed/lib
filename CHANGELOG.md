@@ -15,6 +15,12 @@
 
 ### Bugfixes
 
+- **A list endpoint error without an OpenID Federation error body is no
+  longer read as an empty list** (#218). A plain-text or HTML 401/403 (a
+  reverse proxy or gateway in front of a private list endpoint) or a 5xx from
+  a proxy made the authority look as if it had no subordinates. Any non-2xx
+  answer is now an error: `*ListRefusedError` for 401 and 403, otherwise
+  `list endpoint of <entity> answered HTTP <status>`.
 - **`internal/http`: POST requests are neither redirected nor retried** (#211).
   An authenticated federation request (OpenID Federation 1.1 §8.8) is a POST
   carrying the client assertion in its form body.
