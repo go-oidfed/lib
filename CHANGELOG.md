@@ -1,7 +1,26 @@
 ## Unreleased
 
+### Features
+
+- **`SimpleEntityCollector` reports list endpoint errors** (#217). A new
+  `OnListError func(authority string, err error)` hook is called, in addition
+  to the existing log line, for every error reading an authority's
+  `federation_list_endpoint` or a subordinate's
+  `federation_collection_endpoint`. Refusals arrive as `*ListRefusedError`
+  (`Authority`, `Status`): an HTTP 401 or 403, or (`Status` 0, no request
+  sent) a `federation_list_endpoint_auth_methods` without `none` that the
+  configured client authentication cannot satisfy. A caller can now tell a
+  federation that does not publish its member list from one that has none. A
+  nil hook changes nothing.
+
 ### Bugfixes
 
+- **A list endpoint error without an OpenID Federation error body is no
+  longer read as an empty list** (#218). A plain-text or HTML 401/403 (a
+  reverse proxy or gateway in front of a private list endpoint) or a 5xx from
+  a proxy made the authority look as if it had no subordinates. Any non-2xx
+  answer is now an error: `*ListRefusedError` for 401 and 403, otherwise
+  `list endpoint of <entity> answered HTTP <status>`.
 - **`internal/http`: POST requests are neither redirected nor retried** (#211).
   An authenticated federation request (OpenID Federation 1.1 §8.8) is a POST
   carrying the client assertion in its form body.
