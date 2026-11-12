@@ -182,17 +182,24 @@ type TrustResolver struct {
 
 func (r TrustResolver) hash() (string, error) {
 	tas := make([]string, len(r.TrustAnchors))
+	taKeys := make([]string, len(r.TrustAnchors))
 	for i, ta := range r.TrustAnchors {
 		tas[i] = ta.EntityID
+		taKeys[i] = ta.keysFingerprint()
 	}
+	// The trust anchors' keys are part of the key: a chain verified with one
+	// key set must not be reused for a trust anchor that now has other keys
+	// (a re-pin, a rotation, or a caller with different keys for the same ID).
 	var forSerialization = struct {
 		StartingEntity string
 		TAs            []string
+		TAKeys         []string
 		Types          []string
 		Mode           TrustAnchorHintsMode
 	}{
 		StartingEntity: r.StartingEntity,
 		TAs:            tas,
+		TAKeys:         taKeys,
 		Types:          r.Types,
 		Mode:           r.TrustAnchorHintsMode,
 	}
