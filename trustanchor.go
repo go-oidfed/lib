@@ -1,9 +1,13 @@
 package oidfed
 
 import (
+	"crypto"
 	"encoding/base64"
+	"encoding/json"
 	"fmt"
 	"os"
+	"slices"
+	"strings"
 	"sync/atomic"
 
 	"github.com/zachmann/go-utils/duration"
@@ -150,6 +154,32 @@ func (t *TrustAnchor) JWKS() jwx.JWKS {
 // SetJWKS sets the JWKS in a thread-safe manner
 func (t *TrustAnchor) SetJWKS(jwks jwx.JWKS) {
 	t.jwks.Store(&jwks)
+}
+
+// keysFingerprint identifies the trust anchor's current key set: the sorted
+// RFC 7638 SHA-256 thumbprints of its keys, or "none" without keys. Two key
+// sets have the same fingerprint only if they hold the same keys.
+func (t *TrustAnchor) keysFingerprint() string {
+	jwks := t.JWKS()
+	if jwks.Set == nil || jwks.Len() == 0 {
+		return "none"
+	}
+	prints := make([]string, 0, jwks.Len())
+	for i := 0; i < jwks.Len(); i++ {
+		k, ok := jwks.Key(i)
+		if !ok {
+			continue
+		}
+		if tp, err := k.Thumbprint(crypto.SHA256); err == nil {
+			prints = append(prints, base64.RawURLEncoding.EncodeToString(tp))
+			continue
+		}
+		// A key without a thumbprint still has to change the fingerprint.
+		raw, _ := json.Marshal(k)
+		prints = append(prints, "json:"+string(raw))
+	}
+	slices.Sort(prints)
+	return strings.Join(prints, ",")
 }
 
 // TrustAnchors is a slice of TrustAnchor

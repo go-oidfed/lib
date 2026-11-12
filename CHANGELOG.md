@@ -2,6 +2,12 @@
 
 ### Bugfixes
 
+- **Cached trust chains are tied to the trust anchors' keys** (#216). The
+  `trust_tree_chains` cache key covered the trust anchors' entity IDs but not
+  their JWKS, so a chain verified with one key set was returned without
+  verification for a trust anchor that now has other keys (a re-pin, a
+  `TAJWKSRefresher` rotation, or another caller with different keys for the
+  same entity ID). The key now includes each trust anchor's key thumbprints.
 - **`internal/http`: POST requests are neither redirected nor retried** (#211).
   An authenticated federation request (OpenID Federation 1.1 §8.8) is a POST
   carrying the client assertion in its form body.
