@@ -2,6 +2,16 @@
 
 ### Bugfixes
 
+- **`internal/http`: POST requests are neither redirected nor retried** (#211).
+  An authenticated federation request (OpenID Federation 1.1 §8.8) is a POST
+  carrying the client assertion in its form body.
+  - A redirect answer to a POST is now returned as an error. Following a 307
+    or 308 resent the body, assertion included, to whatever host the redirect
+    named.
+  - A POST is not retried after a network error. A retry resent the same
+    assertion `jti`, which a compliant endpoint refuses as a replay, hiding
+    the original error.
+  GET requests keep their redirect and retry behaviour.
 - **Client authentication at federation endpoints: the assertion's `aud` is
   now the called entity's Entity Identifier** (OpenID Federation 1.1 §8.8,
   #210). It was the endpoint URL, which a compliant endpoint must reject.

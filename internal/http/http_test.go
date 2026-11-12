@@ -121,3 +121,72 @@ func init() {
 	// guard against a leftover non-default UA from an earlier test in the run
 	SetUserAgent("go-oidfed")
 }
+
+// redirectingServers returns a server that answers every request with a
+// redirect of the given status to a second server, and the number of
+// requests the second server received.
+func redirectingServers(t *testing.T, status int) (*httptest.Server, *atomic.Int32) {
+	t.Helper()
+	var reached atomic.Int32
+	target := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		reached.Add(1)
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{}`))
+	}))
+	t.Cleanup(target.Close)
+	redirector := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, target.URL+"/elsewhere", status)
+	}))
+	t.Cleanup(redirector.Close)
+	return redirector, &reached
+}
+
+// A POST may carry a client assertion in its body; following a 307/308
+// redirect would resend it to whatever the redirect names.
+func TestPostDoesNotFollowRedirects(t *testing.T) {
+	for _, status := range []int{http.StatusFound, http.StatusTemporaryRedirect, http.StatusPermanentRedirect} {
+		redirector, reached := redirectingServers(t, status)
+		form := map[string]string{"client_assertion": "assertion"}
+		res := map[string]interface{}{}
+		_, _, err := Post(redirector.URL, form, &res, nil)
+		assert.Error(t, err, "%d: Post followed the redirect", status)
+		_, err = Do().R().SetFormData(form).Post(redirector.URL)
+		assert.Error(t, err, "%d: a client POST followed the redirect", status)
+		assert.Equal(t, int32(0), reached.Load(), "%d: the redirect target was reached", status)
+	}
+}
+
+func TestGetFollowsRedirects(t *testing.T) {
+	redirector, reached := redirectingServers(t, http.StatusTemporaryRedirect)
+	res := map[string]interface{}{}
+	_, httpErr, err := Get(redirector.URL, nil, &res)
+	require.NoError(t, err)
+	assert.Nil(t, httpErr)
+	assert.Equal(t, int32(1), reached.Load())
+}
+
+// A POST may carry a single-use client assertion (jti); a retry would resend
+// it, and the endpoint must refuse a replayed jti. A dropped connection,
+// which is retried for a GET (TestFastNetworkErrorRetried), is not retried
+// for a POST.
+func TestPostNetworkErrorNotRetried(t *testing.T) {
+	var attempts atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		attempts.Add(1)
+		conn, _, err := w.(http.Hijacker).Hijack()
+		if err == nil {
+			_ = conn.Close()
+		}
+	}))
+	defer srv.Close()
+
+	res := map[string]interface{}{}
+	_, _, err := Post(srv.URL, map[string]string{"a": "b"}, &res, nil)
+	require.Error(t, err)
+	assert.Equal(t, int32(1), attempts.Load(), "Post must not be retried")
+
+	attempts.Store(0)
+	_, err = Do().R().SetFormData(map[string]string{"a": "b"}).Post(srv.URL)
+	require.Error(t, err)
+	assert.Equal(t, int32(1), attempts.Load(), "a client POST must not be retried")
+}
