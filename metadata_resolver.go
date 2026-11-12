@@ -124,7 +124,8 @@ func (LocalMetadataResolver) ResolvePossible(req apimodel.ResolveRequest) (bool,
 type SimpleRemoteMetadataResolver struct {
 	ResolveEndpoint string
 	// ClientAuth, when non-nil, authenticates every resolve request with a
-	// private_key_jwt client assertion (audience = ResolveEndpoint) sent as a
+	// private_key_jwt client assertion (audience = EntityID, or
+	// ResolveEndpoint when EntityID is empty) sent as a
 	// form-encoded POST containing the resolve params plus
 	// client_assertion_type/client_assertion. When nil, an unauthenticated GET
 	// with the params as URL query is used. EC-based advertisement checks
@@ -137,6 +138,11 @@ type SimpleRemoteMetadataResolver struct {
 	// algorithms from the target entity's Entity Configuration. If nil, the
 	// producer's DefaultSigner is used.
 	AlgsFromEC func() []string
+	// EntityID is the Entity Identifier of the entity whose resolve endpoint
+	// is called. It is the client assertion's audience, as OpenID Federation
+	// 1.1 §8.8 requires. SmartRemoteMetadataResolver sets it to the trust
+	// anchor's ID. When empty, the audience falls back to ResolveEndpoint.
+	EntityID string
 }
 
 const (
@@ -202,7 +208,11 @@ func (r SimpleRemoteMetadataResolver) ResolveResponse(req apimodel.ResolveReques
 		if r.AlgsFromEC != nil {
 			algs = r.AlgsFromEC()
 		}
-		form, err := clientAuthForm(params, r.ClientAuth, r.ResolveEndpoint, algs)
+		aud := r.EntityID
+		if aud == "" {
+			aud = r.ResolveEndpoint
+		}
+		form, err := clientAuthForm(params, r.ClientAuth, aud, algs)
 		if err != nil {
 			return nil, resolveStatus, errors.WithStack(err)
 		}
@@ -322,10 +332,11 @@ type SmartRemoteMetadataResolver struct {
 // private_key_jwt; signing algorithms are read from the EC. With a nil
 // ClientAuth the plain unauthenticated resolver is returned.
 func (r SmartRemoteMetadataResolver) remoteResolverForTA(
-	resolveEndpoint string, fe *FederationEntityMetadata,
+	taID, resolveEndpoint string, fe *FederationEntityMetadata,
 ) SimpleRemoteMetadataResolver {
 	rr := SimpleRemoteMetadataResolver{
 		ResolveEndpoint: resolveEndpoint,
+		EntityID:        taID,
 	}
 	if r.ClientAuth != nil {
 		if r.ClientAuth.Force || clientAuthRequired(fe.FederationResolveEndpointAuthMethods) {
@@ -397,7 +408,7 @@ func (r SmartRemoteMetadataResolver) resolveViaTA(
 	if resolveEndpoint == "" {
 		return ResolveResponsePayload{}, errors.New("trust anchor has no federation_resolve_endpoint")
 	}
-	remoteResolver := r.remoteResolverForTA(resolveEndpoint, entityConfig.Metadata.FederationEntity)
+	remoteResolver := r.remoteResolverForTA(ta, resolveEndpoint, entityConfig.Metadata.FederationEntity)
 	res, err := remoteResolver.ResolveResponsePayload(req)
 	if err != nil {
 		internal.Logf("MetadataResolver: error while obtaining resolve response: %v", err)
@@ -422,7 +433,7 @@ func (r SmartRemoteMetadataResolver) resolvePossibleViaTA(
 	if resolveEndpoint == "" {
 		return false, false
 	}
-	return r.remoteResolverForTA(resolveEndpoint, entityConfig.Metadata.FederationEntity).ResolvePossible(req)
+	return r.remoteResolverForTA(ta, resolveEndpoint, entityConfig.Metadata.FederationEntity).ResolvePossible(req)
 }
 
 // ResolveResponsePayload implements the MetadataResolver interface. All

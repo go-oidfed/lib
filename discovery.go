@@ -429,7 +429,9 @@ func (f EntityCollectionFilterVerifiedChains) Filter(e *CollectedEntity) bool {
 	return confirmedValid
 }
 
-func fetchList(listEndpoint string, fe ...*FederationEntityMetadata) ([]string, error) {
+// fetchList obtains the subordinates listed by the list endpoint of the
+// entity entityID.
+func fetchList(listEndpoint, entityID string, fe ...*FederationEntityMetadata) ([]string, error) {
 	if ids := subordinateListingCacheGet(listEndpoint); ids != nil {
 		internal.Log("Discovery: Obtained listing response from cache")
 		return ids, nil
@@ -438,7 +440,7 @@ func fetchList(listEndpoint string, fe ...*FederationEntityMetadata) ([]string, 
 	if len(fe) > 0 {
 		fePtr = fe[0]
 	}
-	ids, err := httpFetchList(listEndpoint, fePtr)
+	ids, err := httpFetchList(listEndpoint, entityID, fePtr)
 	if err != nil {
 		return nil, err
 	}
@@ -447,12 +449,12 @@ func fetchList(listEndpoint string, fe ...*FederationEntityMetadata) ([]string, 
 	return ids, nil
 }
 
-func httpFetchList(listEndpoint string, fe *FederationEntityMetadata) ([]string, error) {
+func httpFetchList(listEndpoint, entityID string, fe *FederationEntityMetadata) ([]string, error) {
 	var authMethods []string
 	if fe != nil {
 		authMethods = fe.FederationListEndpointAuthMethods
 	}
-	resp, errRes, err := httpFederationEndpointRequest(listEndpoint, nil, authMethods, fe, &[]string{})
+	resp, errRes, err := httpFederationEndpointRequest(listEndpoint, entityID, nil, authMethods, fe, &[]string{})
 	if err != nil {
 		return nil, err
 	}

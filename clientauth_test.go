@@ -26,6 +26,9 @@ const (
 	testClientAuth = "https://auth.example"
 	testResolveSub = "https://subject.example"
 	testEndptAuth  = "https://endpoint.example/federation"
+	// testEndptEntity is the entity whose endpoint testEndptAuth is.
+	testEndptEntity = "https://endpoint.example"
+	testResolveTA   = "https://resolve.example.com"
 )
 
 func clientAuthTestProducer(t *testing.T) *RequestObjectProducer {
@@ -176,7 +179,7 @@ func TestFederationEndpointRequest_ClientAuth(t *testing.T) {
 
 	// private_key_jwt advertised + DefaultClientAuth -> POST with assertion.
 	DefaultClientAuth = rop
-	_, errRes, err := httpFederationEndpointRequest(testEndptAuth, url.Values{"sub": {"s"}}, authMethods, fe, nil)
+	_, errRes, err := httpFederationEndpointRequest(testEndptAuth, testEndptEntity, url.Values{"sub": {"s"}}, authMethods, fe, nil)
 	require.NoError(t, err)
 	require.Nil(t, errRes)
 	mu.Lock()
@@ -188,11 +191,11 @@ func TestFederationEndpointRequest_ClientAuth(t *testing.T) {
 	claims, err := parseClientAssertionClaims(t, gotAssertion)
 	require.NoError(t, err)
 	assert.Equal(t, testClientAuth, claims["iss"])
-	assert.Equal(t, testEndptAuth, claims["aud"])
+	assert.Equal(t, testEndptEntity, claims["aud"])
 
 	// Not advertised -> GET, unchanged.
 	DefaultClientAuth = rop
-	_, _, err = httpFederationEndpointRequest(testEndptAuth, url.Values{"sub": {"s"}}, nil, fe, nil)
+	_, _, err = httpFederationEndpointRequest(testEndptAuth, testEndptEntity, url.Values{"sub": {"s"}}, nil, fe, nil)
 	require.NoError(t, err)
 	mu.Lock()
 	assert.Equal(t, http.MethodGet, gotMethod)
@@ -201,7 +204,7 @@ func TestFederationEndpointRequest_ClientAuth(t *testing.T) {
 
 	// Advertised but DefaultClientAuth nil -> GET, unchanged (no producer).
 	DefaultClientAuth = nil
-	_, _, err = httpFederationEndpointRequest(testEndptAuth, url.Values{"sub": {"s"}}, authMethods, fe, nil)
+	_, _, err = httpFederationEndpointRequest(testEndptAuth, testEndptEntity, url.Values{"sub": {"s"}}, authMethods, fe, nil)
 	require.NoError(t, err)
 	mu.Lock()
 	assert.Equal(t, http.MethodGet, gotMethod)
@@ -223,25 +226,25 @@ func TestRemoteResolverForTA_AuthAutoDiscovery(t *testing.T) {
 
 	// Advertised -> producer set, AlgsFromEC reads EC algs.
 	r := (SmartRemoteMetadataResolver{ClientAuth: &RemoteResolverClientAuth{ROProducer: rop}}).
-		remoteResolverForTA(testResolveURL, advertised)
+		remoteResolverForTA(testResolveTA, testResolveURL, advertised)
 	assert.NotNil(t, r.ClientAuth)
 	require.NotNil(t, r.AlgsFromEC)
 	assert.Equal(t, []string{"RS256"}, r.AlgsFromEC())
 
 	// Not advertised, Force=false -> no auth on the built SimpleRemote.
 	r = (SmartRemoteMetadataResolver{ClientAuth: &RemoteResolverClientAuth{ROProducer: rop}}).
-		remoteResolverForTA(testResolveURL, plain)
+		remoteResolverForTA(testResolveTA, testResolveURL, plain)
 	assert.Nil(t, r.ClientAuth)
 	require.NotNil(t, r.AlgsFromEC)
 
 	// Not advertised but Force=true -> Force skips the advertisement check.
 	r = (SmartRemoteMetadataResolver{
 		ClientAuth: &RemoteResolverClientAuth{ROProducer: rop, Force: true},
-	}).remoteResolverForTA(testResolveURL, plain)
+	}).remoteResolverForTA(testResolveTA, testResolveURL, plain)
 	assert.NotNil(t, r.ClientAuth)
 
 	// No ClientAuth on the smart resolver -> no ClientAuth on the SimpleRemote.
-	r = (SmartRemoteMetadataResolver{}).remoteResolverForTA(testResolveURL, advertised)
+	r = (SmartRemoteMetadataResolver{}).remoteResolverForTA(testResolveTA, testResolveURL, advertised)
 	assert.Nil(t, r.ClientAuth)
 	assert.Nil(t, r.AlgsFromEC)
 }

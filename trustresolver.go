@@ -1132,7 +1132,7 @@ func FetchEntityStatementCtx(
 			if len(fe) > 0 {
 				fePtr = fe[0]
 			}
-			return httpFetchEntityStatementCtx(ctx, fetchEndpoint, subID, fePtr)
+			return httpFetchEntityStatementCtx(ctx, fetchEndpoint, subID, issID, fePtr)
 		},
 	)
 }
@@ -1146,7 +1146,7 @@ func FetchEntityStatement(fetchEndpoint, subID, issID string, fe ...*FederationE
 }
 
 func httpFetchEntityStatementCtx(
-	ctx context.Context, fetchEndpoint, subID string, fe *FederationEntityMetadata,
+	ctx context.Context, fetchEndpoint, subID, issID string, fe *FederationEntityMetadata,
 ) (*EntityStatement, error) {
 	params := url.Values{}
 	params.Add("sub", subID)
@@ -1154,7 +1154,7 @@ func httpFetchEntityStatementCtx(
 	if fe != nil {
 		authMethods = fe.FederationFetchEndpointAuthMethods
 	}
-	res, errRes, err := httpFederationEndpointRequestCtx(ctx, fetchEndpoint, params, authMethods, fe, nil)
+	res, errRes, err := httpFederationEndpointRequestCtx(ctx, fetchEndpoint, issID, params, authMethods, fe, nil)
 	if err != nil {
 		return nil, err
 	}

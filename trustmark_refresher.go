@@ -253,7 +253,7 @@ func (c *EntityConfigurationTrustMarkConfig) refreshExternal() (string, unixtime
 	params := url.Values{}
 	params.Add("trust_mark_type", c.TrustMarkType)
 	params.Add("sub", c.sub)
-	res, errRes, err := httpFederationEndpointRequest(endpoint, params, authMethods, fe, nil)
+	res, errRes, err := httpFederationEndpointRequest(endpoint, c.TrustMarkIssuer, params, authMethods, fe, nil)
 	if err != nil {
 		return "", unixtime.Unixtime{}, err
 	}
