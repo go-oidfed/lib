@@ -72,6 +72,7 @@ func (r *collectorResult) processAuthority(
 
 			subordinates, err := fetchList(
 				stmt.Metadata.FederationEntity.FederationListEndpoint,
+				authority.EntityID,
 				stmt.Metadata.FederationEntity,
 			)
 			if err != nil {
