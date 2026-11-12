@@ -12,6 +12,16 @@
     assertion `jti`, which a compliant endpoint refuses as a replay, hiding
     the original error.
   GET requests keep their redirect and retry behaviour.
+- **Client authentication at federation endpoints: the assertion's `aud` is
+  now the called entity's Entity Identifier** (OpenID Federation 1.1 §8.8,
+  #210). It was the endpoint URL, which a compliant endpoint must reject.
+  - fetch: the issuer whose fetch endpoint is called;
+  - list: the authority whose list endpoint is called;
+  - trust mark: the trust mark issuer;
+  - resolve: the trust anchor whose resolve endpoint is called.
+    `SimpleRemoteMetadataResolver` has a new `EntityID` field for this, which
+    `SmartRemoteMetadataResolver` sets. A `SimpleRemoteMetadataResolver`
+    without `EntityID` still uses `ResolveEndpoint` as the audience.
 
 ## go-oidfed/lib 0.14.0
 
