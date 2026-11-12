@@ -1,3 +1,16 @@
+## Unreleased
+
+### Bugfixes
+
+- **`TAJWKSRefresher`: a failed initial poll of a trust anchor is no longer
+  fatal** (#214). `Start` and `Add` (and so `Update`) returned `initial poll
+  failed for TA …` and never started that trust anchor's polling goroutine;
+  `Start` also stopped at the first such trust anchor, leaving the refresher
+  half-started. The failure is now logged as a warning, the trust anchor keeps
+  its current JWKS, and polling retries in the background after the initial
+  backoff (1 s, doubling up to 5 min). `Start` still fails when a trust anchor
+  has no JWKS and there is no storage to seed one.
+
 ## go-oidfed/lib 0.14.0
 
 ### Features

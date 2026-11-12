@@ -86,7 +86,8 @@ func NewTAJWKSRefresher(
 }
 
 // Start launches the polling goroutines for all TAs with EnableJWKSUpdate=true
-// Returns an error if initial validation fails
+// Returns an error if initial validation fails; a failed initial poll is not
+// an error (see startPolling)
 func (p *TAJWKSRefresher) Start() error {
 	p.stopCh = make(chan struct{})
 
@@ -148,16 +149,27 @@ func (p *TAJWKSRefresher) Start() error {
 		}
 		p.mu.Unlock()
 
-		// Perform initial fetch and update
-		if _, err := p.pollAndMaybeUpdate(ta); err != nil {
-			return errors.Wrapf(err, "initial poll failed for TA %s", ta.EntityID)
-		}
-
-		p.wg.Add(1)
-		go p.pollGoroutine(ta)
+		p.startPolling(ta)
 	}
 
 	return nil
+}
+
+// startPolling performs the initial fetch and update for ta and starts its
+// polling goroutine. A failed initial poll (for example a trust anchor that
+// is restarting, or this entity's own trust anchor that is not serving yet)
+// is not fatal: it is logged, the TA keeps its current (pinned or stored)
+// JWKS, and the goroutine retries with the normal backoff.
+func (p *TAJWKSRefresher) startPolling(ta *TrustAnchor) {
+	var firstWait time.Duration
+	if _, err := p.pollAndMaybeUpdate(ta); err != nil {
+		firstWait = initialBackoff
+		p.logger.Warn().Err(err).Str("entity_id", ta.EntityID).
+			Str("next_retry", time.Now().Add(firstWait).Format(time.RFC3339)).
+			Msg("Initial poll failed for TA; using its current JWKS and retrying in the background")
+	}
+	p.wg.Add(1)
+	go p.pollGoroutine(ta, firstWait)
 }
 
 // Stop gracefully shuts down all polling goroutines
@@ -179,10 +191,9 @@ func (p *TAJWKSRefresher) IsStarted() bool {
 // Add adds a trust anchor to the refresher and, if the refresher is running and
 // the TA has EnableJWKSUpdate=true, starts polling it immediately. If a TA with
 // the same entity_id already exists, it is replaced (its polling goroutine is
-// stopped first). The initial poll is performed synchronously; an error is
-// returned if it fails (unless the TA has no JWKS and storage is available to
-// seed — then the error from a failed initial fetch is returned but the TA is
-// still registered).
+// stopped first). The initial poll is performed synchronously; if it fails,
+// the failure is logged and polling is retried in the background with
+// backoff, the TA keeping its current JWKS meanwhile.
 //
 // This is safe to call after Start(); it is the dynamic per-TA control used by
 // the admin API.
@@ -224,11 +235,7 @@ func (p *TAJWKSRefresher) Add(ta *TrustAnchor) error {
 	}
 	p.mu.Unlock()
 
-	if _, err := p.pollAndMaybeUpdate(ta); err != nil {
-		return errors.Wrapf(err, "initial poll failed for TA %s", ta.EntityID)
-	}
-	p.wg.Add(1)
-	go p.pollGoroutine(ta)
+	p.startPolling(ta)
 	return nil
 }
 
@@ -281,13 +288,14 @@ func (p *TAJWKSRefresher) Update(ta *TrustAnchor) error {
 	return p.Add(ta)
 }
 
-// pollGoroutine runs the polling loop for a single TA
-func (p *TAJWKSRefresher) pollGoroutine(ta *TrustAnchor) {
+// pollGoroutine runs the polling loop for a single TA,
+// starting with a wait of firstWait.
+func (p *TAJWKSRefresher) pollGoroutine(ta *TrustAnchor, firstWait time.Duration) {
 	defer p.wg.Done()
 
 	p.logger.Debug().Str("entity_id", ta.EntityID).Msg("Starting TA key polling")
 
-	var nextInterval time.Duration
+	nextInterval := firstWait
 
 	// Per-TA stop channel; nil if not present (e.g. started via Start before
 	// per-TA channels existed). We select on it additionally so Remove can

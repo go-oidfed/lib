@@ -1,9 +1,13 @@
 package oidfed
 
 import (
+	"net/http"
+	"sync/atomic"
 	"testing"
 	"time"
 
+	"github.com/jarcoal/httpmock"
+	"github.com/lestrrat-go/jwx/v4/jwa"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -100,7 +104,8 @@ func TestTAJWKSRefresher_UpdateViaAdd(t *testing.T) {
 
 // TestTAJWKSRefresher_FirstPollSeedValidation verifies that Start() does not
 // return the "no JWKS available" error when storage is available to seed; it
-// instead attempts the initial poll (which fails for a non-existent entity).
+// instead attempts the initial poll, which fails for a non-existent entity
+// without failing Start: the TA is polled again in the background.
 func TestTAJWKSRefresher_FirstPollSeedValidation(t *testing.T) {
 	tmpDir := t.TempDir()
 	store, err := NewFileJWKStorage(tmpDir)
@@ -113,12 +118,66 @@ func TestTAJWKSRefresher_FirstPollSeedValidation(t *testing.T) {
 	refresher, err := NewTAJWKSRefresher(&tas, store)
 	require.NoError(t, err)
 
-	startErr := refresher.Start()
-	// Should not be the "no JWKS available" error; should be an initial poll failure.
-	require.Error(t, startErr)
-	assert.NotContains(t, startErr.Error(), "no JWKS available")
-	assert.Contains(t, startErr.Error(), "initial poll failed")
+	require.NoError(t, refresher.Start(), "a failed initial poll does not fail Start")
+	assert.True(t, refresher.IsStarted())
+	assert.Nil(t, ta.JWKS().Set, "no JWKS until a poll succeeds")
 	refresher.Stop()
+}
+
+// TestTAJWKSRefresher_AddUnreachableKeepsJWKS verifies that adding a TA whose
+// entity configuration cannot be fetched succeeds and keeps its JWKS.
+func TestTAJWKSRefresher_AddUnreachableKeepsJWKS(t *testing.T) {
+	store, err := NewFileJWKStorage(t.TempDir())
+	require.NoError(t, err)
+	tas := TrustAnchors{}
+	refresher, err := NewTAJWKSRefresher(&tas, store)
+	require.NoError(t, err)
+	require.NoError(t, refresher.Start())
+	defer refresher.Stop()
+
+	_, pk, _, err := jwx.GenerateKeyPair(jwa.ES256(), 0)
+	require.NoError(t, err)
+	jwks := jwx.NewJWKS()
+	require.NoError(t, jwks.AddKey(pk))
+	ta := &TrustAnchor{EntityID: "https://ta-unreachable.example", EnableJWKSUpdate: true}
+	ta.SetJWKS(jwks)
+	require.NoError(t, refresher.Add(ta))
+	assert.Equal(t, jwks.Len(), ta.JWKS().Len())
+}
+
+// TestTAJWKSRefresher_FailedInitialPollRetried verifies that a TA whose
+// initial poll fails is polled again after the initial backoff.
+func TestTAJWKSRefresher_FailedInitialPollRetried(t *testing.T) {
+	const entityID = "https://ta-retry.example"
+	var polls atomic.Int32
+	httpmock.RegisterResponder(
+		http.MethodGet, entityID+"/.well-known/openid-federation",
+		func(*http.Request) (*http.Response, error) {
+			polls.Add(1)
+			return httpmock.NewStringResponse(http.StatusServiceUnavailable, ""), nil
+		},
+	)
+
+	_, pk, _, err := jwx.GenerateKeyPair(jwa.ES256(), 0)
+	require.NoError(t, err)
+	jwks := jwx.NewJWKS()
+	require.NoError(t, jwks.AddKey(pk))
+	ta := &TrustAnchor{EntityID: entityID, EnableJWKSUpdate: true}
+	ta.SetJWKS(jwks)
+	tas := TrustAnchors{ta}
+	store, err := NewFileJWKStorage(t.TempDir())
+	require.NoError(t, err)
+	refresher, err := NewTAJWKSRefresher(&tas, store)
+	require.NoError(t, err)
+
+	require.NoError(t, refresher.Start())
+	defer refresher.Stop()
+	require.GreaterOrEqual(t, polls.Load(), int32(1), "the initial poll reached the TA")
+	assert.Eventually(
+		t, func() bool { return polls.Load() >= 2 }, 5*time.Second, 50*time.Millisecond,
+		"the TA is polled again after the initial backoff",
+	)
+	assert.Equal(t, jwks.Len(), ta.JWKS().Len(), "the TA keeps its JWKS")
 }
 
 // TestTAJWKSRefresher_FirstPollSeedNoStorageErrors verifies that without
