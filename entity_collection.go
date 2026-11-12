@@ -1,10 +1,12 @@
 package oidfed
 
 import (
+	nethttp "net/http"
 	"slices"
 	"sync"
 
 	arrays "github.com/adam-hanna/arrayOperations"
+	"github.com/pkg/errors"
 	"golang.org/x/text/language"
 
 	"github.com/go-oidfed/lib/apimodel"
@@ -77,6 +79,7 @@ func (r *collectorResult) processAuthority(
 			)
 			if err != nil {
 				internal.Logf("Discovery: Could not fetch subordinates: %s", err.Error())
+				collector.reportListError(authority.EntityID, err)
 				return
 			}
 
@@ -116,7 +119,7 @@ func (r *collectorResult) processSubordinate(
 			// recursively descending its federation_list_endpoint level by level.
 			if !collector.DisableSubordinateCollectionEndpoints &&
 				hasValidFederationCollectionEndpoint(entityConfig) {
-				remote, ok := r.collectViaCollectionEndpoint(
+				remote, ok, collErr := r.collectViaCollectionEndpoint(
 					entityConfig.Metadata.FederationEntity.FederationCollectionEndpoint,
 					subordinateID, req,
 				)
@@ -128,6 +131,11 @@ func (r *collectorResult) processSubordinate(
 					return
 				}
 				// Fall through to the classic recursive list traversal below.
+				// The collection error is reported only when no list
+				// traversal follows; a failing list traversal reports itself.
+				if collErr != nil && !hasValidFederationListEndpoint(entityConfig) {
+					collector.reportListError(subordinateID, collErr)
+				}
 			}
 
 			if hasValidFederationListEndpoint(entityConfig) {
@@ -151,11 +159,11 @@ func (r *collectorResult) processSubordinate(
 // request is anchored at the subordinate itself so the remote collection scope
 // matches the subtree. It aggregates all pages. On success it returns the
 // (possibly enriched) entities and true; on failure or an empty result it
-// returns (nil, false) so the caller can fall back to recursive list traversal.
+// returns (nil, false, err), err being nil for an empty result, so the caller can fall back to recursive list traversal.
 func (r *collectorResult) collectViaCollectionEndpoint(
 	endpoint, subordinateID string,
 	req apimodel.EntityCollectionRequest,
-) ([]*CollectedEntity, bool) {
+) ([]*CollectedEntity, bool, error) {
 	subReq := req
 	subReq.TrustAnchor = subordinateID
 	subReq.From = "" // aggregate all pages
@@ -170,14 +178,17 @@ func (r *collectorResult) collectViaCollectionEndpoint(
 		internal.Logf(
 			"Entity Collection: delegated subordinate collection endpoint for %s failed: %s", subordinateID, errDesc,
 		)
-		return nil, false
+		if errRes.Status == nethttp.StatusUnauthorized || errRes.Status == nethttp.StatusForbidden {
+			return nil, false, &ListRefusedError{Authority: subordinateID, Status: errRes.Status}
+		}
+		return nil, false, errors.Errorf("collection endpoint error: %d: %s", errRes.Status, errDesc)
 	}
 	if remoteRes == nil || len(remoteRes.Entities) == 0 {
 		internal.Logf(
 			"Entity Collection: delegated subordinate collection endpoint for %s returned no entities -> falling back",
 			subordinateID,
 		)
-		return nil, false
+		return nil, false, nil
 	}
 
 	// The remote response is informational and may omit claims we are expected
@@ -193,7 +204,7 @@ func (r *collectorResult) collectViaCollectionEndpoint(
 		}
 		out = append(out, e)
 	}
-	return out, true
+	return out, true, nil
 }
 
 // enrichmentNeeded reports whether the remote collection record omits claims

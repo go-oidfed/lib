@@ -6,6 +6,7 @@ import (
 	nethttp "net/http"
 	"reflect"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -171,6 +172,48 @@ type SimpleEntityCollector struct {
 	// federation_list_endpoint. The fast path is enabled by default (zero
 	// value); set this to true to force the classic recursive list traversal.
 	DisableSubordinateCollectionEndpoints bool
+
+	// OnListError, if non-nil, is called with every error the collector meets
+	// while reading an authority's federation_list_endpoint or a
+	// subordinate's federation_collection_endpoint, in addition to the log
+	// line. It lets a caller tell an authority that does not publish its
+	// members from one that has none. A refusal (HTTP 401 or 403, or an
+	// endpoint that requires client authentication the library cannot supply)
+	// is reported as a *ListRefusedError. It may be called concurrently.
+	OnListError func(authority string, err error)
+}
+
+// ListRefusedError reports that an authority refused a list or collection
+// request: its endpoint answered 401 or 403, or its
+// federation_list_endpoint_auth_methods require client authentication that
+// is not configured (Status is 0 then).
+type ListRefusedError struct {
+	Authority string
+	Status    int
+}
+
+// Error implements the error interface
+func (e *ListRefusedError) Error() string {
+	if e.Status == 0 {
+		return "list endpoint of " + e.Authority + " requires client authentication"
+	}
+	return "list endpoint of " + e.Authority + " refused the request: HTTP " + strconv.Itoa(e.Status)
+}
+
+func (d *SimpleEntityCollector) reportListError(authority string, err error) {
+	if d.OnListError != nil {
+		d.OnListError(authority, err)
+	}
+}
+
+// listAuthRequired reports whether the list endpoint advertises
+// authentication without "none" and no client authentication is available
+// to satisfy it.
+func listAuthRequired(authMethods []string) bool {
+	if len(authMethods) == 0 || slices.Contains(authMethods, "none") {
+		return false
+	}
+	return !(clientAuthRequired(authMethods) && DefaultClientAuth != nil)
 }
 
 type mutexedStrSet struct {
@@ -454,11 +497,17 @@ func httpFetchList(listEndpoint, entityID string, fe *FederationEntityMetadata) 
 	if fe != nil {
 		authMethods = fe.FederationListEndpointAuthMethods
 	}
+	if listAuthRequired(authMethods) {
+		return nil, &ListRefusedError{Authority: entityID}
+	}
 	resp, errRes, err := httpFederationEndpointRequest(listEndpoint, entityID, nil, authMethods, fe, &[]string{})
 	if err != nil {
 		return nil, err
 	}
 	if errRes != nil {
+		if errRes.Status == nethttp.StatusUnauthorized || errRes.Status == nethttp.StatusForbidden {
+			return nil, &ListRefusedError{Authority: entityID, Status: errRes.Status}
+		}
 		return nil, errRes.Err()
 	}
 	entities, ok := resp.Result().(*[]string)
