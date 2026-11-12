@@ -66,25 +66,28 @@ func endpointAlgsFromEC(fe *FederationEntityMetadata) []string {
 // (fetch/list/trust-mark) with automatic private_key_jwt client authentication
 // when authMethods advertises private_key_jwt and DefaultClientAuth is set. In
 // that case the params are sent as a form-encoded POST body together with the
-// client assertion (audience = endpoint; signing algorithms read from algEC's
-// endpoint_auth_signing_alg_values_supported when non-empty); otherwise an
+// client assertion (audience = aud, the Entity Identifier of the entity whose
+// endpoint is called, as OpenID Federation 1.1 §8.8 requires; signing
+// algorithms read from algEC's endpoint_auth_signing_alg_values_supported when
+// non-empty); otherwise an
 // unauthenticated GET with the params as query string is used. result, if
 // non-nil, is parsed from the response body. algEC may be nil, in which case
 // the producer's default signer is used.
 func httpFederationEndpointRequest(
-	endpoint string, params url.Values, authMethods []string, algEC *FederationEntityMetadata, result interface{},
+	endpoint, aud string, params url.Values, authMethods []string, algEC *FederationEntityMetadata,
+	result interface{},
 ) (*resty.Response, *internalhttp.HttpError, error) {
-	return httpFederationEndpointRequestCtx(context.Background(), endpoint, params, authMethods, algEC, result)
+	return httpFederationEndpointRequestCtx(context.Background(), endpoint, aud, params, authMethods, algEC, result)
 }
 
 // httpFederationEndpointRequestCtx is httpFederationEndpointRequest with a
 // context; canceling the context aborts the request.
 func httpFederationEndpointRequestCtx(
-	ctx context.Context, endpoint string, params url.Values, authMethods []string, algEC *FederationEntityMetadata,
+	ctx context.Context, endpoint, aud string, params url.Values, authMethods []string, algEC *FederationEntityMetadata,
 	result any,
 ) (*resty.Response, *internalhttp.HttpError, error) {
 	if clientAuthRequired(authMethods) && DefaultClientAuth != nil {
-		form, err := clientAuthForm(params, DefaultClientAuth, endpoint, endpointAlgsFromEC(algEC))
+		form, err := clientAuthForm(params, DefaultClientAuth, aud, endpointAlgsFromEC(algEC))
 		if err != nil {
 			return nil, nil, errors.WithStack(err)
 		}
